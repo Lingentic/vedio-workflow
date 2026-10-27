@@ -1,0 +1,65 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { Store } from '../lib/store.ts';
+import { Media } from '../lib/media.ts';
+import { Models } from '../lib/models.ts';
+import { Library } from '../lib/library.ts';
+import { Workflow } from '../lib/workflow.ts';
+import { buildPlan } from '../lib/plan.ts';
+import { intervalsFromNodes } from '../lib/templates.ts';
+
+test('视频起始时间非零、音轨比画面长时，按真实视频时长拼接且各段不丢帧', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ecommerce-video-frames-'));
+  const store = new Store(root), media = new Media();
+  let workflow: Workflow;
+  const library = new Library(store, media, id => !!workflow?.active?.inputIds.has(id));
+  workflow = new Workflow(store, library, media, new Models({ credentialsFile: path.join(root, 'absent.env') }));
+  t.after(async () => { await workflow.active?.promise; await workflow.waitForCleanup(); store.close(); assert.ok(root.startsWith(path.join(os.tmpdir(), 'ecommerce-video-frames-'))); fs.rmSync(root, { recursive: true, force: true }); });
+  store.putProduct({ productId: 'frames-product', name: '视频时长回归', price: '', specification: '', sellingPoints: '' });
+  for (const [id, color] of [['A', 'red'], ['B', 'blue']]) {
+    const relativePath = `${id}.mp4`;
+    const origin = id === 'B' ? 5 : 0;
+    await media.ff(['-n', '-f', 'lavfi', '-i', `color=c=${color}:s=64x64:r=30:d=0.6`, '-f', 'lavfi', '-i', 'sine=frequency=440:duration=1.2', '-filter_complex', `[0:v]setpts=PTS+${origin + .166}/TB[v];[1:a]asetpts=PTS+${origin}/TB[a]`, '-map', '[v]', '-map', '[a]', '-fps_mode', 'passthrough', '-c:v', 'libx264', '-preset', 'ultrafast', '-c:a', 'aac', store.path(relativePath)]);
+    const info = await media.probe(store.path(relativePath));
+    assert.ok(info.duration > info.videoDuration! + .3);
+    assert.ok(info.videoStart! > .1 && info.videoStart! < .2, 'Seek offset is relative to the container start, including a 5-second origin');
+    // A legacy asset records container duration and lacks video-stream metadata.
+    store.putAsset({ id, productId: 'frames-product', kind: 'product', title: `${id}.mp4`, relativePath, status: 'ready', duration: info.duration, createdAt: new Date().toISOString() });
+  }
+  const task = workflow.create('frames-product', 'template-01-insoles');
+  const node = { id: 'g', type: 'generated_narration' as const, text: '测试口播。' };
+  task.templateSnapshot.nodes = [node]; task.templateSnapshot.variableNodeId = undefined; task.black = { g: node.text }; task.nodes = [node];
+  const audio = path.join('制作任务', task.id, 'audio', 'voice.wav');
+  fs.mkdirSync(path.dirname(store.path(audio)), { recursive: true });
+  await media.ff(['-n', '-f', 'lavfi', '-i', 'sine=frequency=220:duration=0.9', '-c:a', 'pcm_s16le', store.path(audio)]);
+  task.intervals = intervalsFromNodes(task.nodes);
+  Object.assign(task.intervals[0], { status: 'ready', confirmed: true, duration: .9, relativePath: audio, nodeTimes: [{ id: 'g', begin: 0, end: .9 }], cues: [{ text: node.text, begin: 0, end: .9 }] });
+  task.copyConfirmed = task.audioConfirmed = true; task.settings.subtitles = false;
+  task.plan = buildPlan(task, library, ['A', 'B']); store.putTask(task);
+  workflow.render(task.id); await workflow.active!.promise;
+  let saved = workflow.get(task.id);
+  assert.equal(saved.execution?.status, 'done', saved.error);
+  assert.ok(Math.abs(store.asset('A')!.duration - .6) < .001);
+  const retried = await library.retry('A');
+  assert.ok(Math.abs(retried.duration - .6) < .001, 'Retry must not restore the longer container duration');
+  assert.equal(saved.plan!.pieces.length, 2);
+  const base = saved.renderBase!.relativePath;
+  const chunks = [];
+  for (let i = 0; i < saved.plan!.pieces.length; i++) chunks.push(await media.probe(path.join(path.dirname(store.path(base)), `piece-${String(i).padStart(4, '0')}.mp4`)));
+  assert.deepEqual(chunks.map(info => info.videoFrames), [18, 9]);
+  assert.deepEqual(chunks.map(info => info.videoStart), [0, 0]);
+  const output = await media.probe(store.path(saved.preview!.relativePath));
+  assert.equal(output.videoFrames, 27);
+  assert.ok(Math.abs(output.duration - .9) < .025);
+  const original = saved.preview!.relativePath;
+  workflow.patch(task.id, { settings: { bgmVolume: .25 } });
+  workflow.render(task.id); await workflow.active!.promise;
+  saved = workflow.get(task.id);
+  assert.equal(saved.execution?.status, 'done', saved.error);
+  assert.equal(saved.renderBase!.relativePath, base, 'Unchanged picture plan must reuse normalized video');
+  assert.notEqual(saved.preview!.relativePath, original);
+  assert.ok(fs.existsSync(store.path(original)), 'Replacement must preserve the prior preview');
+});

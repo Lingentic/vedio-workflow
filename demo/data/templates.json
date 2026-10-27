@@ -1,0 +1,134 @@
+[
+  {
+    "id": "template-01-insoles",
+    "name": "模板一：加厚保暖鞋垫",
+    "title": "送礼开场",
+    "summary": "送礼开场 · 宠粉铺垫 · 卖点介绍 · 限时催单",
+    "nodes": [
+      {
+        "id": "t1-r1",
+        "type": "host_clip",
+        "text": "今天太原老葛给你们送个礼物来，整个互联网复购第一名"
+      },
+      {
+        "id": "t1-b1",
+        "type": "fixed_narration",
+        "text": "老葛真是宠粉宠到姥姥家了，"
+      },
+      {
+        "id": "t1-g1",
+        "type": "generated_narration",
+        "text": ""
+      },
+      {
+        "id": "t1-b2",
+        "type": "fixed_narration",
+        "text": "原本和厂家谈好卖三块多一双的，"
+      },
+      {
+        "id": "t1-g2",
+        "type": "generated_narration",
+        "text": ""
+      },
+      {
+        "id": "t1-b3",
+        "type": "fixed_narration",
+        "text": "想趁便宜多囤一点，老葛听完瞬间感动哭了，"
+      },
+      {
+        "id": "t1-g3",
+        "type": "generated_narration",
+        "text": ""
+      },
+      {
+        "id": "t1-r2",
+        "type": "host_clip",
+        "text": "不用担心我赔钱，没有关系，需要你就拍"
+      },
+      {
+        "id": "t1-g4",
+        "type": "generated_narration",
+        "text": ""
+      },
+      {
+        "id": "t1-r3",
+        "type": "host_clip",
+        "text": "推荐给所有人，必须拍一单"
+      },
+      {
+        "id": "t1-g5",
+        "type": "generated_narration",
+        "text": ""
+      },
+      {
+        "id": "t1-r4",
+        "type": "host_clip",
+        "text": "拼好手速再加最后1万"
+      },
+      {
+        "id": "t1-g6",
+        "type": "generated_narration",
+        "text": ""
+      },
+      {
+        "id": "t1-r5",
+        "type": "host_clip",
+        "text": "就只有这一次了，最过3秒钟。"
+      }
+    ],
+    "variableNodeId": "t1-b2"
+  },
+  {
+    "id": "template-02-zipper",
+    "name": "模板二：免缝拉链修复器",
+    "title": "放心下单",
+    "summary": "主播承诺 · 宠粉破价 · 使用展示 · 稀缺收尾",
+    "nodes": [
+      {
+        "id": "t2-r1",
+        "type": "host_clip",
+        "text": "不用担心我赔钱，没有关系，需要你就拍，用了以后你就知道太好用了"
+      },
+      {
+        "id": "t2-b1",
+        "type": "fixed_narration",
+        "text": "老葛属实太有实力了，为了给八零八家人选一份实用贴心的小礼物，居然自己出钱补贴，"
+      },
+      {
+        "id": "t2-g1",
+        "type": "generated_narration",
+        "text": ""
+      },
+      {
+        "id": "t2-r2",
+        "type": "host_clip",
+        "text": "这价格是真的买不到，我今天这个价格只有这一次"
+      },
+      {
+        "id": "t2-b2",
+        "type": "fixed_narration",
+        "text": "眼看这价格不抢真要错过了，我也赶紧给家里安排上，"
+      },
+      {
+        "id": "t2-g2",
+        "type": "generated_narration",
+        "text": ""
+      },
+      {
+        "id": "t2-r3",
+        "type": "host_clip",
+        "text": "我今天就给你们上了，纯纯的捡漏"
+      },
+      {
+        "id": "t2-g3",
+        "type": "generated_narration",
+        "text": ""
+      },
+      {
+        "id": "t2-r4",
+        "type": "host_clip",
+        "text": "以后再要，这个价格可真上不了了，真没有了"
+      }
+    ]
+  }
+]

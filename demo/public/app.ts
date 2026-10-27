@@ -1,0 +1,604 @@
+import { bindSortableList } from './sortable.js';
+
+type Stage = 'copy' | 'voice' | 'visual' | 'preview';
+type TaskStatus = 'running' | 'done' | 'failed' | 'stopped' | 'interrupted';
+interface Template { id: string; name: string; title: string; summary: string; nodes: ScriptNode[]; variableNodeId?: string; }
+interface ScriptNode { id: string; type: 'host_clip' | 'fixed_narration' | 'generated_narration'; text: string; label?: string; }
+interface Product { productId: string; name: string; price: string; specification: string; sellingPoints: string; createdAt?: string; }
+interface Asset { id: string; productId?: string; kind: 'product' | 'source' | 'host' | 'presenter' | 'bgm'; title: string; status: 'ready' | 'pending' | 'failed' | 'partial' | 'deleted' | 'unavailable'; duration: number; width?: number; height?: number; size?: number; videoStart?: number; binding?: string; processed?: boolean; parentId?: string; error?: string; cuts?: number[]; cleaned?: boolean; url?: string; posterUrl?: string; available?: boolean; }
+interface Cue { text: string; begin: number; end: number; nodeId?: string; }
+interface Interval { id: string; nodeIds: string[]; text: string; signature: string; status: 'missing' | 'ready' | 'failed'; confirmed: boolean; audioUrl?: string; duration?: number; cues?: Cue[]; nodeTimes?: { id: string; begin: number; end: number }[]; error?: string; }
+interface QueueEntry { entryId: string; assetId: string; title: string; duration: number; url?: string; posterUrl?: string; available: boolean; }
+interface PicturePiece { mode: 'product' | 'host' | 'presenter'; start: number; duration: number; assetId?: string; productAssetId?: string; sourceStart?: number; productStart?: number; }
+interface Plan { mode: 'auto' | 'manual'; entries: QueueEntry[]; requiredDuration: number; availableDuration: number; valid: boolean; repeated: boolean; warnings: string[]; events: PicturePiece[]; pieces: PicturePiece[]; signature: string; duration: number; }
+interface Preview { relativePath: string; duration: number; width: number; height: number; fps: number; size: number; signature: string; createdAt: string; url: string; }
+interface Execution { id: string; kind: 'copy' | 'voice' | 'render'; status: TaskStatus; progress: number; message: string; startedAt: string; finishedAt?: string; }
+interface Task { id: string; name: string; productId: string; templateId: string; productSnapshot: Product; templateSnapshot: Template; variable: string; example: string; black: Record<string, string>; nodes: ScriptNode[]; confirmedNodes?: ScriptNode[]; stage: Stage; copyConfirmed: boolean; audioConfirmed: boolean; intervals: Interval[]; plan: Plan | null; settings: { subtitles: boolean; bgmId: string | null; bgmVolume: number }; preview: Preview | null; previewStale: boolean; previewChanges?: string[]; completed: boolean; execution: Execution | null; error: string; notice?: string; createdAt: string; updatedAt: string; }
+interface AppState { configured: boolean; dataRoot: string; defaultDataRoot: string; modelReady: boolean; toolsReady: boolean; templates: Template[]; products: Product[]; assets: Asset[]; tasks: Task[]; bgms: Asset[]; seedAvailable: boolean; activeExecution: ({ taskId: string } & Execution) | null; libraryBusy?: boolean; libraryMessage?: string; }
+interface ApiError { error?: string; message?: string; }
+type Page = 'production' | 'library' | 'records' | 'task';
+
+const root = document.querySelector<HTMLDivElement>('#app');
+if (!root) throw new Error('页面容器缺失');
+let state: AppState | null = null;
+interface UiPointer { page: Page; taskId: string; }
+const UI_POINTER_KEY = 'video-workbench-ui-v1';
+let savedPointer: UiPointer | null = null;
+try { savedPointer = JSON.parse(localStorage.getItem(UI_POINTER_KEY) || 'null') as UiPointer | null; } catch { savedPointer = null; }
+let page: Page = savedPointer?.page === 'task' || savedPointer?.page === 'library' || savedPointer?.page === 'records' ? savedPointer.page : 'production';
+let selectedTaskId = savedPointer?.taskId || '';
+let libraryTab = 'product';
+let libraryProductId = '';
+let libraryPickerListeners: AbortController | undefined;
+interface RecordFilters { keyword: string; status: string; from: string; to: string; }
+let recordFilters: RecordFilters = { keyword: '', status: '', from: '', to: '' };
+let appliedRecordFilters = { ...recordFilters };
+let toastTimer = 0;
+let taskPoll: number | undefined;
+const pendingTaskPatches = new Map<string, Record<string, unknown>>();
+const draftTimers = new Map<string, number>();
+const draftFlushes = new Map<string, Promise<void>>();
+const draftWarnings = new Set<string>();
+let manualSelection: string[] = [];
+let manualSelectionTaskId = '';
+let manualSortBusy = false;
+const recordCovers = new Map<string, string>();
+const previewPrompts = new Map<string, string>();
+const productIcon = '<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="m24 5 17 9v20l-17 9-17-9V14Z"/><path d="m7 14 17 10 17-10M24 24v19M16 10l17 10v8"/></svg>';
+
+const esc = (value: unknown): string => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] ?? ch);
+const money = (value: string): string => value ? (value.includes('¥') ? value : `¥${value}`) : '未填写';
+const duration = (seconds: number): string => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+const dateText = (value: string): string => { const date = new Date(value); return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }); };
+const statusName = (value: string): string => ({ ready: '可使用', pending: '待处理', failed: '处理失败', partial: '部分完成', deleted: '已删除', unavailable: '暂不可用', missing: '待生成', running: '进行中', done: '已完成', stopped: '已停止', interrupted: '已中断', copy: '文案', voice: '配音', render: '合成' })[value] ?? value;
+const stageName = (value: Stage): string => ({ copy: '文案', voice: '配音', visual: '画面', preview: '成片' })[value];
+const assetStateName = (asset: Asset): string => asset.cleaned ? '源文件已清理' : statusName(asset.status);
+const productAssets = (productId: string): Asset[] => (state?.assets ?? []).filter(asset => asset.productId === productId);
+const readyProductAssets = (productId: string): Asset[] => productAssets(productId).filter(asset => asset.kind === 'product' && asset.status === 'ready' && !asset.cleaned);
+const selectedTask = (): Task | undefined => state?.tasks.find(task => task.id === selectedTaskId);
+const selectedTemplate = (id: string): Template | undefined => state?.templates.find(template => template.id === id);
+const matchesSearch = (query: string, ...values: string[]): boolean => {
+  const normalize = (value: string) => value.normalize('NFKC').toLocaleLowerCase();
+  const text = normalize(values.join(' '));
+  return normalize(query).trim().split(/\s+/).every(word => text.includes(word));
+};
+const taskFilterStatus = (task: Task): string => task.completed ? 'completed' : task.execution?.status === 'running' ? 'running' : task.error ? 'error' : 'draft';
+const localDay = (value: string): string => { const date = new Date(value); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; };
+
+async function api<T>(url: string, method = 'GET', body?: unknown): Promise<T> {
+  const response = await fetch(url, { method, headers: body === undefined ? undefined : { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+  let payload: unknown;
+  try { payload = await response.json(); }
+  catch { throw new Error(`本地服务返回了无法读取的响应（HTTP ${response.status}），请检查服务状态`); }
+  if (!response.ok) throw new Error((payload as ApiError).message || `请求失败 (${response.status})`);
+  return payload as T;
+}
+async function refresh(keepPage = true): Promise<void> {
+  state = await api<AppState>('/api/state');
+  if (selectedTaskId && !state.tasks.some(task => task.id === selectedTaskId)) selectedTaskId = '';
+  if (!keepPage && page === 'task' && !selectedTaskId) page = 'production';
+  if (!isEditingDraft() && pendingTaskPatches.size === 0) render();
+  if (state.activeExecution || state.libraryBusy) startPolling(); else stopPolling();
+}
+function isEditingDraft(): boolean { const active = document.activeElement; return active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement; }
+function rememberPointer(): void { try { localStorage.setItem(UI_POINTER_KEY, JSON.stringify({ page, taskId: selectedTaskId } satisfies UiPointer)); } catch { /* storage may be unavailable */ } }
+function startPolling(): void { if (taskPoll !== undefined) return; taskPoll = window.setInterval(() => { void refresh().catch(showError); }, 1100); }
+function stopPolling(): void { if (taskPoll !== undefined) window.clearInterval(taskPoll); taskPoll = undefined; }
+function showToast(message: string, error = false): void {
+  document.querySelector('.toast')?.remove();
+  const element = document.createElement('div'); element.className = `toast${error ? ' error' : ''}`; element.textContent = message; document.body.append(element);
+  window.clearTimeout(toastTimer); toastTimer = window.setTimeout(() => element.remove(), 3600);
+}
+function showError(error: unknown): void { showToast(error instanceof Error ? error.message : String(error), true); }
+async function mutate(url: string, method = 'POST', body?: unknown, success?: string): Promise<unknown> {
+  try { const result = await api<unknown>(url, method, body); if (success) showToast(success); await refresh(); return result; }
+  catch (error) { showError(error); throw error; }
+}
+function navButton(id: Page, icon: string, label: string): string { return `<button class="${page === id || (id === 'production' && page === 'task') ? 'active' : ''}" data-page="${id}"><span class="nav-icon">${icon}</span><span>${label}</span></button>`; }
+function shell(content: string): string {
+  return `<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">片</div><div class="brand-name">电商视频工作台</div></div><nav class="nav">${navButton('library','▦','素材库')}${navButton('production','▤','视频制作')}${navButton('records','◷','生成记录')}</nav><div class="side-spacer"></div><button class="button folder-setting" data-action="change-root">数据目录</button><div class="local-note" title="${esc(state?.dataRoot ?? '')}">${esc(state?.dataRoot ?? '')}</div></aside><main class="main"><header class="topbar"><div class="crumb">${page === 'library' ? '素材库' : page === 'task' ? '视频制作 / 编辑任务' : page === 'records' ? '生成记录' : '视频制作'}</div><div class="top-actions"><span class="connection"><i class="dot"></i>本地服务已连接</span><button class="icon-button" data-action="refresh" title="刷新">↻</button></div></header><div class="page">${content}</div></main></div>`;
+}
+function render(): void {
+  if (!state || !root || manualSortBusy) return;
+  rememberPointer();
+  if (!state.configured) { root.innerHTML = renderSetup(); bind(); return; }
+  let content = page === 'library' ? renderLibrary() : page === 'records' ? renderRecords() : page === 'task' && selectedTask() ? renderTask(selectedTask()!) : renderProduction();
+  if (page === 'task' && !selectedTask()) page = 'production';
+  root.innerHTML = shell(content);
+  bind();
+  const task = page === 'task' ? selectedTask() : undefined;
+  if (task?.stage === 'preview' && task.previewStale && !task.completed && task.execution?.status !== 'running' && !document.querySelector('.modal-backdrop')) {
+    const key = JSON.stringify([task.preview?.url, task.settings, task.black, task.variable, task.plan?.signature, task.intervals.map(interval => [interval.signature, interval.duration, interval.audioUrl]), task.previewChanges]);
+    if (previewPrompts.get(task.id) !== key) { previewPrompts.set(task.id, key); showRegenerationDialog(task); }
+  }
+}
+function renderSetup(): string {
+  return `<div class="shell"><main class="main" style="grid-column:1/-1"><div class="page" style="max-width:600px;padding-top:15vh"><h1>设置本地工作目录</h1><p class="subhead">素材、文案与生成记录将保存在你选择的目录中，原视频不会被移动或覆盖。</p><div class="card" style="margin-top:24px"><label class="field-label" for="data-root">数据目录</label><input id="data-root" class="input" value="${esc(state!.defaultDataRoot)}"><div class="row" style="justify-content:space-between;margin-top:14px"><span class="section-hint">使用 Videos 下的独立目录</span><button class="button" data-action="choose-folder" data-target="data-root">选择文件夹</button></div><div class="modal-footer"><button class="button primary" data-action="setup">开始使用</button></div></div></div></main></div>`;
+}
+function renderProduction(): string {
+  const tasks = state!.tasks;
+  const drafts = tasks.filter(task => !task.completed).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt));
+  return `<div class="page-head"><div><h1>视频制作</h1><p class="subhead">新建任务，按步骤完成文案、配音、画面和成片。</p></div></div>${state!.libraryBusy ? `<div class="busy-bar"><span class="spinner"></span>${esc(state!.libraryMessage || '正在整理本地素材…')}</div>` : ''}<section class="production-start"><div><div class="section-title">开始新制作</div><div class="section-hint" style="margin-top:6px">选择商品和模板，创建一条独立的视频任务。</div></div><button class="button primary" data-action="new-task">＋ 新建视频任务</button></section><div class="section-head"><div><div class="section-title">继续已有任务</div><div class="section-hint" style="margin-top:5px">草稿与进行中的任务保存在生成记录里</div></div><button class="button small" data-page="records">查看全部记录</button></div><div class="task-list">${drafts.length ? drafts.map(taskRow).join('') : `<div class="empty"><strong>暂无可继续的任务</strong>新建视频任务后，未完成的编辑会显示在这里。</div>`}</div>`;
+}
+function renderRecords(): string {
+  const filters = appliedRecordFilters;
+  const tasks = state!.tasks.filter(task => matchesSearch(filters.keyword, task.name, task.id, task.productId, task.productSnapshot.name, task.templateSnapshot.name)
+    && (!filters.status || taskFilterStatus(task) === filters.status)
+    && (!filters.from || localDay(task.createdAt) >= filters.from)
+    && (!filters.to || localDay(task.createdAt) <= filters.to)).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt));
+  return `<div class="page-head"><div><h1>生成记录</h1><p class="subhead">查看草稿、运行状态和已完成成片。</p></div></div>
+  <form class="card record-filters" data-record-search>
+    <label class="record-keyword">关键词<input type="search" class="input" name="keyword" placeholder="搜索任务、商品名称或 ID" value="${esc(recordFilters.keyword)}"></label>
+    <label>任务状态<select class="select" name="status">${[['','全部状态'],['draft','草稿'],['running','进行中'],['error','有错误'],['completed','已完成']].map(([value,label]) => `<option value="${value}" ${recordFilters.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
+    <label>创建日期起<input type="date" class="input" name="from" value="${esc(recordFilters.from)}"></label><label>创建日期止<input type="date" class="input" name="to" value="${esc(recordFilters.to)}"></label>
+    <div class="row record-filter-actions"><button class="button primary" type="submit">搜索</button><button class="button" type="button" data-reset-record-search>重置</button></div>
+  </form><p class="section-hint" data-record-count>找到 ${tasks.length} 条记录 · 共 ${state!.tasks.length} 条</p>
+  <div class="card records-card"><div class="records-head"><span>任务</span><span>状态</span><span>更新时间</span><span>操作</span></div>${tasks.length ? tasks.map(task => {
+    const previewValid = !!task.preview && !task.previewStale;
+    const status = task.completed ? '已完成' : task.execution?.status === 'running' ? `${statusName(task.execution.kind)}中 ${task.execution.progress}%` : task.error ? '有错误' : '草稿';
+    const images = state!.assets.filter(asset => asset.productId === task.productId && asset.available && /\.(png|jpe?g|webp|avif|gif)$/i.test(asset.title));
+    let cover = images.find(asset => asset.id === recordCovers.get(task.productId));
+    if (!cover && images.length) { cover = images[Math.floor(Math.random() * images.length)]; recordCovers.set(task.productId, cover.id); }
+    return `<div class="record-row"><div class="record-overview"><div class="record-cover">${cover ? `<img src="${esc(cover.url)}" alt="${esc(task.productSnapshot.name)}">` : productIcon}</div><div><div class="task-name">${esc(task.name)}</div><div class="task-meta">${esc(task.productSnapshot.name)} · ${esc(task.templateSnapshot.name)}</div></div></div><span class="badge ${task.completed ? 'green' : task.error ? 'red' : task.execution?.status === 'running' ? 'amber' : ''}">${status}</span><span class="section-hint">${dateText(task.updatedAt)}</span><div class="row record-actions">${task.completed ? `<button class="button small" data-action="record-open" data-id="${esc(task.id)}">查看成片</button><button class="button small" data-action="record-export" data-id="${esc(task.id)}" ${previewValid ? '' : 'disabled'}>导出副本</button>` : `<button class="button small primary" data-action="record-open" data-id="${esc(task.id)}">继续</button>`}</div></div>`;
+  }).join('') : `<div class="empty"><strong>${state!.tasks.length ? '没有匹配的记录' : '还没有生成记录'}</strong>${state!.tasks.length ? '试试其他关键词，或重置筛选条件。' : '创建任务后，草稿与成片都会保存在这里。'}</div>`}</div>`;
+}
+function taskRow(task: Task): string {
+  const running = task.execution?.status === 'running';
+  const progress = running ? task.execution!.progress : task.completed ? 100 : Math.round(({ copy: 14, voice: 38, visual: 63, preview: 88 }[task.stage]));
+  const badge = task.completed ? 'green' : task.error ? 'red' : running ? 'amber' : '';
+  return `<div class="task-row" data-open-task="${esc(task.id)}"><div><div class="task-name">${esc(task.name)}</div><div class="task-meta">${esc(task.productSnapshot.name)} · ${esc(selectedTemplate(task.templateId)?.name ?? task.templateSnapshot.name)} · ${dateText(task.updatedAt)}</div></div><div class="task-progress"><div class="progress"><i style="width:${progress}%"></i></div><span class="stage-text">${running ? statusName(task.execution!.kind) + '中' : task.completed ? '已完成' : stageName(task.stage)}</span></div><span class="badge ${badge}">${task.completed ? '成片已完成' : task.error ? '有错误' : running ? task.execution!.progress + '%' : '继续编辑'}</span><span style="color:#9da39a">›</span></div>`;
+}
+function productCard(product: Product): string {
+  const assets = readyProductAssets(product.productId); const poster = assets.find(asset => asset.posterUrl)?.posterUrl;
+  return `<article class="card product-card"><div class="product-cover">${poster ? `<img src="${esc(poster)}" alt="">` : `<span class="placeholder">▧</span>`}<span class="cover-count">${assets.length} 段素材</span></div><div class="product-info"><div class="product-title">${esc(product.name)}</div><div class="product-detail">${esc(money(product.price))} · ${esc(product.specification || '规格待补充')}</div></div></article>`;
+}
+function libraryProductOptions(query: string): string {
+  const products = state!.products.filter(product => matchesSearch(query, product.name, product.productId));
+  const options = products.map(product => ({ id: product.productId, title: product.name, detail: `ID ${product.productId}`, count: `${readyProductAssets(product.productId).length} 段素材` }));
+  if (!query.trim()) options.unshift({ id: 'all', title: '全部商品', detail: '查看所有商品的素材', count: `${state!.products.length} 个商品` });
+  return options.length ? options.map((option, index) => `<button type="button" role="option" tabindex="-1" id="library-product-option-${index}" class="product-picker-option" data-product-option="${esc(option.id)}" aria-selected="${libraryProductId === option.id}"><span><strong>${esc(option.title)}</strong><small>${esc(option.detail)}</small></span><span class="product-picker-count">${esc(option.count)}${libraryProductId === option.id ? ' ✓' : ''}</span></button>`).join('') : '<div class="product-picker-empty">没有匹配的商品</div>';
+}
+function renderLibrary(): string {
+  const products = state!.products;
+  if (!libraryProductId || (libraryProductId !== 'all' && !products.some(product => product.productId === libraryProductId))) libraryProductId = products[0]?.productId || 'all';
+  const selectedProduct = products.find(product => product.productId === libraryProductId);
+  const productAssetsAll = state!.assets.filter(asset => asset.kind === 'product' && asset.status === 'ready' && !asset.cleaned);
+  const unfinished = state!.assets.filter(asset => !asset.cleaned && (asset.kind === 'source' || ['failed','partial','unavailable'].includes(asset.status)) && asset.status !== 'deleted');
+  const list = (libraryTab === 'product' ? productAssetsAll : unfinished).filter(asset => libraryProductId === 'all' || asset.productId === libraryProductId);
+  return `<div class="page-head"><div><h1>素材库</h1><p class="subhead">管理商品资料、原始视频和可用于成片的片段。</p></div><div class="row"><button class="button" data-action="seed" ${state!.seedAvailable ? '' : 'disabled'}>导入示例素材</button><button class="button primary" data-action="add-product">＋ 添加商品</button></div></div>
+  ${state!.libraryBusy ? `<div class="busy-bar"><span class="spinner"></span>${esc(state!.libraryMessage || '素材处理中…')}</div>` : ''}
+  <div class="library-product-bar"><div class="product-picker" data-product-picker><label id="library-product-label">按商品查看</label><button type="button" class="select product-picker-trigger" data-product-picker-trigger aria-labelledby="library-product-label library-product-value" aria-haspopup="listbox" aria-expanded="false" aria-controls="library-product-options"><span id="library-product-value">${selectedProduct ? `${esc(selectedProduct.name)} · ${readyProductAssets(selectedProduct.productId).length} 段` : `全部商品 · ${products.length} 个`}</span><span aria-hidden="true">⌄</span></button><div class="product-picker-popup" data-product-picker-popup hidden><input type="search" class="input" data-product-search role="combobox" aria-label="搜索商品" aria-expanded="false" aria-autocomplete="list" aria-controls="library-product-options" placeholder="输入商品名称或 ID 搜索" autocomplete="off"><div id="library-product-options" role="listbox" aria-label="商品" class="product-picker-options">${libraryProductOptions('')}</div><div class="product-picker-hint" aria-live="polite" data-product-search-count>共 ${products.length} 个商品</div></div></div><span class="section-hint">全库已处理 ${productAssetsAll.length} 段 · 待处理 ${unfinished.length} 项</span></div>
+  ${selectedProduct ? `<div class="card library-product-info"><div><strong>${esc(selectedProduct.name)}</strong><span class="section-hint">商品ID ${esc(selectedProduct.productId)}</span><p>${esc(money(selectedProduct.price))} · ${esc(selectedProduct.specification)}</p></div><div class="row"><button class="button small" data-action="edit-product" data-id="${esc(selectedProduct.productId)}">编辑资料</button><button class="button small primary" data-action="import-videos" data-id="${esc(selectedProduct.productId)}">添加视频</button></div></div>` : ''}
+  <div class="card"><div class="table-head"><div><div class="section-title">素材文件</div><div class="section-hint" style="margin-top:5px" data-library-count>${list.length} 项</div></div><div class="library-tabs"><button data-library-tab="product" class="${libraryTab === 'product' ? 'active' : ''}">已处理商品片段</button><button data-library-tab="source" class="${libraryTab === 'source' ? 'active' : ''}">未处理与异常</button></div></div><div class="library-asset-grid">${list.length ? list.map(libraryAsset).join('') : `<div class="empty" style="grid-column:1/-1"><strong>${libraryTab === 'product' ? '还没有可用片段' : '没有待处理项目'}</strong>${libraryTab === 'product' ? '导入已处理片段，或从原始视频开始处理。' : '导入的原始素材与失败项目会出现在这里。'}</div>`}</div></div>
+  `;
+}
+function libraryAsset(asset: Asset): string {
+  const product = state!.products.find(item => item.productId === asset.productId);
+  return `<article class="library-asset"><button class="asset-preview-button" data-action="preview-asset" data-id="${esc(asset.id)}" aria-label="预览 ${esc(asset.title)}" ${asset.available ? '' : 'disabled'}>${asset.posterUrl ? `<img loading="lazy" src="${esc(asset.posterUrl)}" alt="">` : '<span class="asset-poster-empty">暂无画面</span>'}<span class="asset-preview-mark">▶</span></button><div class="library-asset-body"><div class="library-asset-title" title="${esc(asset.title)}">${esc(asset.title)}</div><div class="library-asset-state"><span>${esc(product?.name || (asset.kind === 'source' ? '原始来源' : asset.kind))}</span><span>${esc(assetStateName(asset))} · ${duration(asset.duration)}</span></div>${asset.error ? `<div class="section-hint" style="margin-top:5px;color:var(--red)">${esc(asset.error)}</div>` : ''}<div class="library-asset-actions">${['failed','partial','unavailable'].includes(asset.status) ? `<button class="button" data-action="retry-asset" data-id="${esc(asset.id)}">重试</button>` : ''}${asset.kind === 'product' ? `<button class="button danger" data-action="delete-asset" data-id="${esc(asset.id)}">移除</button>` : ''}</div></div></article>`;
+}
+function renderTask(task: Task): string {
+  const statuses: Stage[] = ['copy','voice','visual','preview']; const index = statuses.indexOf(task.stage);
+  return `<div class="page-head"><div><h1>${esc(task.name)}</h1><p class="subhead">${esc(task.productSnapshot.name)} · ${esc(task.templateSnapshot.name)} · ${task.completed ? '已确认完成，参数只读' : '任务与素材快照独立保存'}</p></div><div class="row">${!task.completed ? `<button class="button" data-action="switch-task" ${state!.activeExecution ? 'disabled' : ''}>切换商品或模板</button>` : ''}<button class="button" data-page="records">返回记录</button></div></div>
+  ${task.error ? `<div class="status-box error">${esc(task.error)}</div>` : ''}${task.notice ? `<div class="notice">${esc(task.notice)}</div>` : ''}${task.execution?.status === 'running' ? `<div class="busy-bar"><span class="spinner"></span><span style="flex:1">${esc(task.execution.message || statusName(task.execution.kind))}</span><strong>${task.execution.progress}%</strong><button class="button small danger" data-action="stop-task" ${task.execution.kind === 'render' ? '' : 'disabled'}>停止合成</button></div>` : ''}
+  <div class="task-workspace"><section><div class="stage-tabs">${statuses.map((stage,i) => `<button class="stage-tab ${stage === task.stage ? 'active' : i < index ? 'done' : ''}" data-stage="${stage}" ${task.completed ? 'disabled' : ''}>${i < index ? '✓ ' : `${String(i+1).padStart(2,'0')} `}${stageName(stage)}</button>`).join('')}</div><div class="card stage-panel">${renderStage(task)}</div>${task.completed ? `<details class="card frozen-parameters"><summary>查看制作参数与完整文案</summary><dl><dt>商品ID</dt><dd>${esc(task.productId)}</dd><dt>商品资料快照</dt><dd>${esc(task.productSnapshot.name)} · ${esc(money(task.productSnapshot.price))} · ${esc(task.productSnapshot.specification)}</dd><dt>卖点</dt><dd>${esc(task.productSnapshot.sellingPoints)}</dd><dt>配音</dt><dd>Qwen 3.1 Plus · 小帅复刻音色 · 1.1倍语速</dd><dt>成片规格</dt><dd>1080×1920 · 30 FPS · MP4</dd><dt>输出设置</dt><dd>${task.settings.subtitles ? '开启黄色字幕' : '不添加字幕'} · ${esc(state!.bgms.find(asset => asset.id === task.settings.bgmId)?.title || '不使用BGM')}</dd></dl><div class="frozen-script">${task.nodes.map(node => `<p class="frozen-${node.type}">${esc(node.text)}</p>`).join('')}</div><p class="section-hint">商品素材顺序（参数快照）</p><ol>${task.plan?.entries.map(entry => `<li>${esc(entry.title)} · ${duration(entry.duration)}</li>`).join('') || ''}</ol></details>` : ''}</section><aside class="card side-card">${renderTaskAside(task)}</aside></div>`;
+}
+function renderStage(task: Task): string {
+  if (task.stage === 'copy') return renderCopyStage(task);
+  if (task.stage === 'voice') return renderVoiceStage(task);
+  if (task.stage === 'visual') return renderVisualStage(task);
+  return renderPreviewStage(task);
+}
+function renderCopyStage(task: Task): string {
+  const template = task.templateSnapshot; const running = task.execution?.status === 'running';
+  const script = task.nodes.map(node => {
+    if (node.type === 'generated_narration') return `<div class="script-line"><div class="script-label">待填写文案</div><textarea class="textarea" data-black-node="${esc(node.id)}" placeholder="AI生成后可手动修改" ${running ? 'disabled' : ''}>${esc(task.black[node.id] ?? node.text)}</textarea></div>`;
+    const host = node.type === 'host_clip' ? state!.assets.find(asset => asset.kind === 'host' && asset.binding === node.id && asset.available) : undefined;
+    return `<div class="script-line fixed ${node.type}"><div class="script-label">${node.type === 'host_clip' ? '主播原声' : '固定口播'}</div><div class="script-text">${host ? `<button class="script-resource" data-action="preview-asset" data-id="${esc(host.id)}" title="预览对应主播片段">${esc(node.text)} <span aria-hidden="true">▷</span></button>` : esc(node.text)}</div></div>`;
+  }).join('');
+  return `<div class="panel-title">文案创作</div><p class="panel-description">根据模板和商品卖点生成待填写文案。主播台词与固定口播保留原文，方括号内的内容可自由修改。</p>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px"><label class="field-label">价格参考<input class="input" readonly value="${esc(money(task.productSnapshot.price))}"></label><label class="field-label">规格参考<input class="input" readonly value="${esc(task.productSnapshot.specification)}"></label></div>
+  ${template.variableNodeId ? `<label class="field-label">原本和厂家谈好卖【以下内容】的</label><input class="input" data-field="variable" value="${esc(task.variable)}" placeholder="例如：三块多一双" ${running ? 'disabled' : ''}><p class="section-hint">建议用中文描述价格和规格，例如“五块九两双”。自动填充仅供参考，可自行修改。</p>` : ''}
+  <label class="field-label">文案范例（可选）</label><textarea class="textarea" data-field="example" placeholder="粘贴完整文案范例，供AI参考表达与长度" ${running ? 'disabled' : ''}>${esc(task.example)}</textarea>
+  <div style="margin-top:20px"><div class="section-title">口播脚本</div><div class="section-hint" style="margin-top:5px">${esc(template.title)} · ${esc(template.summary)}</div>${script}</div>
+  <div class="row" style="justify-content:space-between;margin-top:18px"><span class="section-hint">${task.copyConfirmed ? '文案已确认' : '填写完成后确认文案进入配音'}</span><div class="row">${task.nodes.some(node => node.type === 'generated_narration' && task.black[node.id]) ? `<button class="button" data-action="confirm-copy" ${running ? 'disabled' : ''}>确认文案</button>` : ''}<button class="button primary" data-action="generate-copy" ${running ? 'disabled' : ''}>${running && task.execution?.kind === 'copy' ? '正在生成…' : Object.keys(task.black).length ? '重新生成文案' : '生成商品文案'}</button></div></div>`;
+}
+function renderVoiceStage(task: Task): string {
+  const intervals = task.intervals;
+  const readyCount = intervals.filter(item => item.status === 'ready').length;
+  const missingCount = intervals.length - readyCount;
+  const running = task.execution?.status === 'running';
+  return `<div class="panel-title">连续口播配音</div><p class="panel-description">试听后确认配音。修改文案后，只需补做受影响的区间；其他配音继续使用。</p>
+  ${intervals.length ? intervals.map(interval => `<article class="interval-card"><div class="interval-top"><div class="interval-name">口播区间 ${esc(interval.id)}</div><span class="badge ${interval.status === 'ready' ? 'green' : interval.status === 'failed' ? 'red' : ''}">${statusName(interval.status)}${interval.confirmed ? ' · 已确认' : ''}</span></div><div class="interval-copy">${esc(interval.text)}</div>${interval.error ? `<div class="section-hint" style="color:var(--red)">${esc(interval.error)}</div>` : ''}${interval.audioUrl && interval.status === 'ready' ? `<audio controls preload="none" src="${esc(interval.audioUrl)}" style="width:100%;height:34px"></audio><div class="section-hint">${interval.duration ? duration(interval.duration) : ''} · 音频与字幕时间已关联</div>` : ''}<div class="row" style="justify-content:flex-end;margin-top:9px"><button class="button small" data-action="generate-voice" data-id="${esc(interval.id)}" ${running ? 'disabled' : ''}>${interval.status === 'ready' ? '重配此区间' : '生成此区间'}</button></div></article>`).join('') : `<div class="empty"><strong>暂无口播区间</strong>请先完成并确认商品文案。</div>`}
+  <div class="row stage-footer"><span class="section-hint">${readyCount}/${intervals.length} 段配音已就绪${missingCount ? '，可一次补齐缺失配音' : ''}</span><div class="row"><button class="button ${missingCount ? '' : 'primary'}" data-action="confirm-voice" ${!intervals.length || missingCount || running || task.audioConfirmed ? 'disabled' : ''}>${task.audioConfirmed ? '配音已确认' : '确认配音'}</button>${missingCount ? `<button class="button primary" data-action="generate-voice" ${running ? 'disabled' : ''}>生成缺失配音（${missingCount}段）</button>` : ''}</div></div>`;
+}
+function renderVisualStage(task: Task): string {
+  const assets = readyProductAssets(task.productId);
+  const plan = task.plan;
+  if (manualSelectionTaskId !== task.id) resetManualSelection(task.id);
+  const selected = manualSelection;
+  const running = task.execution?.status === 'running';
+  const dirty = manualPlanChanged(task);
+  const listMarkup = selected.map((assetId, index) => {
+    const asset = assets.find(item => item.id === assetId);
+    return `<div class="manual-row" data-manual-row="${index}"><button type="button" class="manual-grip" data-sort-handle title="拖动排序；也可按 Alt + ↑ / ↓" aria-label="调整第 ${index + 1} 个片段的顺序" ${running ? 'disabled' : ''}>⠿</button><span class="manual-number">${index + 1}</span><button class="manual-thumb" data-action="preview-asset" data-id="${esc(assetId)}" aria-label="预览 ${esc(asset?.title || '不可用片段')}" ${asset ? '' : 'disabled'}>${asset?.posterUrl ? `<img draggable="false" src="${esc(asset.posterUrl)}" alt="">` : '▷'}</button><div class="manual-details"><strong title="${esc(asset?.title || assetId)}">${esc(asset?.title || '片段已删除或暂不可用')}</strong><small>${asset ? duration(asset.duration) : '不可用'} · 点击缩略图预览</small></div><button class="button small danger" data-action="remove-manual-asset" data-index="${index}" ${running ? 'disabled' : ''}>移除</button></div>`;
+  }).join('');
+  return `<div class="panel-title">画面与输出设置</div><p class="panel-description">只显示本次选用的商品片段。拖动调整顺序，点击缩略图预览；其他素材可通过“引入新素材”添加。</p>
+  <div class="section-head manual-heading"><div><div class="section-title">手动方案顺序</div><p class="section-hint">本次选用 ${selected.length} 段 · 商品共 ${assets.length} 段可用</p></div><div class="row"><button class="button small" data-action="pick-materials" ${running ? 'disabled' : ''}>引入新素材</button><button class="button small" data-action="clear-manual-plan" ${!selected.length || running ? 'disabled' : ''}>清空</button><button class="button small primary" data-action="save-manual-plan" ${running || !dirty ? 'disabled' : ''}>保存方案</button></div></div>
+  <div class="manual-list">${listMarkup || `<div class="empty"><strong>当前清单为空</strong>可引入素材，或生成随机方案。</div>`}</div>
+  ${dirty ? `<div class="notice">片段清单有修改，请保存方案后继续。保存时会检查实际时长。</div>` : ''}
+  ${plan ? `<div class="status-box ${plan.valid ? '' : 'error'}" style="margin-top:14px">${plan.mode === 'manual' ? '手动方案' : '随机方案'} · 可用 ${duration(plan.availableDuration)} / 需要 ${duration(plan.requiredDuration)}<br>${esc(plan.warnings.join('；') || (plan.valid ? '时长满足要求' : '素材时长不足'))}</div>` : ''}
+  <div class="section-head"><div class="section-title">连续画面时间线</div><button class="button small" data-action="auto-plan" ${running ? 'disabled' : ''}>生成随机方案</button></div>
+  ${plan ? renderTimeline(plan) : '<div class="section-hint">保存或生成方案后，可点击时间线中的片段预览。</div>'}
+  <div class="grid output-settings"><label class="row" style="font-size:11px"><input type="checkbox" data-setting="subtitles" ${running ? 'disabled' : ''} ${task.settings.subtitles ? 'checked' : ''}>显示字幕</label><div><label class="field-label" style="margin:0 0 6px">背景音乐</label><select class="select" data-setting="bgmId" ${running ? 'disabled' : ''}><option value="">不使用 BGM</option>${state!.bgms.map(bgm => `<option value="${esc(bgm.id)}" ${task.settings.bgmId === bgm.id ? 'selected' : ''}>${esc(bgm.title)}</option>`).join('')}</select></div><div class="music-volume"><label class="field-label" data-bgm-volume-label style="margin:0 0 6px">音乐音量 · ${Math.round(task.settings.bgmVolume * 100)}%</label><input type="range" min="0" max="0.5" step="0.01" value="${task.settings.bgmVolume}" data-setting="bgmVolume" ${running ? 'disabled' : ''} style="width:100%;accent-color:#7048d8"></div></div>
+  <div class="row stage-footer"><span class="section-hint">修改后将在预览页确认重新合成</span><button class="button primary" data-action="go-preview" ${!plan?.valid || dirty || running ? 'disabled' : ''}>前往生成预览 →</button></div>`;
+}
+function renderTimeline(plan: Plan): string {
+  if (!plan.pieces.length) return '';
+  return `<div class="timeline-wrap"><div class="timeline">${plan.pieces.map((piece, index) => {
+    const label = piece.mode === 'product' ? '商品' : piece.mode === 'host' ? '主播' : '通用主播';
+    const asset = state!.assets.find(item => item.id === (piece.mode === 'product' ? piece.productAssetId : piece.assetId));
+    return `<button class="timeline-piece ${piece.mode}" data-action="preview-timeline" data-index="${index}" title="${esc(asset?.title || label)} · ${piece.duration.toFixed(2)}秒"><span>${label}</span><span>${piece.duration.toFixed(1)}秒 ▷</span></button>`;
+  }).join('')}</div></div>`;
+}
+function renderPreviewStage(task: Task): string {
+  const preview = task.preview; const valid = !!preview && !task.previewStale;
+  return `<div class="panel-title">预览与成片</div><p class="panel-description">完成前可在这里检查当前成片。确认完成后，任务中间文件会按既定规则清理。</p><div class="preview-box">${preview ? `<video controls playsinline preload="metadata" src="${esc(task.preview!.url)}"></video>` : `<div class="preview-empty">生成预览后，视频会在这里播放</div>`}</div>${preview ? `<div class="row" style="justify-content:space-between;margin-top:10px"><span class="badge ${valid ? 'green' : 'amber'}">${valid ? '当前预览有效' : '预览已过期，请重新合成'}</span><span class="section-hint">${duration(preview.duration)} · ${preview.width}×${preview.height} · ${preview.fps} FPS</span></div>` : ''}${task.previewStale ? `<div class="warning">文案、画面方案或输出设置已变化，当前视频不再代表最新任务，请重新生成。</div>` : ''}<div class="row" style="justify-content:space-between;margin-top:19px">${task.completed ? `<span class="badge">已完成，参数只读</span>` : `<button class="button" data-action="back-visual">返回画面设置</button>`}<div class="row">${valid ? `<button class="button" data-action="export-preview">导出副本</button>` : ''}${task.completed ? `<span class="badge green">已完成</span>` : `<button class="button primary" data-action="render-task" ${task.execution?.status === 'running' || !task.plan?.valid ? 'disabled' : ''}>${task.execution?.kind === 'render' && task.execution.status === 'running' ? '正在合成…' : preview ? '重新生成预览' : '生成预览'}</button>`}${valid && !task.completed ? `<button class="button primary" data-action="complete-task">确认完成</button>` : ''}</div></div>`;
+}
+function renderTaskAside(task: Task): string {
+  const count = readyProductAssets(task.productId).length; const readyIntervals = task.intervals.filter(interval => interval.status === 'ready').length;
+  return `<div class="section-title">任务摘要</div><div class="summary-row"><span>商品</span><strong>${esc(task.productSnapshot.name)}</strong></div><div class="summary-row"><span>模板</span><strong>${esc(task.templateSnapshot.name)}</strong></div><div class="summary-row"><span>商品素材</span><strong>${count} 段可用</strong></div><div class="summary-row"><span>文案</span><strong>${task.copyConfirmed ? '已确认' : '编辑中'}</strong></div><div class="summary-row"><span>配音</span><strong>${task.audioConfirmed ? '已确认' : `${readyIntervals}/${task.intervals.length} 区间`}</strong></div><div class="summary-row"><span>视觉方案</span><strong>${task.plan ? (task.plan.valid ? `${task.plan.mode === 'auto' ? '随机' : '手动'} · ${duration(task.plan.duration)}` : '时长不足') : '未生成'}</strong></div><div class="summary-row"><span>输出设置</span><strong>${task.settings.subtitles ? '字幕' : '无字幕'} · ${task.settings.bgmId ? '含 BGM' : '无 BGM'}</strong></div>${task.completed ? `<div class="notice">成片已确认完成。商品源素材的后续删除不会使该成片失效。</div>` : ''}<div style="margin-top:14px"><button class="button small" data-action="task-refresh">刷新任务状态</button></div>`;
+}
+
+function bindLibraryProductPicker(picker: HTMLElement): void {
+  const trigger = picker.querySelector<HTMLButtonElement>('[data-product-picker-trigger]')!;
+  const popup = picker.querySelector<HTMLElement>('[data-product-picker-popup]')!;
+  const input = picker.querySelector<HTMLInputElement>('[data-product-search]')!;
+  const list = picker.querySelector<HTMLElement>('[role="listbox"]')!;
+  let activeIndex = -1;
+  const options = () => [...list.querySelectorAll<HTMLButtonElement>('[data-product-option]')];
+  const highlight = (index: number) => {
+    const items = options(); activeIndex = items.length ? Math.max(0, Math.min(index, items.length - 1)) : -1;
+    items.forEach((item, i) => item.classList.toggle('is-active', i === activeIndex));
+    const active = items[activeIndex];
+    if (active) input.setAttribute('aria-activedescendant', active.id); else input.removeAttribute('aria-activedescendant');
+    active?.scrollIntoView({ block: 'nearest' });
+  };
+  const close = (restoreFocus = false) => {
+    popup.hidden = true; trigger.setAttribute('aria-expanded', 'false'); input.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) trigger.focus({ preventScroll: true });
+  };
+  const open = () => {
+    input.value = ''; list.innerHTML = libraryProductOptions('');
+    picker.querySelector('[data-product-search-count]')!.textContent = `共 ${state!.products.length} 个商品`;
+    popup.hidden = false; trigger.setAttribute('aria-expanded', 'true'); input.setAttribute('aria-expanded', 'true');
+    input.focus({ preventScroll: true }); highlight(options().findIndex(item => item.dataset.productOption === libraryProductId));
+  };
+  const select = (option: HTMLButtonElement) => {
+    libraryProductId = option.dataset.productOption!; render();
+    root?.querySelector<HTMLButtonElement>('[data-product-picker-trigger]')?.focus({ preventScroll: true });
+  };
+  const search = () => {
+    list.innerHTML = libraryProductOptions(input.value); highlight(0);
+    const count = options().filter(option => option.dataset.productOption !== 'all').length;
+    picker.querySelector('[data-product-search-count]')!.textContent = input.value.trim() ? `找到 ${count} 个商品` : `共 ${state!.products.length} 个商品`;
+  };
+  trigger.addEventListener('click', () => { if (popup.hidden) open(); else close(); });
+  trigger.addEventListener('keydown', event => { if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); open(); } });
+  input.addEventListener('input', event => { if (!(event as InputEvent).isComposing) search(); });
+  input.addEventListener('compositionend', search);
+  input.addEventListener('keydown', event => {
+    if (event.isComposing) return;
+    if (event.key === 'Escape') { event.preventDefault(); close(true); }
+    else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); highlight(activeIndex + (event.key === 'ArrowDown' ? 1 : -1)); }
+    else if (event.key === 'Home' || event.key === 'End') { event.preventDefault(); highlight(event.key === 'Home' ? 0 : options().length - 1); }
+    else if (event.key === 'Enter') { event.preventDefault(); const option = options()[activeIndex]; if (option) select(option); }
+  });
+  list.addEventListener('click', event => { const option = (event.target as Element).closest<HTMLButtonElement>('[data-product-option]'); if (option) select(option); });
+  const controller = new AbortController(); libraryPickerListeners = controller;
+  document.addEventListener('pointerdown', event => { if (!picker.contains(event.target as Node)) close(); }, { signal: controller.signal });
+  picker.addEventListener('focusout', event => { if (!picker.contains(event.relatedTarget as Node | null)) close(); });
+}
+function bind(): void {
+  libraryPickerListeners?.abort(); libraryPickerListeners = undefined;
+  if (!root) return;
+  root.querySelectorAll<HTMLElement>('[data-page]').forEach(element => element.addEventListener('click', () => { void navigate(element.dataset.page as Page).catch(showError); }));
+  root.querySelectorAll<HTMLElement>('[data-open-task]').forEach(element => element.addEventListener('click', () => { void openTask(element.dataset.openTask || '').catch(showError); }));
+  root.querySelectorAll<HTMLButtonElement>('[data-stage]').forEach(button => button.addEventListener('click', () => { const target = button.dataset.stage as Stage; void goStage(target).catch(showError); }));
+  root.querySelectorAll<HTMLButtonElement>('[data-action]').forEach(button => button.addEventListener('click', () => { void handleAction(button).catch(showError); }));
+  root.querySelectorAll<HTMLButtonElement>('[data-library-tab]').forEach(button => button.addEventListener('click', () => { libraryTab = button.dataset.libraryTab || 'product'; render(); }));
+  const productPicker = root.querySelector<HTMLElement>('[data-product-picker]');
+  if (productPicker) bindLibraryProductPicker(productPicker);
+  const recordForm = root.querySelector<HTMLFormElement>('[data-record-search]');
+  if (recordForm) {
+    const readFilters = () => { const data = new FormData(recordForm); recordFilters = { keyword: String(data.get('keyword') || ''), status: String(data.get('status') || ''), from: String(data.get('from') || ''), to: String(data.get('to') || '') }; };
+    recordForm.addEventListener('input', readFilters); recordForm.addEventListener('change', readFilters);
+    recordForm.addEventListener('submit', event => {
+      event.preventDefault(); readFilters();
+      if (recordFilters.from && recordFilters.to && recordFilters.from > recordFilters.to) { showToast('开始日期不能晚于结束日期', true); return; }
+      appliedRecordFilters = { ...recordFilters }; render();
+    });
+    recordForm.querySelector('[data-reset-record-search]')?.addEventListener('click', () => { recordFilters = { keyword: '', status: '', from: '', to: '' }; appliedRecordFilters = { ...recordFilters }; render(); });
+  }
+  root.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-setting]').forEach(input => input.addEventListener(input instanceof HTMLInputElement && input.type === 'range' ? 'input' : 'change', () => saveSettings(input)));
+  root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-field], [data-black-node]').forEach(input => input.addEventListener('input', () => queueDraftFromInput(input)));
+  root.querySelectorAll<HTMLFormElement>('form[data-form]').forEach(form => form.addEventListener('submit', event => { event.preventDefault(); void submitForm(form).catch(() => undefined); }));
+  const manualList = root.querySelector<HTMLElement>('.manual-list');
+  if (manualList) bindSortableList(manualList, {
+    canSort: () => selectedTask()?.execution?.status !== 'running',
+    onBusy: busy => { manualSortBusy = busy; },
+    onMove: (from, to) => { const [asset] = manualSelection.splice(from, 1); manualSelection.splice(to, 0, asset); render(); },
+  });
+}
+async function navigate(target: Page): Promise<void> {
+  const task = selectedTask(); if (task) await flushTaskDraft(task.id);
+  if (target !== 'task') { page = target; selectedTaskId = ''; }
+  else page = target;
+  render();
+}
+async function openTask(id: string): Promise<void> {
+  const current = selectedTask(); if (current) await flushTaskDraft(current.id);
+  selectedTaskId = id; page = 'task'; resetManualSelection(id); previewPrompts.delete(id); render();
+}
+function resetManualSelection(taskId: string): void {
+  manualSelectionTaskId = taskId;
+  const task = state?.tasks.find(item => item.id === taskId);
+  manualSelection = task?.plan?.entries.map(entry => entry.assetId) ?? [];
+}
+function manualPlanChanged(task: Task): boolean {
+  return manualSelectionTaskId === task.id && JSON.stringify(manualSelection) !== JSON.stringify(task.plan?.entries.map(entry => entry.assetId) ?? []);
+}
+async function goStage(target: Stage): Promise<void> {
+  const originalTask = selectedTask(); if (!originalTask) return;
+  await flushTaskDraft(originalTask.id);
+  const task = selectedTask(); if (!task) return;
+  if (target === 'preview' && manualPlanChanged(task)) { showToast('请先保存手动方案，再生成预览', true); return; }
+  const valid: Record<Stage, boolean> = { copy: true, voice: task.copyConfirmed, visual: task.audioConfirmed, preview: !!task.plan?.valid };
+  if (!valid[target]) { showToast(target === 'voice' ? '请先确认商品文案' : target === 'visual' ? '请先确认所有必需配音区间' : '请先建立有效的画面方案', true); return; }
+  if (target === 'preview') previewPrompts.delete(task.id);
+  await mutate(`/api/tasks/${encodeURIComponent(task.id)}`, 'PATCH', { stage: target });
+}
+function queueDraftFromInput(input: HTMLInputElement | HTMLTextAreaElement): void {
+  const task = selectedTask(); if (!task || !input.dataset.field && !input.dataset.blackNode) return;
+  const fieldKey = input.dataset.blackNode ? `black:${input.dataset.blackNode}` : input.dataset.field || '';
+  const warningKey = `${task.id}:${fieldKey}`;
+  const needsAudioWarning = !!input.dataset.blackNode || input.dataset.field === 'variable';
+  const relatedAudio = needsAudioWarning && task.intervals.some(interval => interval.status === 'ready' && (!input.dataset.blackNode || interval.nodeIds.includes(input.dataset.blackNode)));
+  const previous = input.dataset.blackNode ? task.black[input.dataset.blackNode] ?? '' : input.dataset.field === 'variable' ? task.variable : '';
+  if (input.value !== previous && relatedAudio && !draftWarnings.has(warningKey)) {
+    const subject = input.dataset.blackNode ? '這段文案' : '藍色變量';
+    if (!confirm(`${subject}已有可用配音。保存實際修改後，需要重新生成並確認受影響的配音區間。繼續嗎？`)) { input.value = previous; return; }
+    draftWarnings.add(warningKey);
+  }
+  const patch: Record<string, unknown> = {};
+  if (input.dataset.field === 'variable') patch.variable = input.value;
+  if (input.dataset.field === 'example') patch.example = input.value;
+  if (input.dataset.blackNode) patch.black = { [input.dataset.blackNode]: input.value };
+  queueTaskPatch(task.id, patch);
+}
+function mergePatch(taskId: string, patch: Record<string, unknown>): void {
+  const previous = pendingTaskPatches.get(taskId) ?? {};
+  const merged = { ...previous, ...patch };
+  if (patch.black && typeof patch.black === 'object') merged.black = { ...(previous.black as Record<string, string> | undefined), ...(patch.black as Record<string, string>) };
+  if (patch.settings) merged.settings = { ...(previous.settings as Partial<Task['settings']> | undefined), ...(patch.settings as Partial<Task['settings']>) };
+  pendingTaskPatches.set(taskId, merged);
+}
+function queueTaskPatch(taskId: string, patch: Record<string, unknown>): void {
+  mergePatch(taskId, patch);
+  const oldTimer = draftTimers.get(taskId); if (oldTimer !== undefined) window.clearTimeout(oldTimer);
+  draftTimers.set(taskId, window.setTimeout(() => { draftTimers.delete(taskId); void flushTaskDraft(taskId).catch(showError); }, 450));
+}
+async function flushTaskDraft(taskId: string): Promise<void> {
+  const timer = draftTimers.get(taskId); if (timer !== undefined) { window.clearTimeout(timer); draftTimers.delete(taskId); }
+  const inFlight = draftFlushes.get(taskId);
+  if (inFlight) { await inFlight; if (pendingTaskPatches.has(taskId)) await flushTaskDraft(taskId); return; }
+  const patch = pendingTaskPatches.get(taskId); if (!patch) return;
+  pendingTaskPatches.delete(taskId);
+  const request = api<Task>(`/api/tasks/${encodeURIComponent(taskId)}`, 'PATCH', patch).then(updated => {
+    if (state) state.tasks = state.tasks.map(task => task.id === taskId ? updated : task);
+  }).catch(error => {
+    const newer = pendingTaskPatches.get(taskId) ?? {};
+    const restored = { ...patch, ...newer };
+    if (patch.black || newer.black) restored.black = { ...(patch.black as Record<string, string> | undefined), ...(newer.black as Record<string, string> | undefined) };
+    if (patch.settings || newer.settings) restored.settings = { ...(patch.settings as Partial<Task['settings']> | undefined), ...(newer.settings as Partial<Task['settings']> | undefined) };
+    pendingTaskPatches.set(taskId, restored);
+    throw error;
+  }).finally(() => { draftFlushes.delete(taskId); });
+  draftFlushes.set(taskId, request);
+  await request;
+  if (pendingTaskPatches.has(taskId)) await flushTaskDraft(taskId);
+  else if (!isEditingDraft() && selectedTaskId === taskId) render();
+}
+function saveSettings(input: HTMLInputElement | HTMLSelectElement): void {
+  const task = selectedTask(); if (!task) return;
+  const settings: Partial<Task['settings']> = {};
+  if (input.dataset.setting === 'subtitles' && input instanceof HTMLInputElement) settings.subtitles = input.checked;
+  else if (input.dataset.setting === 'bgmId') settings.bgmId = input.value || null;
+  else if (input.dataset.setting === 'bgmVolume' && input instanceof HTMLInputElement) {
+    settings.bgmVolume = Number(input.value);
+    const label = root?.querySelector('[data-bgm-volume-label]');
+    if (label) label.textContent = `音乐音量 · ${Math.round(settings.bgmVolume * 100)}%`;
+  }
+  queueTaskPatch(task.id, { settings });
+}
+async function handleAction(button: HTMLButtonElement): Promise<void> {
+  const action = button.dataset.action; let task = selectedTask();
+  if (task) { await flushTaskDraft(task.id); task = selectedTask(); }
+  if (action === 'refresh' || action === 'task-refresh') return refresh();
+  if (action === 'home') { page = 'production'; selectedTaskId = ''; return render(); }
+  if (action === 'new-task') return showModal(newTaskModal());
+  if (action === 'add-product') return showModal(productModal());
+  if (action === 'edit-product') { const product = state!.products.find(item => item.productId === button.dataset.id); if (product) showModal(productModal(product)); return; }
+  if (action === 'choose-folder') { const kind = 'folder'; const result = await api<{ paths: string[] }>('/api/dialog', 'POST', { kind }); const target = document.getElementById(button.dataset.target || '') as HTMLInputElement | null; if (target && result.paths[0]) target.value = result.paths[0]; return; }
+  if (action === 'change-root') return showModal(dataRootModal());
+  if (action === 'setup') { const input = document.querySelector<HTMLInputElement>('#data-root'); await mutate('/api/setup', 'POST', { dataRoot: input?.value.trim() || undefined }, '工作目录已保存'); return; }
+  if (action === 'seed') { startPolling(); await mutate('/api/seed', 'POST', {}, '示例素材导入完成'); return; }
+  if (action === 'import-videos') return showModal(importModal(button.dataset.id || ''));
+  if (action === 'preview-asset') {
+    const asset = state!.assets.find(item => item.id === button.dataset.id);
+    if (!asset?.url || !asset.available) return showToast('该素材暂不可用，请检查来源文件', true);
+    return showVideoPreview(asset.title, asset.url, 0, undefined, `${duration(asset.duration)} · ${asset.width || ''}×${asset.height || ''}`);
+  }
+  if (action === 'retry-asset') { await mutate(`/api/assets/${encodeURIComponent(button.dataset.id || '')}/retry`, 'POST', {}, '已完成重试'); return; }
+  if (action === 'delete-asset') { if (!confirm('从素材库移除此商品片段？正在被合成使用的素材会由服务端拒绝删除。')) return; await mutate(`/api/assets/${encodeURIComponent(button.dataset.id || '')}`, 'DELETE', undefined, '素材记录已更新'); return; }
+  if (action === 'record-open') { selectedTaskId = button.dataset.id || ''; page = 'task'; resetManualSelection(selectedTaskId); previewPrompts.delete(selectedTaskId); const record = selectedTask(); if (record?.completed) record.stage = 'preview'; render(); return; }
+  if (action === 'record-export') { const result = await api<{ paths: string[] }>('/api/dialog', 'POST', { kind: 'folder' }); if (!result.paths[0]) return; await mutate(`/api/tasks/${encodeURIComponent(button.dataset.id || '')}/export`, 'POST', { directory: result.paths[0] }, '成片副本已导出'); return; }
+  if (action === 'switch-task' && task) return showModal(switchModal(task));
+  if (!task) return;
+  if (action === 'pick-materials') return showModal(materialPickerModal(task));
+  if (action === 'picker-preview') {
+    const asset = readyProductAssets(task.productId).find(item => item.id === button.dataset.id);
+    const player = document.querySelector<HTMLVideoElement>('[data-picker-player]');
+    if (!asset?.url || !player) return;
+    player.hidden = false; player.src = asset.url; player.load();
+    document.querySelector('[data-picker-preview-title]')!.textContent = asset.title;
+    return;
+  }
+  if (action === 'add-picker-asset') {
+    const asset = readyProductAssets(task.productId).find(item => item.id === button.dataset.id);
+    if (!asset) throw new Error('该商品片段已不可用');
+    manualSelection.push(asset.id); render();
+    document.querySelectorAll<HTMLButtonElement>('[data-action="add-picker-asset"]').forEach(item => { const count = manualSelection.filter(id => id === item.dataset.id).length; item.textContent = count ? `＋ 加入 · 已选 ${count}` : '＋ 加入'; });
+    const count = document.querySelector('[data-picker-count]'); if (count) count.textContent = `当前已选 ${manualSelection.length} 段，关闭后保存方案生效`;
+    return;
+  }
+  if (action === 'preview-timeline') return showTimelinePreview(task, Number(button.dataset.index));
+  if (action === 'generate-copy') {
+    const existingCopy = Object.values(task.black).some(text => text.trim());
+    if (existingCopy && !confirm('重新生成会尝试覆盖当前全部商品文案。为避免覆盖手工修改，请确认继续；如果生成失败，现有文案仍会保留。')) return;
+    await mutate(`/api/tasks/${encodeURIComponent(task.id)}/copy`, 'POST', {}, '已提交商品文案生成'); return;
+  }
+  if (action === 'confirm-copy') { await mutate(`/api/tasks/${encodeURIComponent(task.id)}/copy/confirm`, 'POST', {}, '文案已确认'); return; }
+  if (action === 'generate-voice') { const id = button.dataset.id; await mutate(`/api/tasks/${encodeURIComponent(task.id)}/voice`, 'POST', id ? { intervalId: id } : {}, '已提交配音生成'); return; }
+  if (action === 'confirm-voice') { await mutate(`/api/tasks/${encodeURIComponent(task.id)}/voice/confirm`, 'POST', {}, '配音已确认'); return; }
+  if (action === 'auto-plan') { const updated = await api<Task>(`/api/tasks/${encodeURIComponent(task.id)}/plan`, 'POST', {}); state!.tasks = state!.tasks.map(item => item.id === task.id ? updated : item); resetManualSelection(task.id); showToast('随机画面方案已生成'); render(); return; }
+  if (action === 'add-manual-asset') { manualSelection.push(button.dataset.id || ''); render(); return; }
+  if (action === 'remove-manual-asset') { const index = Number(button.dataset.index); if (index >= 0 && index < manualSelection.length) manualSelection.splice(index, 1); render(); return; }
+  if (action === 'clear-manual-plan') { manualSelection = []; render(); return; }
+  if (action === 'save-manual-plan') { await mutate(`/api/tasks/${encodeURIComponent(task.id)}/plan`, 'PUT', { assetIds: manualSelection }, '手动方案已保存'); return; }
+  if (action === 'go-preview') return goStage('preview');
+  if (action === 'back-visual') { await mutate(`/api/tasks/${encodeURIComponent(task.id)}`, 'PATCH', { stage: 'visual' }); return; }
+  if (action === 'render-task') {
+    if (task.preview) return showRegenerationDialog(task);
+    await mutate(`/api/tasks/${encodeURIComponent(task.id)}/render`, 'POST', {}, '已提交本地视频合成'); return;
+  }
+  if (action === 'confirm-render') {
+    const refill = button.dataset.refill === 'true'; closeModal();
+    await mutate(`/api/tasks/${encodeURIComponent(task.id)}/render`, 'POST', { refill }, '已提交本地视频合成');
+    if (refill) resetManualSelection(task.id);
+    return;
+  }
+  if (action === 'stop-task') { await mutate(`/api/tasks/${encodeURIComponent(task.id)}/stop`, 'POST', {}, '已请求停止本地合成'); return; }
+  if (action === 'complete-task') { if (!confirm('确认当前有效预览为最终成片？确认后任务中间文件会被清理。')) return; await mutate(`/api/tasks/${encodeURIComponent(task.id)}/complete`, 'POST', {}, '成片已确认完成'); return; }
+  if (action === 'export-preview') { const result = await api<{ paths: string[] }>('/api/dialog', 'POST', { kind: 'folder' }); if (!result.paths[0]) return; await mutate(`/api/tasks/${encodeURIComponent(task.id)}/export`, 'POST', { directory: result.paths[0] }, '成片副本已导出'); return; }
+}
+function showModal(content: string): void {
+  chosenPaths = [];
+  closeModal();
+  const backdrop = document.createElement('div'); backdrop.className = 'modal-backdrop'; backdrop.innerHTML = content; document.body.append(backdrop);
+  const dialog = backdrop.querySelector('.modal'); dialog?.setAttribute('role', 'dialog'); dialog?.setAttribute('aria-modal', 'true');
+  const title = backdrop.querySelector('h2'); if (title) { title.id = 'dialog-title'; dialog?.setAttribute('aria-labelledby', title.id); }
+  backdrop.addEventListener('click', event => { if (event.target === backdrop) closeModal(); });
+  backdrop.querySelectorAll('[data-close-modal]').forEach(button => button.addEventListener('click', closeModal));
+  backdrop.querySelectorAll<HTMLButtonElement>('button[data-action]').forEach(button => button.addEventListener('click', () => { void handleAction(button).catch(showError); }));
+  backdrop.querySelectorAll<HTMLFormElement>('form[data-form]').forEach(form => form.addEventListener('submit', event => { event.preventDefault(); void submitForm(form).catch(showError); }));
+  backdrop.querySelector<HTMLInputElement>('[data-picker-search]')?.addEventListener('input', event => { const query = (event.target as HTMLInputElement).value.trim().toLocaleLowerCase(); backdrop.querySelectorAll<HTMLElement>('[data-material-name]').forEach(card => { card.hidden = !card.dataset.materialName!.includes(query); }); });
+}
+function closeModal(): void { document.querySelectorAll<HTMLMediaElement>('.modal-backdrop video,.modal-backdrop audio').forEach(media => media.pause()); document.querySelector('.modal-backdrop')?.remove(); }
+document.addEventListener('keydown', event => { if (event.key === 'Escape') closeModal(); });
+
+function materialPickerModal(task: Task): string {
+  const assets = readyProductAssets(task.productId);
+  return `<div class="modal material-picker"><button class="modal-close" data-close-modal aria-label="关闭素材选择">×</button><h2>引入商品素材</h2><p class="modal-intro">${esc(task.productSnapshot.name)} · ${assets.length} 个可用视频片段</p><input class="input" data-picker-search aria-label="搜索商品素材" placeholder="按文件名搜索素材"><p class="section-hint" data-picker-preview-title>点击“预览”查看原片</p><video data-picker-player controls autoplay muted playsinline hidden></video><div class="asset-grid picker-grid">${assets.map(asset => `<article class="asset-card" data-material-name="${esc(asset.title.toLocaleLowerCase())}">${asset.posterUrl ? `<img src="${esc(asset.posterUrl)}" loading="lazy" alt="">` : ''}<div class="asset-caption"><strong title="${esc(asset.title)}">${esc(asset.title)}</strong><div class="asset-meta">${duration(asset.duration)}</div><div class="row"><button class="button small" data-action="picker-preview" data-id="${esc(asset.id)}">预览</button><button class="button small primary" data-action="add-picker-asset" data-id="${esc(asset.id)}">＋ 加入${manualSelection.includes(asset.id) ? ` · 已选 ${manualSelection.filter(id => id === asset.id).length}` : ''}</button></div></div></article>`).join('')}</div><div class="modal-footer"><span class="section-hint" data-picker-count>当前已选 ${manualSelection.length} 段，关闭后保存方案生效</span><button class="button primary" data-close-modal>完成选择</button></div></div>`;
+}
+function showVideoPreview(title: string, url: string, start = 0, seconds?: number, description = ''): void {
+  showModal(`<div class="modal asset-video-modal"><button class="modal-close" data-close-modal aria-label="关闭预览">×</button><h2>${esc(title)}</h2><video controls autoplay muted playsinline src="${esc(url)}"></video><p class="section-hint">${esc(description)}</p></div>`);
+  const video = document.querySelector<HTMLVideoElement>('.asset-video-modal video')!;
+  const end = seconds === undefined ? undefined : start + seconds;
+  video.addEventListener('loadedmetadata', () => { video.currentTime = start; }, { once: true });
+  video.addEventListener('play', () => { if (end !== undefined && (video.currentTime < start || video.currentTime >= end)) video.currentTime = start; });
+  if (end !== undefined) video.addEventListener('timeupdate', () => { if (video.currentTime >= end) { video.pause(); if (video.currentTime > end + .04) video.currentTime = end; } });
+}
+function showTimelinePreview(task: Task, index: number): void {
+  const piece = task.plan?.pieces[index]; if (!piece) return;
+  const label = piece.mode === 'product' ? '商品画面' : piece.mode === 'host' ? '主播画面' : '通用主播画面';
+  if (task.preview && !task.previewStale) return showVideoPreview(`时间线片段 ${index + 1} · ${label}`, task.preview.url, piece.start, piece.duration, `成片 ${piece.start.toFixed(2)}～${(piece.start + piece.duration).toFixed(2)} 秒`);
+  const asset = state!.assets.find(item => item.id === (piece.mode === 'product' ? piece.productAssetId : piece.assetId));
+  if (!asset?.available || !asset.url) throw new Error('此片段的原素材已不可用');
+  const start = piece.mode === 'product' ? (piece.productStart || 0) + (asset.videoStart || 0) : (piece.sourceStart || 0) + (piece.mode === 'presenter' ? asset.videoStart || 0 : 0);
+  showVideoPreview(`原素材片段 · ${label}`, asset.url, start, piece.duration, '当前方案尚未生成有效成片，这里预览对应原视频范围。');
+}
+function showRegenerationDialog(task: Task): void {
+  const stale = task.previewStale;
+  const changes = task.previewChanges?.length ? task.previewChanges : ['制作内容或输出设置已修改'];
+  const ready = task.copyConfirmed && task.audioConfirmed && task.plan?.valid && task.execution?.status !== 'running';
+  showModal(`<div class="modal regeneration-dialog"><button class="modal-close" data-close-modal aria-label="关闭重新生成提示">×</button><h2>${stale ? '预览需要重新生成' : '重新生成预览'}</h2>${stale ? `<p class="modal-intro">旧预览尚未包含以下修改：</p><ul class="preview-changes">${changes.map(change => `<li>${esc(change)}</li>`).join('')}</ul>` : '<p class="modal-intro">可以沿用当前画面重新合成，也可以重新随机填充商品片段。</p>'}<p class="section-hint">沿用当前画面会保留素材顺序和配音。重新随机填充会替换当前商品画面方案。</p>${!ready ? '<div class="warning">请先确认文案、配音并补齐画面时长。</div>' : ''}<div class="modal-footer"><button class="button" data-close-modal>暂不生成</button><button class="button" data-action="confirm-render" data-refill="true" ${ready ? '' : 'disabled'}>重新随机填充</button><button class="button primary" data-action="confirm-render" data-refill="false" ${ready ? '' : 'disabled'}>${stale ? '确认重新生成' : '沿用画面重生成'}</button></div></div>`);
+}
+function newTaskModal(): string {
+  return `<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>新建视频任务</h2><p class="modal-intro">每个任务会保存商品与模板快照，之后修改商品资料不会影响已有任务。</p><form data-form="new-task"><label class="field-label">选择商品</label><select class="select" name="productId" required>${state!.products.map(product => `<option value="${esc(product.productId)}">${esc(product.name)} · ${readyProductAssets(product.productId).length} 段可用素材</option>`).join('')}</select><label class="field-label">选择模板</label><select class="select" name="templateId" required>${state!.templates.map(template => `<option value="${esc(template.id)}">${esc(template.name)} — ${esc(template.title)}</option>`).join('')}</select>${!state!.products.length ? `<div class="warning">请先添加商品资料并导入素材，再创建视频任务。</div>` : ''}<div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button class="button primary" ${!state!.products.length || !state!.templates.length ? 'disabled' : ''}>创建任务</button></div></form></div>`;
+}
+function productModal(product?: Product): string {
+  return `<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>${product ? '编辑商品资料' : '添加商品'}</h2><p class="modal-intro">先保存商品资料，再从素材库选择原始视频或已处理片段导入。导入不会移动或覆盖原文件。</p><form data-form="product" data-id="${esc(product?.productId || '')}"><label class="field-label">商品名称</label><input class="input" name="name" required value="${esc(product?.name || '')}" placeholder="例如：轻便随行杯"><div class="grid" style="grid-template-columns:1fr 1fr;gap:10px"><div><label class="field-label">价格</label><input class="input" name="price" value="${esc(product?.price || '')}" placeholder="如 129"></div><div><label class="field-label">规格</label><input class="input" name="specification" value="${esc(product?.specification || '')}" placeholder="容量、颜色等"></div></div><label class="field-label">商品卖点</label><textarea class="textarea" name="sellingPoints" placeholder="填写可用于生成口播的商品特点">${esc(product?.sellingPoints || '')}</textarea><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button class="button primary">${product ? '保存资料' : '添加商品'}</button></div></form></div>`;
+}
+function importModal(productId: string): string {
+  const product = state!.products.find(item => item.productId === productId);
+  return `<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>导入商品视频</h2><p class="modal-intro">添加到「${esc(product?.name || '')}」。原始视频进入本地切分流程，已处理片段会直接校验入库。</p><form data-form="import" data-id="${esc(productId)}"><label class="field-label">素材类型</label><select class="select" name="processed"><option value="false">原始视频 · 待处理</option><option value="true">已处理片段 · 直接入库</option></select><label class="field-label">选择视频</label><div class="row"><button type="button" class="button" data-action="choose-videos">选择视频文件</button><span class="section-hint" data-video-count>尚未选择</span></div><div class="section-hint" data-video-names style="margin-top:7px"></div><input type="hidden" name="videoPaths" value=""><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button class="button primary">开始导入</button></div></form></div>`;
+}
+function switchModal(task: Task): string {
+  const hasCopy = Object.values(task.black).some(value => value.trim());
+  const defaultMode = hasCopy ? 'new' : 'overwrite';
+  return `<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>切换商品或模板</h2><p class="modal-intro">无商品文案时可直接覆盖当前草稿。已有文案时，请确认是否保留原任务并新建。</p>${hasCopy ? `<div class="warning">覆盖会清空当前任务进度，并在同一任务记录中替换商品与模板；“保留并新建”会保留原任务并创建新的任务记录。</div>` : ''}<form data-form="switch-task" data-id="${esc(task.id)}"><label class="field-label">商品</label><select class="select" name="productId">${state!.products.map(item => `<option value="${esc(item.productId)}" ${item.productId === task.productId ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select><label class="field-label">模板</label><select class="select" name="templateId">${state!.templates.map(item => `<option value="${esc(item.id)}" ${item.id === task.templateId ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select><label class="field-label">如何处理当前任务</label><select class="select" name="mode"><option value="new" ${defaultMode === 'new' ? 'selected' : ''}>保留当前任务并新建</option><option value="overwrite" ${defaultMode === 'overwrite' ? 'selected' : ''}>覆盖当前草稿（清空已有进度）</option></select><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button class="button primary">应用切换</button></div></form></div>`;
+}
+function dataRootModal(): string {
+  return `<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>更换数据目录</h2><p class="modal-intro">已有数据不会自动搬迁。切换后将使用新目录中的工作数据；切换期间不能有任务执行或素材导入。</p><form data-form="change-root"><label class="field-label">当前数据目录</label><div class="row"><input class="input" id="new-data-root" name="dataRoot" value="${esc(state!.dataRoot)}"><button type="button" class="button" data-action="choose-folder" data-target="new-data-root">选择</button></div><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button class="button primary">更换目录</button></div></form></div>`;
+}
+let chosenPaths: string[] = [];
+async function submitForm(form: HTMLFormElement): Promise<void> {
+  const formName = form.dataset.form || ''; const data = new FormData(form); const value = (name: string): string => String(data.get(name) || '');
+  if (formName === 'new-task') {
+    const task = await api<Task>('/api/tasks', 'POST', { productId: value('productId'), templateId: value('templateId') });
+    document.querySelector('.modal-backdrop')?.remove(); selectedTaskId = task.id; page = 'task'; await refresh(); return;
+  }
+  if (formName === 'product') {
+    const productId = form.dataset.id;
+    const payload = { name: value('name').trim(), price: value('price').trim(), specification: value('specification').trim(), sellingPoints: value('sellingPoints').trim() };
+    if (productId) await api(`/api/products/${encodeURIComponent(productId)}`, 'PATCH', payload);
+    else await api('/api/products', 'POST', { ...payload, productId: `product-${Date.now()}` });
+    chosenPaths = []; document.querySelector('.modal-backdrop')?.remove(); showToast(productId ? '商品资料已保存' : '商品已添加'); await refresh(); return;
+  }
+  if (formName === 'import') {
+    const productId = form.dataset.id || ''; const processed = value('processed') === 'true';
+    startPolling();
+    await api(`/api/products/${encodeURIComponent(productId)}/import`, 'POST', { paths: chosenPaths, processed }); chosenPaths = []; document.querySelector('.modal-backdrop')?.remove(); showToast('素材已提交导入'); await refresh(); return;
+  }
+  if (formName === 'switch-task') {
+    const current = state!.tasks.find(item => item.id === form.dataset.id);
+    if (value('mode') === 'overwrite' && current && Object.values(current.black).some(text => text.trim()) && !confirm('覆盖会清空这条任务的文案、配音、画面方案和成片进度，但保留同一个任务记录。确认覆盖吗？')) return;
+    const task = await api<Task>(`/api/tasks/${encodeURIComponent(form.dataset.id || '')}/switch`, 'POST', { productId: value('productId'), templateId: value('templateId'), mode: value('mode') });
+    document.querySelector('.modal-backdrop')?.remove(); selectedTaskId = task.id; manualSelectionTaskId = ''; manualSelection = []; page = 'task'; await refresh(); return;
+  }
+  if (formName === 'change-root') {
+    if (state!.activeExecution || state!.libraryBusy) { showToast('任务或素材正在处理中，暂不能更换目录。', true); return; }
+    if (!confirm('更换后将使用所选目录中的工作数据，旧目录数据不会自动搬迁。确认更换吗？')) return;
+    await api('/api/setup', 'POST', { dataRoot: value('dataRoot').trim() });
+    document.querySelector('.modal-backdrop')?.remove(); showToast('数据目录已更换'); await refresh(); return;
+  }
+}
+
+window.addEventListener('beforeunload', event => {
+  if (state?.activeExecution || pendingTaskPatches.size || draftFlushes.size) { event.preventDefault(); event.returnValue = ''; }
+});
+
+// Dialog picks are bound separately because the chooser lives inside a modal.
+document.addEventListener('click', event => {
+  const target = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-action="choose-videos"]');
+  if (!target) return;
+  void api<{ paths: string[] }>('/api/dialog', 'POST', { kind: 'videos' }).then(result => {
+    chosenPaths = result.paths; const backdrop = document.querySelector('.modal-backdrop');
+    const count = backdrop?.querySelector<HTMLElement>('[data-video-count]'); const names = backdrop?.querySelector<HTMLElement>('[data-video-names]'); const paths = backdrop?.querySelector<HTMLInputElement>('input[name="videoPaths"]');
+    if (count) count.textContent = chosenPaths.length ? `已选择 ${chosenPaths.length} 个文件` : '尚未选择';
+    if (names) names.textContent = chosenPaths.map(path => path.split(/[\\/]/).pop()).join('、');
+    if (paths) paths.value = chosenPaths.join('\n');
+  }).catch(showError);
+});
+
+void refresh().catch(error => { if (root) root.innerHTML = `<div class="empty" style="margin:20vh auto;max-width:480px"><strong>无法连接本地工作台</strong>${esc(error instanceof Error ? error.message : String(error))}<div style="margin-top:15px"><button class="button" onclick="location.reload()">重新连接</button></div></div>`; });

@@ -1,0 +1,16 @@
+{
+  "model": "qwen-audio-3.1-tts-plus",
+  "input": {
+    "voice": "qwen-audio-3.1-tts-plus-xs1023-0e26230e68ee4ce4a1982ebbedd2b1f1",
+    "format": "wav",
+    "sample_rate": 24000,
+    "rate": 1.1,
+    "pitch": 1,
+    "volume": 50,
+    "language_hints": [
+      "zh"
+    ],
+    "instruction": "沿用当前音色，使用情绪高昂、热烈兴奋、强感染力的电商短视频促销解说风格。整段保持昂扬振奋的状态，表现出强烈的推荐热情，表达自信笃定，带有鲜明的促销紧迫感。声音饱满有力，语调起伏鲜明、抑扬顿挫，重音突出且富有冲击力。节奏明快紧凑，句子衔接流畅，停顿短促自然，保持清晰利落的咬字和流畅的连读，持续传递高昂热烈的情绪与强烈的行动号召感。",
+    "word_timestamp_enabled": true
+  }
+}
