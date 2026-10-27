@@ -280,7 +280,7 @@ function renderVoiceStage(task: Task): string {
   const running = task.execution?.status === 'running';
   return `<div class="panel-title">连续口播配音</div>
   ${intervals.length ? intervals.map(interval => `<article class="interval-card" data-ui-key="interval:${esc(interval.id)}"><div class="interval-top"><div class="interval-name">口播区间 ${esc(interval.id)}</div><span class="badge ${interval.status === 'ready' ? 'green' : interval.status === 'failed' ? 'red' : ''}">${statusName(interval.status)}${interval.confirmed ? ' · 已确认' : ''}</span></div><div class="interval-copy">${esc(interval.text)}</div>${interval.error ? `<div class="section-hint" style="color:var(--red)">${esc(interval.error)}</div>` : ''}${interval.audioUrl && interval.status === 'ready' ? `<audio controls preload="none" src="${esc(interval.audioUrl)}" style="width:100%;height:34px"></audio><div class="section-hint">${interval.duration ? duration(interval.duration) : ''} · 音频与字幕时间已关联</div>` : ''}<div class="row" style="justify-content:flex-end;margin-top:9px"><button class="button small" data-action="generate-voice" data-id="${esc(interval.id)}" ${running ? 'disabled' : ''}>${interval.status === 'ready' ? '重配此区间' : '生成此区间'}</button></div></article>`).join('') : `<div class="empty"><strong>暂无口播区间</strong>请先完成并确认商品文案。</div>`}
-  <div class="row stage-footer"><span class="section-hint">${readyCount}/${intervals.length} 段配音已就绪${missingCount ? '，可一次补齐缺失配音' : ''}</span><div class="row">${missingCount ? `<button class="button" data-action="generate-voice" ${running ? 'disabled' : ''}>生成缺失配音（${missingCount}段）</button>` : ''}<button class="button primary" data-action="confirm-voice" ${!intervals.length || missingCount || running || task.audioConfirmed ? 'disabled' : ''}>${task.audioConfirmed ? '配音已确认' : '确认配音'}</button></div></div>`;
+  <div class="row stage-footer"><span class="section-hint">${readyCount}/${intervals.length} 段配音已就绪${missingCount ? '，可一次补齐缺失配音' : ''}</span><div class="row">${missingCount ? `<button class="button" data-action="generate-voice" ${running ? 'disabled' : ''}>生成缺失配音（${missingCount}段）</button>` : ''}<button class="button primary" data-action="confirm-voice" ${!intervals.length || missingCount || running ? 'disabled' : ''}>${task.audioConfirmed ? '画面设置 →' : '确认配音'}</button></div></div>`;
 }
 function renderVisualStage(task: Task): string {
   const assets = readyProductAssets(task.productId);
@@ -567,8 +567,12 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   if (action === 'delete-asset') { if (!confirm('从素材库移除此商品片段？正在被合成使用的素材会由服务端拒绝删除。')) return; await mutate(`/api/assets/${encodeURIComponent(button.dataset.id || '')}`, 'DELETE', undefined, '素材记录已更新'); return; }
   if (action === 'record-open') { selectedTaskId = button.dataset.id || ''; page = 'task'; resetManualSelection(selectedTaskId); previewPrompts.delete(selectedTaskId); const record = selectedTask(); if (record?.completed) record.stage = 'preview'; render(); return; }
   if (action === 'record-export') { const result = await api<{ paths: string[] }>('/api/dialog', 'POST', { kind: 'folder' }); if (!result.paths[0]) return; await mutate(`/api/tasks/${encodeURIComponent(button.dataset.id || '')}/export`, 'POST', { directory: result.paths[0] }, '成片副本已导出'); return; }
-  if (action === 'switch-task' && task) return showModal(switchModal(task));
+  if (action === 'switch-task' && task) return showModal(switchModal(task, button.dataset.productId, button.dataset.templateId));
   if (!task) return;
+  if (action === 'confirm-switch-task') {
+    if (button.disabled || button.dataset.id !== task.id) return;
+    await applyTaskSwitch(task.id, button.dataset.productId!, button.dataset.templateId!, button.dataset.mode as 'new' | 'overwrite'); return;
+  }
   if (action === 'pick-materials') return showModal(materialPickerModal(task));
   if (action === 'picker-preview') {
     const asset = readyProductAssets(task.productId).find(item => item.id === button.dataset.id);
@@ -595,7 +599,7 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   }
   if (action === 'confirm-copy') { await mutate(`/api/tasks/${encodeURIComponent(task.id)}/copy/confirm`, 'POST', {}, '文案已确认'); return; }
   if (action === 'generate-voice') { const id = button.dataset.id; await mutate(`/api/tasks/${encodeURIComponent(task.id)}/voice`, 'POST', id ? { intervalId: id } : {}, '已提交配音生成'); return; }
-  if (action === 'confirm-voice') { await mutate(`/api/tasks/${encodeURIComponent(task.id)}/voice/confirm`, 'POST', {}, '配音已确认'); return; }
+  if (action === 'confirm-voice') { if (task.audioConfirmed) await goStage('visual'); else await mutate(`/api/tasks/${encodeURIComponent(task.id)}/voice/confirm`, 'POST', {}, '配音已确认'); return; }
   if (action === 'auto-plan') { const updated = await api<Task>(`/api/tasks/${encodeURIComponent(task.id)}/plan`, 'POST', {}); state!.tasks = state!.tasks.map(item => item.id === task.id ? updated : item); resetManualSelection(task.id); showToast('随机画面方案已生成'); render(); return; }
   if (action === 'add-manual-asset') { manualSelection.push(button.dataset.id || ''); render(); return; }
   if (action === 'remove-manual-asset') { const index = Number(button.dataset.index); if (index >= 0 && index < manualSelection.length) manualSelection.splice(index, 1); render(); return; }
@@ -683,10 +687,16 @@ function importModal(productId: string): string {
   const product = state!.products.find(item => item.productId === productId);
   return `<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>导入商品视频</h2><p class="modal-intro">添加到「${esc(product?.name || '')}」。原始视频进入本地切分流程，已处理片段会直接校验入库。</p><form data-form="import" data-id="${esc(productId)}"><label class="field-label">素材类型</label><select class="select" name="processed"><option value="false">原始视频 · 待处理</option><option value="true">已处理片段 · 直接入库</option></select><label class="field-label">选择视频</label><div class="row"><button type="button" class="button" data-action="choose-videos">选择视频文件</button><span class="section-hint" data-video-count>尚未选择</span></div><div class="section-hint" data-video-names style="margin-top:7px"></div><input type="hidden" name="videoPaths" value=""><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button class="button primary">开始导入</button></div></form></div>`;
 }
-function switchModal(task: Task): string {
-  const hasCopy = Object.values(task.black).some(value => value.trim());
-  const defaultMode = hasCopy ? 'new' : 'overwrite';
-  return `<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>切换商品或模板</h2><p class="modal-intro">无商品文案时可直接覆盖当前草稿。已有文案时，请确认是否保留原任务并新建。</p>${hasCopy ? `<div class="warning">覆盖会清空当前任务进度，并在同一任务记录中替换商品与模板；“保留并新建”会保留原任务并创建新的任务记录。</div>` : ''}<form data-form="switch-task" data-id="${esc(task.id)}"><label class="field-label">商品</label><select class="select" name="productId">${state!.products.map(item => `<option value="${esc(item.productId)}" ${item.productId === task.productId ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select><label class="field-label">模板</label><select class="select" name="templateId">${state!.templates.map(item => `<option value="${esc(item.id)}" ${item.id === task.templateId ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select><label class="field-label">如何处理当前任务</label><select class="select" name="mode"><option value="new" ${defaultMode === 'new' ? 'selected' : ''}>保留当前任务并新建</option><option value="overwrite" ${defaultMode === 'overwrite' ? 'selected' : ''}>覆盖当前草稿（清空已有进度）</option></select><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button class="button primary">应用切换</button></div></form></div>`;
+function switchModal(task: Task, productId = task.productId, templateId = task.templateId): string {
+  return `<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>切换商品或模板</h2><form data-form="switch-task" data-id="${esc(task.id)}"><label class="field-label">商品</label><select class="select" name="productId">${state!.products.map(item => `<option value="${esc(item.productId)}" ${item.productId === productId ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select><label class="field-label">模板</label><select class="select" name="templateId">${state!.templates.map(item => `<option value="${esc(item.id)}" ${item.id === templateId ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button type="submit" class="button primary">应用</button></div></form></div>`;
+}
+async function applyTaskSwitch(taskId: string, productId: string, templateId: string, mode: 'new' | 'overwrite'): Promise<void> {
+  const controls = [...document.querySelectorAll<HTMLButtonElement>('.modal-footer button')];
+  controls.forEach(button => { button.disabled = true; });
+  try {
+    const task = await api<Task>(`/api/tasks/${encodeURIComponent(taskId)}/switch`, 'POST', { productId, templateId, mode });
+    closeModal(); selectedTaskId = task.id; manualSelectionTaskId = ''; manualSelection = []; page = 'task'; await refresh();
+  } catch (error) { controls.forEach(button => { button.disabled = false; }); throw error; }
 }
 function dataRootModal(): string {
   return `<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>更换数据目录</h2><p class="modal-intro">已有数据不会自动搬迁。切换后将使用新目录中的工作数据；切换期间不能有任务执行或素材导入。</p><form data-form="change-root"><label class="field-label">当前数据目录</label><div class="path-picker"><input class="input" id="new-data-root" name="dataRoot" value="${esc(state!.dataRoot)}"><button type="button" class="button" data-action="choose-folder" data-target="new-data-root">选择</button></div><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button class="button primary">更换目录</button></div></form></div>`;
@@ -711,10 +721,15 @@ async function submitForm(form: HTMLFormElement): Promise<void> {
     await api(`/api/products/${encodeURIComponent(productId)}/import`, 'POST', { paths: chosenPaths, processed }); chosenPaths = []; document.querySelector('.modal-backdrop')?.remove(); showToast('素材已提交导入'); await refresh(); return;
   }
   if (formName === 'switch-task') {
-    const current = state!.tasks.find(item => item.id === form.dataset.id);
-    if (value('mode') === 'overwrite' && current && Object.values(current.black).some(text => text.trim()) && !confirm('覆盖会清空这条任务的文案、配音、画面方案和成片进度，但保留同一个任务记录。确认覆盖吗？')) return;
-    const task = await api<Task>(`/api/tasks/${encodeURIComponent(form.dataset.id || '')}/switch`, 'POST', { productId: value('productId'), templateId: value('templateId'), mode: value('mode') });
-    document.querySelector('.modal-backdrop')?.remove(); selectedTaskId = task.id; manualSelectionTaskId = ''; manualSelection = []; page = 'task'; await refresh(); return;
+    const taskId = form.dataset.id!; await flushTaskDraft(taskId);
+    const current = state!.tasks.find(item => item.id === taskId)!;
+    const productId = value('productId'), templateId = value('templateId');
+    if (productId === current.productId && templateId === current.templateId) { closeModal(); return; }
+    if (Object.values(current.black).some(text => text.trim())) {
+      const attributes = `data-id="${esc(taskId)}" data-product-id="${esc(productId)}" data-template-id="${esc(templateId)}"`;
+      showModal(`<div class="modal switch-choice"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>选择创建方式</h2><p class="modal-intro">当前任务已有文案。新建会保留当前任务，覆盖会清空当前进度。</p><div class="modal-footer"><button class="button" data-action="switch-task" ${attributes}>返回</button><button class="button danger" data-action="confirm-switch-task" data-mode="overwrite" ${attributes}>覆盖当前任务</button><button class="button primary" data-action="confirm-switch-task" data-mode="new" ${attributes}>新建任务</button></div></div>`); return;
+    }
+    await applyTaskSwitch(taskId, productId, templateId, 'overwrite'); return;
   }
   if (formName === 'change-root') {
     if (state!.activeExecution || state!.libraryBusy) { showToast('任务或素材正在处理中，暂不能更换目录。', true); return; }
