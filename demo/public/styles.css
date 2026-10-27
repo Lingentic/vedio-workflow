@@ -117,3 +117,12 @@ html{scrollbar-gutter:stable}
 *::-webkit-scrollbar-button{display:none;width:0;height:0}
 *::-webkit-scrollbar-corner{background:transparent}
 @supports not selector(::-webkit-scrollbar){*{scrollbar-width:thin;scrollbar-color:#d8d5df transparent}}
+/* Button variants share geometry; filter actions match their adjacent fields. */
+.button{display:inline-flex;align-items:center;justify-content:center;line-height:16px;transition:background-color .15s,border-color .15s,color .15s}
+.button.small{line-height:14px}
+.button.soft{border:1px solid transparent}
+.button:hover{transform:none}
+.record-filters{--record-control-height:40px}
+.record-filters .input,.record-filters .select{height:var(--record-control-height);line-height:18px}
+.record-filter-actions{align-items:stretch;padding-bottom:0}
+.record-filter-actions>.button{height:var(--record-control-height);min-width:56px;padding:0 14px}
