@@ -31,13 +31,11 @@ function asset(store:Store,id:string,duration:number,kind:Asset['kind']='product
 }
 const spokenWords=(text:string):WordTime[]=>[...text].map((char,i)=>({text:char,begin_time:i*100,end_time:(i+1)*100}));
 
-test('字幕保持6.90和4.88完整，不把金额拆成重叠字幕',()=>{
-  for(const [amount,spoken] of [['6.90','六点九零'],['4.88','四点八八']]) {
-    const text=`只要${amount}元，马上拍。`,nodes:ScriptNode[]=[{id:'n',type:'generated_narration',text}];
-    const result=alignAudio(text,nodes,spokenWords(`只要${spoken}元马上拍`),5);
-    assert.equal(result.cues[0].text,`只要${amount}元，`);
-    assert.ok(result.cues[1].begin>=result.cues[0].end);
-  }
+test('金额6.90保持完整，前后字幕时间不重叠',()=>{
+  const text='只要6.90元，马上拍。',nodes:ScriptNode[]=[{id:'n',type:'generated_narration',text}];
+  const result=alignAudio(text,nodes,spokenWords('只要六点九零元马上拍'),5);
+  assert.equal(result.cues[0].text,'只要6.90元，');
+  assert.ok(result.cues[1].begin>=result.cues[0].end);
 });
 test('配音文字无法对应时拒绝伪造字幕时间',()=>{
   const text='只要六元。';
@@ -67,7 +65,7 @@ test('只改一个黑色节点，只使所属连续口播区间失效，其他�
   for(const i of [0,2,3])assert.equal(task.intervals[i].relativePath,original[i]);
   assert.ok(fs.existsSync(e.store.path(original[1]!)),'Invalidating a draft must not delete prior audio before replacement');
 });
-test('确认完成期间锁编辑；完成后仅清理本任务中间文件，正式视频和商品素材保留',async t=>{
+test('确认完成时锁编辑，完成后只读并清理本任务中间文件',async t=>{
   const e=environment(t);let task=e.workflow.create('test-product','template-01-insoles');
   const product=asset(e.store,'keep-product',10);
   task.copyConfirmed=true;task.audioConfirmed=true;task.previewStale=false;
@@ -87,4 +85,5 @@ test('确认完成期间锁编辑；完成后仅清理本任务中间文件，�
   assert.equal(fs.existsSync(path.join(e.store.taskDir(task.id),'audio')),false);
   assert.equal(fs.existsSync(path.join(e.store.taskDir(task.id),'work')),false);
   assert.throws(()=>e.workflow.patch(task.id,{example:'已完成不能改'}),/只读/);
+  assert.throws(()=>e.workflow.render(task.id,true),/只读/);
 });

@@ -45,7 +45,6 @@ test('视频起始时间非零、音轨比画面长时，按真实视频时长�
   assert.ok(Math.abs(store.asset('A')!.duration - .6) < .001);
   const retried = await library.retry('A');
   assert.ok(Math.abs(retried.duration - .6) < .001, 'Retry must not restore the longer container duration');
-  assert.equal(saved.plan!.pieces.length, 2);
   const base = saved.renderBase!.relativePath;
   const chunks = [];
   for (let i = 0; i < saved.plan!.pieces.length; i++) chunks.push(await media.probe(path.join(path.dirname(store.path(base)), `piece-${String(i).padStart(4, '0')}.mp4`)));

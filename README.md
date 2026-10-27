@@ -53,12 +53,7 @@ node server.ts
 
 从 [AGENTS.md](AGENTS.md) 进入，按 [仓库导航](AGENT_WIKI.md) 选择当前任务所需的产品、架构、数据或验证专题；无需通读历史资料。
 
-```powershell
-node scripts/check-harness.mjs
-node scripts/doctor.mjs
-```
-
-两项分别检查文档导航和本机媒体工具，不启动应用、不请求模型。类型检查、隔离运行和按改动选择测试见 [开发与验证](docs/harness/DEVELOPMENT.md)。
+文档改动可运行 `node scripts/check-harness.mjs`；环境或启动问题再运行 `node scripts/doctor.mjs`。不要求每次两项都跑。类型检查、隔离运行和按改动选择测试见 [开发与验证](docs/harness/DEVELOPMENT.md)。
 
 ## 历史方案资料
 

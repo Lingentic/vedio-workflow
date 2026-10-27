@@ -22,12 +22,13 @@
 7. 保持 TypeScript 和现有无生产依赖的实现。新增生产依赖、项目级依赖清单或 CI 配置前确认；不要为满足文档模板改技术栈。
 8. 修改前看 `git status`；仅操作本任务文件，不恢复、删除或顺带提交其他人的未完成改动。
 
-## 常用命令（仓库根目录）
+## 按需检查（仓库根目录）
 
-```powershell
-node scripts/check-harness.mjs
-node scripts/doctor.mjs
-```
+| 本次改动 | 选择检查 |
+| --- | --- |
+| 文档、导航 | `node scripts/check-harness.mjs` |
+| TypeScript | `node scripts/check-types.mjs` 及相关行为测试 |
+| 启动失败或更换媒体工具 | `node scripts/doctor.mjs`；环境未变时不重复跑 |
 
 启动应用会打开／写入数据目录并恢复任务；先按 [开发说明](docs/harness/DEVELOPMENT.md) 决定使用真实数据还是隔离目录。
 

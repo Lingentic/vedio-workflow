@@ -4,13 +4,10 @@
 
 ## 不写业务数据的检查
 
-```powershell
-node scripts/check-harness.mjs
-node scripts/doctor.mjs
-```
+这些是按需工具，不是每次修改都执行的固定流程。
 
-- `check-harness` 校验入口、专题可达与相对链接，不访问外部网址或服务。
-- `doctor` 检查当前 Node、FFmpeg、FFprobe、libx264、ASS，以及 Windows 上的 PowerShell；仅运行工具探测，不启动应用、不读用户库或账号、不调用模型、不安装软件。支持 `--json`。
+- 文档或导航修改：`node scripts/check-harness.mjs` 按实际链接检查入口和目标，不另维护一份写死的文档布局清单，不访问外部网址或服务。
+- 环境变化或启动／媒体工具问题：`node scripts/doctor.mjs` 检查当前 Node、FFmpeg、FFprobe、libx264、ASS，以及 Windows 上的 PowerShell；不启动应用、不读用户库或账号、不调用模型、不安装软件。支持 `--json`。环境未变不重复跑。
 - doctor 使用 PATH 或 `FFMPEG_PATH`／`FFPROBE_PATH`，不读取 `.local/settings.json`。若应用配置了别处的媒体工具，诊断时应显式指定同一路径。
 
 ### 可选 TypeScript 检查
@@ -54,23 +51,20 @@ node demo/server.ts
 
 | 影响范围 | 在 `demo` 目录运行 | 检查什么 |
 | --- | --- | --- |
-| 字幕对齐、区间失效、队列、完成清理 | `node --test tests/workflow.test.ts` | 金额字幕不拆错、错配文字拒绝、商品队列共用与暂停、手选不足、自动重复、局部配音复用、完成锁与清理归属 |
-| 预览过期、字幕／BGM 返工、refill | `node --test tests/preview-rework.test.ts` | 过期原因、确认不能被设置回滚掩盖、默认保留画面、明确重选且不调模型、完成后禁止返工 |
+| 字幕对齐、区间失效、队列、完成清理 | `node --test tests/workflow.test.ts` | 金额字幕不拆错、错配文字拒绝、商品队列共用与暂停、手选不足、自动重复、局部配音复用、完成锁与禁止返工、清理归属 |
+| 预览过期、字幕／BGM 返工、refill | `node --test tests/preview-rework.test.ts` | 过期原因、确认不能被设置回滚掩盖、默认保留画面、明确重选且不调模型 |
 | 媒体时间／帧数、拼接、缓存 | `node --test tests/video-rendering.test.ts` | 非零视频起点、音轨长于画面、真实视频流时长、准确输出帧数、缓存复用；需 FFmpeg／FFprobe |
-| 一次整体验证或确认跨模块风险 | `node --test tests/workflow.test.ts tests/preview-rework.test.ts tests/video-rendering.test.ts` | 上述十个现有用例，不新增无关付费试验 |
-| 界面交互／样式 | 先类型检查，再实际操作受影响页面 | 搜索、输入法与焦点、弹窗、拖动、禁用条件、窄窗口；仅构建或 DOM 断言不能证明手感 |
+| 一次整体验证或确认跨模块风险 | `node --test tests/workflow.test.ts tests/preview-rework.test.ts tests/video-rendering.test.ts` | 上述九个现有用例；仅相关代码变化或具体风险需要时运行整组 |
+| 界面交互／样式 | TypeScript 有改动时检查类型，再实际操作受影响页面 | 搜索、输入法与焦点、弹窗、拖动、禁用条件、窄窗口；仅构建或 DOM 断言不能证明手感 |
 | 仅导航／文档 | 根目录 `node scripts/check-harness.mjs`、`git diff --check` | 入口可达、相对链接、格式；无需重新配音或完整合成 |
 
 复用仍适用的已通过结果；新增改动、失败或具体跨模块风险才扩大检查。新增测试优先复现可观察错误，不断言源码写法或凑数量。报告应包含：命令、覆盖行为、真实模型是否调用、真实用户数据是否触碰、未验证边界。
 
-## 不是普通测试的入口
+## 一次性验收与真实操作
 
-| 入口 | 实际副作用 | 使用条件 |
-| --- | --- | --- |
-| `demo/scripts/verify-live-workflow.ts` | 在运行服务中创建真实任务，发文案与配音请求，合成并保存报告 | 需要明确授权此次付费调用；原报告防重跑不等于无限重试许可 |
-| `demo/scripts/verify-local-workflow.ts` | 依赖本机旧实验音频，修改服务数据并本地合成／完成 | 仅复现实验且确认数据范围；不是新 clone 的通用 smoke test |
-| `demo/scripts/verify-rework.ts` | 找到既有任务，改设置、合成、导出、确认完成与清理 | 会改变真实任务，不要当作只读回归命令 |
-| `POST /api/seed`、商品导入／重试／删除、`complete` | 写业务库、托管媒体或清理文件 | 用隔离数据验证；真实业务操作需在用户当前授权内 |
+三个旧 `verify-*` 验收脚本已移除：它们依赖本机历史素材或直接修改真实任务，包含与当前回归重叠的步骤，不适合作为持续维护的测试入口。历史验证结果仍留在 [验证说明](../../demo/验证说明.md)。
+
+真实模型调用、`POST /api/seed`、导入／重试／删除、确认完成仍是有业务副作用的操作，不能因删除验收脚本就将其当作普通测试。需要复现时使用隔离数据，并明确此次模型调用和真实数据范围。
 
 ## 故障 → 证据 → 文件
 
@@ -89,7 +83,7 @@ node demo/server.ts
 - 已确认“首次选择数据根目录”；当前 server 启动即打开默认／已配置库，`/api/state` 返回 `configured:true`，所以前端初次设置界面不会按该产品规则触发。这是待补实现，不在 harness 工作中顺带修改。
 - 当前 `toolsReady:true` 未进行运行时能力探测；`modelReady` 只代表找到凭证，不代表余额、模型或复刻音色可用。`doctor` 不验证账户权益。
 - 完成清理当前保留正式预览所在的整个 render run 目录，该目录的基础画面缓存仍可能占空间；不能把清理成功等同于“只剩正式 MP4”。harness 只记录此事实，不顺带改删除逻辑。
-- 启动恢复、服务信号处理和资产保护有代码实现，但当前十个测试不是进程崩溃恢复或 HTTP 边界的完整回归覆盖；UI 证据是历史手工／浏览器验收，不是随仓自动 UI E2E。
+- 启动恢复、服务信号处理和资产保护有代码实现，但当前九个测试不是进程崩溃恢复或 HTTP 边界的完整回归覆盖；UI 证据是历史手工／浏览器验收，不是随仓自动 UI E2E。
 - 固定主播和 BGM 的示例导入依赖本机素材及旧实验路径；`seedAvailable` 目前只检查默认桌面目录。干净 clone 不包含这些媒体、凭证或旧实验，不能宣称开箱即有真实完整成片。
 - 没有生产安装包、云部署、数据迁移或共享能力由本次 harness 自动提供。其他缺口应在发现时记录具体触发条件，而不是预先增加通用框架。
 

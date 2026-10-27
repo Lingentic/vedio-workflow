@@ -3,13 +3,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const required = ['AGENTS.md', 'AGENT_WIKI.md', 'docs/harness/PRODUCT.md', 'docs/harness/ARCHITECTURE.md', 'docs/harness/DATA_AND_LIFECYCLE.md', 'docs/harness/DEVELOPMENT.md', 'scripts/doctor.mjs', 'scripts/check-types.mjs'];
 const problems = [], visited = new Set(), queue = ['AGENTS.md', 'README.md'];
 let linkCount = 0;
-for (const file of required) if (!fs.existsSync(path.join(root, file))) problems.push(`Missing required file: ${file}`);
 while (queue.length) {
   const file = queue.shift();
-  if (visited.has(file) || !fs.existsSync(path.join(root, file))) continue;
+  if (visited.has(file)) continue;
+  if (!fs.existsSync(path.join(root, file))) { problems.push(`Missing entry document: ${file}`); continue; }
   visited.add(file);
   const markdown = fs.readFileSync(path.join(root, file), 'utf8').replace(/^```[^\n]*\n[\s\S]*?^```/gm, '');
   for (const match of markdown.matchAll(/!?\[[^\]]*\]\(([^)]+)\)/g)) {
@@ -23,6 +22,5 @@ while (queue.length) {
     if (target.endsWith('.md') && fs.statSync(target).isFile()) queue.push(relative.replaceAll(path.sep, '/'));
   }
 }
-for (const file of required.filter(file => file.endsWith('.md'))) if (!visited.has(file)) problems.push(`Not reachable from AGENTS.md/README.md: ${file}`);
 console.log(JSON.stringify({ ok: problems.length === 0, documents: visited.size, relativeLinks: linkCount, problems, scope: 'Local navigation only; external URLs and live services are not requested.' }, null, 2));
 if (problems.length) process.exitCode = 1;

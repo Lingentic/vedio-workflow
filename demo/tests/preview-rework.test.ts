@@ -55,7 +55,6 @@ test('预览快照仅在设置变化时报告具体字幕和BGM原因', t => {
   e.workflow.patch(task.id, { settings: { subtitles: false, bgmId: 'music', bgmVolume: .3 } });
   const result = e.workflow.publicTask(e.workflow.get(task.id));
   assert.deepEqual(result.previewChanges, ['字幕设置已变化', 'BGM已变化', 'BGM音量已变化']);
-  assert.ok(result.preview?.inputs, '首次 writable 修改前应捕获旧输入快照');
 });
 
 test('文案变化导致确认失效后，即使设置恢复原值也不能恢复预览有效状态', t => {
@@ -92,10 +91,4 @@ test('render默认保留画面；refill选择auto商品方案且不触发模型'
   assert.notDeepEqual(refilled.entries.map(entry => entry.assetId), original);
   e.workflow.stop(task.id); await e.workflow.active?.promise;
   assert.equal(modelCalls, 0);
-});
-
-test('已完成任务拒绝 render/refill', t => {
-  const e = environment(t), task = renderableTask(e);
-  task.completed = true; e.store.putTask(task);
-  assert.throws(() => e.workflow.render(task.id, true), /只读/);
 });

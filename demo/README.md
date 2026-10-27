@@ -100,7 +100,7 @@ SQLite 保存商品、素材和当前任务；任务保留文案、确认状态�
 node --test tests/workflow.test.ts tests/video-rendering.test.ts tests/preview-rework.test.ts
 ```
 
-上述测试不调用付费模型。`scripts/verify-live-workflow.ts` 会提交真实文案与配音请求，常规检查不运行该脚本。
+现有 9 项回归测试不调用付费模型。按本次改动选择对应文件；只改文档无需运行媒体合成。依赖旧实验数据或真实业务任务的三个一次性验收脚本已移除，历史执行结果仍保留在验证说明中。
 
 已完成的真实模型调用、页面操作及本地行为检查见 [验证说明.md](验证说明.md)。详细记录另存于被忽略的 `verification/`；旧实验音频不伪装成本次新调用。
 
