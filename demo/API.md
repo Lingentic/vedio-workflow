@@ -1,6 +1,6 @@
 # Demo 本地接口
 
-界面参考独立原型，行为以 ../最简版 的已确认需求为准。使用 Node.js 24 自带 SQLite 和系统 FFmpeg，无新增 npm 依赖。服务只绑定 127.0.0.1；API 与页面同源。
+界面参考独立原型，已确认行为见随仓维护的 [产品契约](../docs/harness/PRODUCT.md)，实现关系见 [架构](../docs/harness/ARCHITECTURE.md)。使用 Node.js 24 自带 SQLite 和系统 FFmpeg，无新增 npm 依赖。服务只绑定 127.0.0.1；API 与页面同源。
 
 所有 JSON 接口成功返回直接的数据对象；失败返回 `{error,message}`，HTTP 状态为 400/404/409/500 等。付费模型不会自动重试。异步操作返回 202 和当前 task，前端每秒刷新当前任务；生成记录保持同一 task ID。
 

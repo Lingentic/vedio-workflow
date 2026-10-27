@@ -49,9 +49,20 @@ node server.ts
 - [本地接口说明](demo/API.md)
 - [验证范围与已知边界](demo/验证说明.md)
 
+## Agent 开发入口
+
+从 [AGENTS.md](AGENTS.md) 进入，按 [仓库导航](AGENT_WIKI.md) 选择当前任务所需的产品、架构、数据或验证专题；无需通读历史资料。
+
+```powershell
+node scripts/check-harness.mjs
+node scripts/doctor.mjs
+```
+
+两项分别检查文档导航和本机媒体工具，不启动应用、不请求模型。类型检查、隔离运行和按改动选择测试见 [开发与验证](docs/harness/DEVELOPMENT.md)。
+
 ## 历史方案资料
 
-- [此前完整版需求讨论](docs/当前需求与待确认事项.md)
-- [电商视频混剪开源方案调研](docs/电商视频混剪开源方案调研.md)
+- [此前完整版需求讨论](https://github.com/Lingentic/vedio-workflow/blob/3de5158/docs/当前需求与待确认事项.md)
+- [电商视频混剪开源方案调研](https://github.com/Lingentic/vedio-workflow/blob/3de5158/docs/电商视频混剪开源方案调研.md)
 
-以上是早期方案与调研资料；当前 Demo 的实际功能和限制以 Demo 文档及代码为准。
+以上链接固定到历史版本，不随本地资料目录重整变化。它们不是第一版功能清单；当前契约见 [PRODUCT](docs/harness/PRODUCT.md)，实际实现与待补项见 [架构](docs/harness/ARCHITECTURE.md) 和 [开发说明](docs/harness/DEVELOPMENT.md)。
