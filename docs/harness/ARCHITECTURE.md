@@ -21,7 +21,7 @@
 | 模块 | 责任与关键边界 |
 | --- | --- |
 | [server.ts](../../demo/server.ts) | 组装服务；校验 Host、Origin、JSON、路径等外部输入；路由 API；流式媒体 Range；擦除前端 TypeScript 类型；绑定 `127.0.0.1`。 |
-| [app.ts](../../demo/public/app.ts) | 字符串模板界面、事件绑定、串行草稿保存、轮询、预览和确认交互；不是业务状态的权威存储。修改根 DOM 时注意输入法、焦点、弹窗与拖动生命周期。 |
+| [app.ts](../../demo/public/app.ts) | 字符串模板与 `patchView` 局部 DOM 更新；按稳定 key 保留页面、资源、口播区间及播放器。`newElements` 仅给新控件绑定一次事件；串行保存与轮询均不重建整页。不是业务状态的权威存储；输入法、焦点、弹窗与拖动由现有交互保留。 |
 | [sortable.ts](../../demo/public/sortable.ts) | Pointer Events 排序、跟手浮层、占位与边缘滚动；松手落位只改前端清单，保存方案才写服务端。 |
 | [workflow.ts](../../demo/lib/workflow.ts) | 创建／切换任务、文案确认、区间复用、执行控制、方案与预览失效、完成与清理；当前服务一次只持有一个活动制作执行。 |
 | [library.ts](../../demo/lib/library.ts) | 资料验证、复制托管、探测、切分、逐失败范围重试、删除保护；固定片段按 binding 关联节点。 |

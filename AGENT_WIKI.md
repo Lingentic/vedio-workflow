@@ -26,6 +26,7 @@
 | 配音、时间戳、字幕切句 | [voice-config.json](demo/data/voice-config.json)、[models.ts](demo/lib/models.ts)：`voice`；[alignment.ts](demo/lib/alignment.ts)：`alignAudio` | `workflow.test.ts` 的时间对应与局部失效用例；真实配音另授权 |
 | 自动队列、通用主播画面、手选时长 | [plan.ts](demo/lib/plan.ts)：`soundBlocks`、`visualEvents`、`buildPlan`、`fullCues` | `workflow.test.ts` 队列用例；必要时 `preview-rework.test.ts` |
 | 拖动排序与素材选择弹窗 | [app.ts](demo/public/app.ts)：`renderVisualStage`、`materialPickerModal`、`manualPlanChanged`；[sortable.ts](demo/public/sortable.ts) | 真实拖动、长列表边缘滚动、Esc、保存前阻止继续；不必重新配音 |
+| 进度更新、页面抖动、播放／输入中断 | [app.ts](demo/public/app.ts)：`patchView`、`newElements`、`refresh` | 连续进度时节点身份／滚动／播放器保持；新结果局部出现、事件不重复；使用隔离数据模拟服务 |
 | 分屏、帧率、闪帧、字幕和 BGM | [renderer.ts](demo/lib/renderer.ts)：`renderTask`、`assDocument`；[media.ts](demo/lib/media.ts)；[plan.ts](demo/lib/plan.ts) | `video-rendering.test.ts`；设置返工再加 `preview-rework.test.ts` |
 | 预览失效、重生成与完成 | [workflow.ts](demo/lib/workflow.ts)：`previewInputs`、`previewChanges`、`render`、`complete`、`cleanup`；[app.ts](demo/public/app.ts)：`showRegenerationDialog` | `preview-rework.test.ts`；清理改动加 `workflow.test.ts` 完成用例 |
 | 数据位置、存储结构、迁移 | [paths.ts](demo/lib/paths.ts)、[store.ts](demo/lib/store.ts)、[types.ts](demo/lib/types.ts) | 先读数据专题；用临时目录验证，不在真实库试迁移 |

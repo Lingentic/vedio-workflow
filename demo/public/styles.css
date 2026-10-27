@@ -62,3 +62,58 @@ body{background:#f4f4f6;font-size:13px}.shell{grid-template-columns:210px minmax
 .product-picker-empty{padding:22px 9px;text-align:center;font-size:11px;color:var(--muted)}
 .product-picker-hint{border-top:1px solid #f0edf4;margin-top:7px;padding:8px 9px 0;font-size:9px;color:var(--muted)}
 @media(max-width:780px){.product-picker{width:100%}}
+/* Feedback: equal input/button sizing, compact writing, and explicit review actions. */
+.path-picker{display:flex;align-items:stretch;gap:9px}
+.path-picker>.input{flex:1;min-width:0;width:auto}
+.path-picker>.button{flex:0 0 auto;white-space:nowrap;display:flex;align-items:center;justify-content:center}
+.script-line textarea[data-black-node]{height:48px;min-height:48px;overflow-y:auto;resize:none}
+.copy-actions{align-items:center}
+.copy-preview{margin-top:22px;padding:16px;border:1px solid #e9e7ef;border-radius:8px;background:#faf9fd}
+.copy-preview-text{font-size:12px;line-height:1.95;margin-top:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.copy-part-host_clip{color:#bf5252}.copy-part-fixed_narration{color:#487fb6}
+.copy-preview-loading{display:flex;align-items:center;justify-content:center;gap:10px;min-height:100px;color:#84758e;font-size:11px}
+.copy-preview-empty{margin:16px 0 4px}
+.bgm-choice{display:flex;align-items:stretch;gap:8px}
+.bgm-choice>.select{flex:1;min-width:0;width:auto}
+.bgm-choice>.button{flex:0 0 auto;white-space:nowrap}
+.records-head>span:last-child{text-align:center}
+.record-actions{justify-content:center}
+.completion-dialog{width:min(420px,100%)}
+.completion-dialog .modal-intro{font-size:13px;color:var(--ink);margin-top:14px}
+@media(prefers-reduced-motion:reduce){.copy-preview-loading .spinner{animation:none}}
+/* Visual work follows one path: clips, timeline, then output settings. */
+html{scrollbar-gutter:stable}
+.stage-panel>.panel-title+.preview-box{margin-top:15px}
+.visual-section{margin-top:20px;padding-top:18px;border-top:1px solid #eeecf2}
+.visual-section:first-of-type{margin-top:16px;padding-top:0;border-top:0}
+.visual-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.visual-section-head h3{display:flex;align-items:center;gap:8px;margin:0;font-size:12px;font-weight:600}
+.visual-count{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:5px;background:#f2eff8;color:#847794;font-size:10px;font-weight:400}
+.visual-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.selection-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:11px}
+.selection-coverage{display:flex;flex-wrap:wrap;gap:5px 12px;font-size:10px;color:#797382;font-variant-numeric:tabular-nums}
+.selection-coverage.insufficient{color:#b65148}
+.timeline-placeholder{padding:12px 0;color:#96909d;font-size:11px}
+.visual-timeline .timeline{margin-top:0}
+.sound-settings{display:grid;gap:16px}
+.visual-setting-row{display:grid;grid-template-columns:112px minmax(0,1fr);align-items:center;gap:12px;font-size:11px;color:#5e5868}
+.visual-setting-row input[type=range]{width:100%;accent-color:#7048d8;margin:0}
+.visual-setting-row input[type=checkbox]{accent-color:#7048d8}
+.visual-footer{display:flex;justify-content:flex-end;margin-top:22px;padding-top:17px;border-top:1px solid #eeecf2}
+@media(max-width:480px){.visual-section-head{align-items:flex-start;flex-wrap:wrap}.visual-setting-row{grid-template-columns:1fr;gap:8px}}
+/* Keep status and media-type filters separate without explanatory copy. */
+.library-files-head{flex-wrap:wrap;gap:10px}
+.library-file-count{display:inline-block;margin-left:6px;padding:3px 6px;border-radius:5px;background:#f2eff8;color:#887a9a;font-size:10px;font-weight:400}
+.library-media-tabs{display:flex;gap:4px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid #eeecf2}
+.library-media-tabs button{display:flex;align-items:center;gap:6px;border:0;border-radius:7px;padding:7px 11px;background:transparent;color:#82798e;font-size:11px}
+.library-media-tabs button.active{background:#f1edfb;color:#7048d8;font-weight:600}
+.library-media-tabs button span{font-size:10px;opacity:.75;font-weight:400}
+.asset-image-modal img{display:block;width:100%;max-height:65vh;object-fit:contain;margin-top:16px}
+/* Shared scrollbars for the page, fields, dialogs and horizontal timelines. */
+*::-webkit-scrollbar{width:8px;height:8px}
+*::-webkit-scrollbar-track{background:transparent}
+*::-webkit-scrollbar-thumb{background:#d8d5df;border:2px solid transparent;border-radius:999px;background-clip:padding-box}
+*::-webkit-scrollbar-thumb:hover{background-color:#c6c1cf}
+*::-webkit-scrollbar-button{display:none;width:0;height:0}
+*::-webkit-scrollbar-corner{background:transparent}
+@supports not selector(::-webkit-scrollbar){*{scrollbar-width:thin;scrollbar-color:#d8d5df transparent}}
