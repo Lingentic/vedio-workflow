@@ -81,7 +81,7 @@
   /* ---------- 工具 ---------- */
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const productImage = (item, fallback) => {
-    const own = item.assets?.main?.[0];
+    const own = item.assets?.main?.[0] || item.assets?.image?.find(row => !row.disabled);
     return own?.src || own?.local ? `<img src="${esc(mediaSrc(own))}" alt="${esc(item.name)}" title="采集主图" width="46" height="46" loading="lazy">` : esc(fallback);
   };
   const money = value => `¥${Number(value || 0).toFixed(2)}`;
@@ -175,8 +175,8 @@
       ...pool.image.map((file, at) => ({ ...file, kind: 'image', at })),
     ];
     return `<div class="ec-prod-pool">
-      <span class="ec-prod-pool-label">${draft ? '已归档' : '已归入'} ${files.length}</span>
-      ${files.length ? files.map(file => `<span class="ec-prod-chip">${file.src ? `<img src="${esc(mediaSrc(file))}" alt="">` : `<i>${file.kind === 'video' ? '▶' : '图'}</i>`}<em>${file.kind === 'video' ? '视频' : '图片'}</em><span title="${esc(file.name)}">${esc(file.from ? `${file.from} · ${file.name}` : file.name)}</span>${locked ? '' : `<button type="button" data-lp="remove-pool" data-zone="${file.kind}" data-index="${file.at}" aria-label="移出 ${esc(file.name)}">×</button>`}</span>`).join('') : `<span class="ec-prod-hint">${draft ? '勾选左上角复选框即归档' : '勾选候选后点下面的「归入素材中心」'}</span>`}
+      <span class="ec-prod-pool-label">${draft ? '已勾选' : '已归入'} ${files.length}</span>
+      ${files.length ? files.map(file => `<span class="ec-prod-chip">${file.src ? `<img src="${esc(mediaSrc(file))}" alt="">` : `<i>${file.kind === 'video' ? '▶' : '图'}</i>`}<em>${file.kind === 'video' ? '视频' : '图片'}</em><span title="${esc(file.name)}">${esc(file.from ? `${file.from} · ${file.name}` : file.name)}</span>${locked ? '' : `<button type="button" data-lp="remove-pool" data-zone="${file.kind}" data-index="${file.at}" aria-label="移出 ${esc(file.name)}">×</button>`}</span>`).join('') : `<span class="ec-prod-hint">${draft ? '勾选左上角复选框先攒着，点「确认」才归档' : '勾选候选后点下面的「归入素材中心」'}</span>`}
     </div>`;
   };
   const crawlZone = (host, crawl, zone, locked) => {
@@ -201,7 +201,7 @@
       ${data.failed.length ? `<div class="ec-prod-zone-fail"><span><b>${esc(data.failed.join('、'))} 渠道未返回${zone.label}候选</b>${esc(data.failed.map(channel => data.errors[channel] || '未返回候选').join('；'))}</span><button type="button" class="ec-prod-btn ec-prod-btn--sm" data-lp="retry-zone" data-zone="${zone.key}" ${data.running || data.paused ? 'disabled' : ''}>⟳ 重试本区</button></div>` : ''}
     </div>`;
   };
-  /* 同一套面板，两种结构：录入弹窗＝勾选即归档（确认即入库，不放归入按钮）；
+  /* 同一套面板，两种结构：录入弹窗＝勾选暂存，确认才归档入库；
    * 商品详情＝勾选只是选中，必须点「↓ 归入素材中心」才入档 */
   const crawlPanel = host => {
     const crawl = crawlFor(host);
@@ -212,14 +212,14 @@
     const kept = poolTotal(host);
     const picked = CRAWL_ZONES.reduce((sum, zone) => sum + crawl.zones[zone.key].results.filter(row => row.picked && !row.dup).length, 0);
     return `<div class="ec-prod-crawl" data-crawl-owner="${esc(host.id)}">
-      <p class="ec-prod-crawl-top">切换工作区可继续等待；刷新或关闭采集页会结束本次候选接收，已确认归档的素材会保留。</p>
+      <p class="ec-prod-crawl-top">素材正在爬取时，切换工作区不会中断，会继续在后台接收候选。刷新或关闭页面会结束接收。</p>
       <div class="ec-prod-crawl-bar">
         <div class="ec-prod-channel" role="group" aria-label="爬取渠道"><span>渠道</span>${CRAWL_CHANNELS.map(ch => `<button type="button" class="${crawl.channels.includes(ch) ? 'active' : ''}" data-lp-channel="${ch}" aria-pressed="${crawl.channels.includes(ch)}">${ch}</button>`).join('')}</div>
         ${!basis.name.trim() ? '<span class="ec-prod-crawl-note is-warn">先填商品名称，爬取按名称 / 类目发起</span>' : `<span class="ec-prod-crawl-note">依据 <b>${esc(basis.name.trim().slice(0, 14))}</b>${basis.cat ? ` · <b>${esc(basis.cat)}</b>` : ''} 检索同类素材</span>`}
       </div>
       ${CRAWL_ZONES.map(zone => crawlZone(host, crawl, zone, locked)).join('')}
       ${archiveStrip(pool, locked, draft)}
-      <div class="ec-prod-crawl-actions"><small>${locked ? '下面是在库素材，来自记录导入、暂无逐条留痕。' : draft ? '勾了就算归档；点「确认」随商品一起入库。重新爬取只刷新候选区，<b>已归档的不会丢</b>。' : '重新爬取只刷新候选区，<b>已归入的不会丢</b>。'}</small>${!draft && picked ? `<button type="button" class="ec-prod-btn ec-prod-btn--sm ec-prod-btn--primary" data-lp="commit-crawl">↓ 归入素材中心 (${picked})</button>` : ''}</div>
+      <div class="ec-prod-crawl-actions"><small>${locked ? '下面是在库素材，来自记录导入、暂无逐条留痕。' : draft ? '勾选＝先攒在下面这条「已勾选」里，点「确认」才真正归档进素材中心。重新爬取只刷新候选区，<b>已勾选的不会丢</b>。' : '重新爬取只刷新候选区，<b>已归入的不会丢</b>。'}</small>${!draft && picked ? `<button type="button" class="ec-prod-btn ec-prod-btn--sm ec-prod-btn--primary" data-lp="commit-crawl">↓ 归入素材中心 (${picked})</button>` : ''}</div>
     </div>`;
   };
   /* 放大查看：点候选卡的图/封面进来 */
@@ -312,7 +312,7 @@
           <header><b><i>1</i>基本信息</b></header>
           <div class="ec-prod-form-section-body">
             <div class="ec-prod-group">
-              <header><b>采集带回</b><button type="button" class="ec-prod-btn ec-prod-btn--sm" data-lp="ext-help">扩展安装说明</button></header>
+              <header><b>采集带回</b></header>
               <div class="ec-prod-group-body">
                 <div class="ec-prod-row"><div class="ec-prod-row-head"><label for="lpKsId">快手商品ID</label></div>
                   <div class="ec-prod-ksbox">
@@ -340,7 +340,7 @@
                   <div><div class="ec-prod-row-head"><label for="lpSpec">规格</label></div><input id="lpSpec" class="ec-prod-control" value="${esc(d.spec)}" data-lp-draft="spec" placeholder="如 41-46码 / 双"></div>
                   <div><div class="ec-prod-row-head"><label for="lpCatSel">类目</label></div><select id="lpCatSel" class="ec-prod-control" data-lp-draft="cat"><option value="">请选择类目</option>${CATEGORIES.map(c => option(c, c)).join('')}</select></div>
                 </div>
-                <div class="ec-prod-row"><div class="ec-prod-row-head"><label for="lpHi">商品卖点</label></div><textarea id="lpHi" class="ec-prod-control" data-lp-draft="highlight" placeholder="填写用于工作台生成文案的真实商品卖点">${esc(d.highlight)}</textarea></div><div class="ec-prod-row"><div class="ec-prod-row-head"><label for="lpNeg">负面词汇</label></div><textarea id="lpNeg" class="ec-prod-control" style="min-height:64px" data-lp-draft="negatives" placeholder="生成时要规避的词，用逗号分隔">${esc(d.negatives)}</textarea></div>
+                <div class="ec-prod-row"><div class="ec-prod-row-head"><label for="lpNeg">负面词汇</label></div><textarea id="lpNeg" class="ec-prod-control" style="min-height:64px" data-lp-draft="negatives" placeholder="生成时要规避的词，用逗号分隔">${esc(d.negatives)}</textarea></div>
               </div>
             </div>
           </div>
@@ -348,7 +348,7 @@
   };
   /* 联网爬取：录入弹窗里是右列，详情页里是「联网爬取」tab（多一块爬取记录） */
   const crawlTab = host => `<section class="ec-prod-form-section">
-      <header><b><i>2</i>联网爬取</b><small class="ec-prod-hint">${isDraft(host) ? '视频、图片分开爬，各自一个按钮；勾左上角复选框即归档' : '每次爬取都留记录，可回看这次归入了哪些素材'}</small></header>
+      <header><b><i>2</i>联网爬取</b><small class="ec-prod-hint">${isDraft(host) ? '视频、图片分开爬，各自一个按钮；勾左上角复选框即攒入已勾选' : '每次爬取都留记录，可回看这次归入了哪些素材'}</small></header>
       <div class="ec-prod-form-section-body">
         ${crawlPanel(host)}
         ${isDraft(host) ? '' : crawlRecords(host)}
@@ -357,7 +357,7 @@
   const entryDialog = () => {
     const d = state.draft;
     return `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-dialog" role="dialog" aria-modal="true" aria-labelledby="lpEntryTitle">
-      <header><div><h2 id="lpEntryTitle">录入商品</h2><p>第一步通过扩展采集商品资料和图集；第二步检索视频候选，勾选即归档。确认后同步到工作台素材库。</p></div><button type="button" data-lp="leave-entry" aria-label="关闭">×</button></header>
+      <header><div><h2 id="lpEntryTitle">录入商品</h2><p>第一步点「采集」：拉回资料并爬回商品图片；第二步点各区按钮爬视频 / 图片。勾选的才进「已勾选」，点「确认」才归档入库，没爬完也接着爬。</p></div><button type="button" data-lp="leave-entry" aria-label="关闭">×</button></header>
       <div class="ec-prod-dialog-body"><div class="ec-prod-form-grid">${entryForm()}${crawlTab(d)}</div></div>
       <footer>
         <div class="ec-prod-tally"><span>▶ 视频: <b>${d.pool.video.length}</b></span><span>⛰ 图片: <b>${d.pool.image.length + d.pool.main.length}</b></span></div>
@@ -728,7 +728,7 @@
     crawl.taken = poolNames(host);
     startZone(host, crawl, zoneKey, [...crawl.channels], openRecord(host, crawl.channels, [zoneKey]), false);
     paintKeepingFocus();
-    if (kept) toast(`重新爬取：只刷新候选区，已归档的 ${kept} 个不动`);
+    if (kept) toast(`重新爬取：只刷新候选区，${isDraft(host) ? '已勾选' : '已归入'}的 ${kept} 个不动`);
   };
   /* 勾选即归入：一条候选进/出素材中心只认这两个动作；「全部归入」是同一动作的批量版 */
   const takeRow = (host, pool, zoneKey, row) => {
@@ -874,7 +874,7 @@
       const row = crawl?.zones[zoneKey]?.results[Number(trigger.dataset.index)];
       if (!row || row.dup) return;
       row.picked = !row.picked;
-      /* 弹窗里勾了就直接归档（确认即入库）；详情里勾选只是选中，要点「归入素材中心」才算 */
+      /* 弹窗 pool 只是暂存的已勾选清单，确认之前不会同步素材库。详情里须点「归入素材中心」。 */
       if (isDraft(host)) {
         if (row.picked) takeRow(host, host.pool, zoneKey, row); else dropRow(host, host.pool, zoneKey, row);
       } else {
@@ -885,7 +885,12 @@
     if (action === 'commit-crawl') { commitPicked(host); return; }
     if (action === 'remove-pool') {
       const zoneKey = trigger.dataset.zone;
-      poolFor(host)[zoneKey].splice(Number(trigger.dataset.index), 1);
+      const pool = poolFor(host);
+      const removed = pool[zoneKey][Number(trigger.dataset.index)];
+      if (!removed) return;
+      dropRow(host, pool, zoneKey, removed);
+      const crawl = crawlFor(host); crawl.taken.delete(mediaKey(removed));
+      crawl.zones[zoneKey].results.forEach(row => { if (mediaKey(row) === mediaKey(removed)) row.picked = false; });
       if (!isDraft(host)) { syncMaterials(host); host.updated = today(); persist(); }
       return paint();
     }
@@ -939,14 +944,21 @@
         if (!d.spec.trim() && record.specification) d.spec = record.specification;
         if (!d.cat) d.cat = window.CollectApi.categoryOf(record);
         d.collectSource = record.sourceUrl || '';
-        if (record.mainImageUrl) d.pool.main = [{ name: '商品主图', src: record.mainImageUrl, platform: 'kuaishou', kind: 'image', from: '商品详情' }];
-        d.collectedImages = [...new Set((record.imageUrls || []).filter(url => /^https?:\/\//.test(url)))].map((src,index) => ({ name: `商品图 ${index + 1}`, src, kind: 'image', platform: 'kuaishou', from: '商品详情', channel: '商品详情' }));
+        const imageUrls = [record.mainImageUrl, ...(record.imageUrls || [])].filter(url => /^https?:\/\//.test(url || ''));
+        d.collectedImages = [...new Set(imageUrls)].map((src, index) => ({ name: src === record.mainImageUrl ? '商品主图' : `商品图 ${index + 1}`, src, kind: 'image', platform: 'kuaishou', from: '商品详情', channel: '商品详情' }));
         const crawl = crawlFor(d);
+        const zone = crawl.zones.image;
+        // A new product collection replaces image candidates, never the user's selection.
+        zone.requestId += 1;
+        if (zone.record) { zone.record.status = 'interrupted'; zone.record.pending = 0; crawl.open.delete(zone.record); }
+        zone.record = null; zone.running = false; zone.paused = false; zone.pending = 0; zone.queue = []; zone.failed = []; zone.errors = {};
+        const selected = poolNames(d);
+        zone.results = d.collectedImages.filter(row => !selected.has(mediaKey(row))).map(row => ({ ...row, picked: false, dup: false }));
         const recordOfImages = openRecord(d, ['商品详情'], ['image']);
-        for (const row of d.collectedImages) { takeRow(d, d.pool, 'image', row); recordOfImages.image.push({ ...row, picked: true }); }
+        recordOfImages.image = zone.results.map(row => ({ ...row }));
         settleRecord(recordOfImages);
-        crawl.zones.image.attempts['商品详情'] = (crawl.zones.image.attempts['商品详情'] || 0) + 1;
-        toast(`已采集商品资料，归档 ${d.collectedImages.length} 张详情图片；视频请单独爬取`);
+        zone.attempts['商品详情'] = (zone.attempts['商品详情'] || 0) + 1;
+        toast(`已采集商品资料，${zone.results.length} 张图片进入候选区，请勾选后确认入库`);
       }).catch(error => toast(error.message)).finally(() => { if (state.draft === d) { d.collecting = false; paintKeepingFocus(); } });
       return;
     }
