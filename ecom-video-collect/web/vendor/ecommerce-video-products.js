@@ -296,7 +296,7 @@
         ${noName ? '<span class="ec-prod-crawl-note is-warn">⚠ 未填商品名称，暂不可发起爬取</span>' : `<span class="ec-prod-crawl-note">依据 <b>${esc(basis.name.trim().slice(0, 14))}</b>${basis.cat ? ` · <b>${esc(basis.cat)}</b>` : ''} 检索同类型素材</span>`}
       </div>
       ${CRAWL_ZONES.map(zone => crawlZone(crawl, pool, zone)).join('')}
-      <div class="ec-prod-crawl-actions"><small>勾选后归入对应分区，底栏「视频 / 图片」计数同步更新；确认添加时随商品一同入库。</small><button type="button" class="ec-prod-btn ec-prod-btn--sm ec-prod-btn--primary" data-lp="commit-crawl" ${picked ? '' : 'disabled'}>↓ 归入素材池${picked ? ` (${picked})` : ''}</button></div>
+      <div class="ec-prod-crawl-actions"><small>勾选后归入对应分区，底栏「视频 / 图片」计数同步更新；确认添加时随商品一同入库。</small><button type="button" class="ec-prod-btn ec-prod-btn--sm ec-prod-btn--primary" data-lp="commit-crawl" ${picked ? '' : 'disabled title="先点击勾选上方的候选素材，再归入素材池"'}>↓ 归入素材池${picked ? ` (${picked})` : ''}</button></div>
     </div>`;
   };
 
@@ -412,7 +412,7 @@
           const vs = item.materialDetails?.video || [];
           const left = vs.filter(v => !v.workbench && pushable(v)).length;
           const busy = pushing.has(item.id);
-          return `<button type="button" class="ec-prod-btn${left ? ' ec-prod-btn--primary' : ''}" data-lp="push-workbench" data-id="${item.id}" ${busy || !left ? 'disabled' : ''} title="把该商品的已入池视频素材下载并导入视频工作台素材库">${busy ? '导入中…' : `⇨ 导入视频工作台${vs.length ? `（${left}/${vs.length} 条）` : ''}`}</button>`;
+          return `<button type="button" class="ec-prod-btn${left ? ' ec-prod-btn--primary' : ''}" data-lp="push-workbench" data-id="${item.id}" ${busy ? 'disabled' : ''} title="把该商品的已入池视频素材下载并导入视频工作台素材库">${busy ? '导入中…' : `⇨ 导入视频工作台${vs.length ? `（${left}/${vs.length} 条）` : ''}`}</button>`;
         })()}
         <button type="button" class="ec-prod-btn" data-lp="close-detail">关闭</button>
       </div>
@@ -814,12 +814,9 @@
     const videos = item.materialDetails?.video || [];
     const pendingIdx = videos.map((v, i) => (!v.workbench && pushable(v) ? i : -1)).filter(i => i >= 0);
     const unpushable = videos.filter(v => !v.workbench && !pushable(v)).length;
-    if (manual) {
-      if (!videos.length) { toast('该商品还没有视频素材，先爬取并确认添加'); return; }
-      if (!pendingIdx.length) {
-        toast(unpushable ? `剩余 ${unpushable} 条为本地上传素材，没有可推送的来源地址` : '视频素材已全部导入过工作台');
-        return;
-      }
+    if (manual && videos.length && !pendingIdx.length) {
+      toast(unpushable ? `剩余 ${unpushable} 条为本地上传素材，没有可推送的来源地址` : '视频素材已全部导入过工作台');
+      return;
     }
     pushing.add(item.id); paint();
     fetch('./api/workbench-import', {
@@ -1041,6 +1038,8 @@
     if (action === 'submit-entry') {
       const d = state.draft;
       if (!entryValid(d)) return;
+      /* 已勾选但未点「归入素材池」的候选在提交时一并归入，避免勾选被静默丢弃 */
+      if (crawlPicked(d.crawl)) commitCrawl();
       const existed = state.items.find(row => row.kuaishouId === d.kuaishouId.trim());
       if (existed) { toast('该快手商品ID 已录入，已为你定位到详情'); state.dialog = null; state.draft = null; state.detailId = existed.id; return paint(); }
       const materials = { main: d.pool.main.length, video: d.pool.video.length, image: d.pool.image.length };
@@ -1058,7 +1057,7 @@
       });
       state.dialog = null; state.draft = null;
       persist(); paint();
-      toast(materialTotal(state.items[0]) ? '已入库，素材状态「素材就绪」，正在同步视频工作台…' : '已入库；未爬到素材，状态「待爬取」，可到详情页重新爬取');
+      toast(materialTotal(state.items[0]) ? '已入库，素材状态「素材就绪」，正在同步视频工作台…' : '已入库；素材池为空（未勾选归入候选），状态「待爬取」，可重新录入或在详情页补齐');
       pushToWorkbench(state.items[0], false);
       return;
     }
