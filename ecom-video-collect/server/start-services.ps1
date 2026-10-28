@@ -38,9 +38,9 @@ function Test-Ready($url, $kind) {
         if ($kind -eq 'workbench') {
             if ($null -eq $result.products -or $null -eq $result.assets) { return $false }
             $runtime = Invoke-RestMethod -Uri "$workbenchUrl/api/runtime" -TimeoutSec 2 -UseBasicParsing
-            return ($runtime.interfaceVersion -eq 'embedded-collection-v1')
+            return ($runtime.interfaceVersion -eq 'embedded-collection-v2')
         }
-        return ($result.ok -eq $true -and $null -ne $result.platforms -and $null -ne $result.mediaDir)
+        return ($result.ok -eq $true -and $null -ne $result.platforms -and $null -ne $result.mediaDir -and $result.interfaceVersion -eq 'browser-preview-v1')
     } catch { return $false }
 }
 
@@ -77,6 +77,20 @@ function Start-ServiceProcess($name, $executable, $arguments, $workingDirectory,
                 if ($null -ne $stillRunning.products) { throw '旧版工作台仍在运行，且不属于本脚本。请关闭旧的工作台进程后重新启动。' }
             } catch {
                 if ($_.Exception.Message -like '旧版工作台仍在运行*') { throw }
+            }
+        }
+    }
+    if ($kind -eq 'collect') {
+        $legacy = $null
+        try { $legacy = Invoke-RestMethod -Uri $url -TimeoutSec 2 -UseBasicParsing } catch { }
+        if ($null -ne $legacy -and $legacy.ok -eq $true -and $null -ne $legacy.platforms) {
+            $owned = @(Read-OwnedRecords | Where-Object { $_.name -eq $name })
+            foreach ($record in $owned) { Stop-OwnedProcess $record }
+            try {
+                $stillRunning = Invoke-RestMethod -Uri $url -TimeoutSec 2 -UseBasicParsing
+                if ($stillRunning.ok -eq $true) { throw '旧版采集服务仍在运行，且不属于本脚本。请关闭旧进程后重新启动。' }
+            } catch {
+                if ($_.Exception.Message -like '旧版采集服务仍在运行*') { throw }
             }
         }
     }

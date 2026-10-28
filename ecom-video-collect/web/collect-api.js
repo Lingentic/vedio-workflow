@@ -84,6 +84,7 @@
   window.CollectApi = {
     platformOf, proxy, thumbnail, collectProduct, download, setWorkbench, mediaUrl, embedded, migrateLegacyStorage,
     get workbenchUrl() { return workbenchUrl; },
+    previewVideo: path => post('/api/preview', { path }),
     search: (channel, keyword, signal) => request(`/api/search?platform=${platformOf(channel)}&keyword=${encodeURIComponent(keyword)}&pages=1`, { signal }),
     importProduct: payload => post('/api/workbench-import', payload),
     categoryOf: record => {

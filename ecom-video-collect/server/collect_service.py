@@ -352,6 +352,56 @@ def _require_video_stream(path):
         raise RuntimeError("返回的是纯音频流，无视频画面")
 
 
+_PREVIEW_LOCK = threading.Lock()
+
+
+def browser_preview(local):
+    """Keep the downloaded original; make a browser-compatible MP4 only when needed."""
+    if not isinstance(local, str) or not local.startswith("/media/"):
+        raise ValueError("请选择已下载的本地视频")
+    filename = local[len("/media/"):]
+    if not filename or filename != os.path.basename(filename) or not filename.lower().endswith((".mp4", ".ts", ".mov", ".webm")):
+        raise ValueError("本地视频路径无效")
+    source = os.path.realpath(os.path.join(MEDIA, filename))
+    if os.path.commonpath((os.path.realpath(MEDIA), source)) != os.path.realpath(MEDIA) or not os.path.isfile(source):
+        raise ValueError("本地视频不存在，请重新爬取")
+    probe = _ffprobe()
+    if not probe:
+        raise RuntimeError("视频预览需要 FFprobe，请用一键启动脚本启动采集服务")
+    result = subprocess.run([probe, "-v", "error", "-show_entries", "stream=codec_type,codec_name",
+                             "-of", "json", source], capture_output=True, timeout=120)
+    if result.returncode:
+        raise RuntimeError("视频文件不可解析，无法预览")
+    streams = json.loads(result.stdout).get("streams") or []
+    video = next((s.get("codec_name") for s in streams if s.get("codec_type") == "video"), None)
+    audio = [s.get("codec_name") for s in streams if s.get("codec_type") == "audio"]
+    if not video:
+        raise RuntimeError("视频文件没有画面，无法预览")
+    if filename.lower().endswith(".mp4") and video == "h264" and all(codec == "aac" for codec in audio):
+        return local
+    ffmpeg = _ffmpeg()
+    if not ffmpeg:
+        raise RuntimeError("此视频编码需要 FFmpeg 转为浏览器可播放格式")
+    preview = os.path.join(MEDIA, os.path.splitext(filename)[0] + "-browser-preview.mp4")
+    with _PREVIEW_LOCK:
+        if os.path.isfile(preview) and os.path.getsize(preview) > 1024 and os.path.getmtime(preview) >= os.path.getmtime(source):
+            return "/media/" + os.path.basename(preview)
+        temporary = preview + ".partial"
+        try:
+            out = subprocess.run([ffmpeg, "-y", "-nostdin", "-loglevel", "error", "-i", source,
+                                  "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+                                  "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-threads", "2",
+                                  "-f", "mp4", temporary], capture_output=True, timeout=900)
+            if out.returncode or not os.path.isfile(temporary) or os.path.getsize(temporary) < 1024:
+                message = (out.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+                raise RuntimeError("视频转码失败" + ("：" + message[-1][:120] if message else ""))
+            os.replace(temporary, preview)
+        finally:
+            if os.path.isfile(temporary):
+                os.remove(temporary)
+    return "/media/" + os.path.basename(preview)
+
+
 def download_to_media(url, platform, name, kind):
     """下载远端媒体到 MEDIA，返回 ("/media/<file>", size, is_hls)。失败抛异常。"""
     os.makedirs(MEDIA, exist_ok=True)
@@ -556,6 +606,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
+        if path.startswith("/media/"):
+            return self._media(path)
         if path == "/api/health":
             return self._json({
                 "ok": True,
@@ -566,6 +618,7 @@ class Handler(BaseHTTPRequestHandler):
                 },
                 "mediaDir": MEDIA,
                 "workbench": WORKBENCH,
+                "interfaceVersion": "browser-preview-v1",
             })
         if path == "/api/search":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -611,6 +664,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
+        if path == "/api/preview":
+            try:
+                return self._json({"ok": True, "path": browser_preview(self._read_json().get("path"))})
+            except ValueError as e:
+                return self._json({"ok": False, "message": str(e)[:300]}, 400)
+            except Exception as e:
+                return self._json({"ok": False, "message": str(e)[:300]}, 502)
         if path == "/api/download":
             body = self._read_json()
             url = body.get("url") or ""
@@ -638,6 +698,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_HEAD(self):
         path = urllib.parse.urlparse(self.path).path
+        if path.startswith("/media/"):
+            return self._media(path, head_only=True)
         target = self._resolve(path)
         if target is None:
             return self._send(404)
@@ -648,6 +710,40 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     # ---- static ----
+    def _media(self, path, head_only=False):
+        target = self._resolve(path)
+        if target is None:
+            return self._send(404)
+        size = os.path.getsize(target)
+        start, end = 0, size - 1
+        requested = self.headers.get("Range")
+        if requested:
+            match = re.fullmatch(r"bytes=(\d*)-(\d*)", requested)
+            if not match or not any(match.groups()):
+                return self._send(416, headers={"Content-Range": f"bytes */{size}"})
+            start = int(match[1]) if match[1] else max(0, size - int(match[2]))
+            end = min(int(match[2]), end) if match[1] and match[2] else end
+            if start > end or start >= size:
+                return self._send(416, headers={"Content-Range": f"bytes */{size}"})
+        self.send_response(206 if requested else 200)
+        self.send_header("Content-Type", mimetypes.guess_type(target)[0] or "application/octet-stream")
+        self.send_header("Content-Length", str(max(0, end - start + 1)))
+        self.send_header("Accept-Ranges", "bytes")
+        if requested:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.end_headers()
+        if head_only:
+            return
+        with open(target, "rb") as stream:
+            stream.seek(start)
+            remaining = end - start + 1
+            while remaining > 0:
+                chunk = stream.read(min(1 << 16, remaining))
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                remaining -= len(chunk)
+
     def _resolve(self, path):
         """/media/* 走媒体目录，其余静态文件只服务 web/ 子树。"""
         rel = urllib.parse.unquote(path).lstrip("/") or "index.html"

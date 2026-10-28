@@ -81,7 +81,7 @@
   /* ---------- 工具 ---------- */
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const productImage = (item, fallback) => {
-    const own = item.assets?.main?.[0] || item.assets?.image?.find(row => !row.disabled);
+    const own = item.assets?.main?.[0] || item.assets?.image?.find(row => !row.disabled) || item.collectedImages?.[0] || item.assets?.video?.find(row => row.src);
     return own?.src || own?.local ? `<img src="${esc(mediaSrc(own))}" alt="${esc(item.name)}" title="采集主图" width="46" height="46" loading="lazy">` : esc(fallback);
   };
   const money = value => `¥${Number(value || 0).toFixed(2)}`;
@@ -226,7 +226,7 @@
   const lightbox = () => {
     const p = state.preview;
     if (!p) return '';
-    return `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-lightbox" role="dialog" aria-modal="true" aria-label="素材预览"><button type="button" data-lp="close-preview" aria-label="关闭">×</button>${p.loading ? '<div class="ec-prod-preview-loading"><span class="ec-prod-spinner"></span>正在下载并校验素材…</div>' : p.error ? `<div class="ec-prod-preview-error">${esc(p.error)}</div>` : p.kind === 'video' && p.local ? `<video controls playsinline preload="metadata" src="${esc(window.CollectApi.mediaUrl(p.local))}" poster="${esc(mediaSrc(p))}"></video>` : p.local || p.src ? `<img src="${esc(p.local ? window.CollectApi.mediaUrl(p.local) : mediaSrc(p))}" alt="${esc(p.name)}">` : '<div class="ec-prod-lightbox-empty">这条素材没有可用的预览地址</div>'}<p><b>${esc(p.name)}</b><span>${p.kind === 'video' ? '视频预览' : '图片'} · ${esc(p.channel || p.from || '')}</span></p></div></div>`;
+    return `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-lightbox" role="dialog" aria-modal="true" aria-label="素材预览"><button type="button" data-lp="close-preview" aria-label="关闭">×</button>${p.loading ? '<div class="ec-prod-preview-loading"><span class="ec-prod-spinner"></span>正在准备可播放的预览…</div>' : p.error ? `<div class="ec-prod-preview-error">${esc(p.error)}</div>` : p.kind === 'video' && p.local ? `<video controls autoplay muted playsinline preload="metadata" src="${esc(window.CollectApi.mediaUrl(p.previewLocal || p.local))}" poster="${esc(mediaSrc(p))}"></video>` : p.local || p.src ? `<img src="${esc(p.local ? window.CollectApi.mediaUrl(p.local) : mediaSrc(p))}" alt="${esc(p.name)}">` : '<div class="ec-prod-lightbox-empty">这条素材没有可用的预览地址</div>'}<p><b>${esc(p.name)}</b><span>${p.kind === 'video' ? '视频预览' : '图片'} · ${esc(p.channel || p.from || '')}</span></p></div></div>`;
   };
   /* ---------- 爬取记录（只出现在「联网爬取」tab；带时间，详情只列已归入的素材） ---------- */
   const RECORD_STATUS = {
@@ -412,7 +412,7 @@
   /* 基本信息 tab（详情侧）：已获取的资料留存不动 ＋ 联网爬到的素材全铺在这（不标归入时间） */
   const detailInfo = (item, missing) => `<div class="ec-prod-detail-top">
         <section class="ec-prod-hero">
-          <div class="ec-prod-hero-media"><span class="ec-prod-thumb" style="width:100%;height:100%;border:0;border-radius:0">${productImage(item, item.materials.main ? '商品主图' : '暂无主图')}</span>${item.assets?.main?.[0]?.src ? '<em>采集主图</em>' : window.EcommerceVideoProductImages?.get(item) ? '<em>相似商品示意图</em>' : item.materials.main ? '<em>商品主图</em>' : ''}</div>
+          <div class="ec-prod-hero-media"><span class="ec-prod-thumb" style="width:100%;height:100%;border:0;border-radius:0">${productImage(item, '暂无主图')}</span>${item.assets?.main?.[0]?.src ? '<em>采集主图</em>' : item.assets?.image?.some(row => !row.disabled) ? '<em>商品图片</em>' : item.collectedImages?.length ? '<em>采集图片</em>' : item.assets?.video?.some(row => row.src) ? '<em>视频封面</em>' : ''}</div>
         </section>
         <section>
           <div class="ec-prod-split-label"><i>1</i>商品资料</div>
@@ -808,8 +808,10 @@
       const owner = ownerOf(crawlFor(host)) || (isDraft(host) ? host : find(host.id));
       const key = mediaKey(row);
       for (const entry of (owner && poolFor(owner)[kind]) || []) if (mediaKey(entry) === key) entry.local = result.path;
+      for (const record of owner?.crawls || []) for (const entry of record[kind] || []) if (mediaKey(entry) === key) entry.local = result.path;
       if (!isDraft(owner)) persist();
-      if (state.preview?.previewId === previewId) state.preview = { ...row, kind, local: result.path, previewId };
+      const preview = kind === 'video' ? await window.CollectApi.previewVideo(result.path) : result;
+      if (state.preview?.previewId === previewId) state.preview = { ...row, kind, local: result.path, previewLocal: preview.path, previewId };
     } catch (error) { if (state.preview?.previewId === previewId) state.preview = { ...row, kind, error: error.message, previewId }; }
     paint();
   };
