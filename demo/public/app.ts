@@ -116,12 +116,18 @@ function navButton(id: Page, icon: string, label: string, description = ''): str
 const collector = (window as unknown as { EcommerceVideoProducts: {
   setAccount(id: string): void; html(): string; mount(root: HTMLElement, options: { toast: typeof showToast; goto: (page: string, productId?: string) => void }): void;
 } }).EcommerceVideoProducts;
-await (window as unknown as { CollectApi: { migrateLegacyStorage(): Promise<void> } }).CollectApi.migrateLegacyStorage();
-collector.setAccount('local');
+let collectionLoadError = '';
+try {
+  const collectApi = (window as unknown as { CollectApi?: { migrateLegacyStorage(): Promise<void> } }).CollectApi;
+  if (!collector || !collectApi) throw new Error('商品获取组件未加载，请重启工作台服务后刷新页面。');
+  await collectApi.migrateLegacyStorage();
+  collector.setAccount('local');
+} catch (error) { collectionLoadError = error instanceof Error ? error.message : String(error); }
 let collectorMounted: HTMLElement | null = null;
 function mountCollection(): void {
   const container = document.querySelector<HTMLElement>('[data-collection-root]');
   if (!container || container === collectorMounted) return;
+  if (collectionLoadError) { container.innerHTML = `<div class="notice">${esc(collectionLoadError)}</div>`; return; }
   container.innerHTML = collector.html();
   collector.mount(container, { toast: showToast, goto: (_target, productId) => {
     libraryGroup = 'product'; libraryProductId = productId || 'all'; libraryFolder = 'all';
@@ -475,7 +481,7 @@ function bind(): void {
   });
 }
 async function navigate(target: Page): Promise<void> {
-  if (page === 'collection') collector.html();
+  if (page === 'collection' && !collectionLoadError) collector.html();
   const task = selectedTask(); if (task) await flushTaskDraft(task.id);
   if (target !== 'task') { page = target; selectedTaskId = ''; }
   else page = target;

@@ -9,6 +9,21 @@ $workbenchUrl = 'http://127.0.0.1:4186'
 $collectUrl = 'http://127.0.0.1:8765'
 $started = @()
 
+function Expand-OwnedRecords($records) {
+    foreach ($record in @($records)) {
+        if ($null -eq $record) { continue }
+        if ($record.id) { $record }
+        elseif ($null -ne $record.value) { Expand-OwnedRecords $record.value }
+        elseif ($record -is [array]) { Expand-OwnedRecords $record }
+    }
+}
+
+function Read-OwnedRecords {
+    if (Test-Path -LiteralPath $stateFile) {
+        Expand-OwnedRecords (Get-Content -LiteralPath $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json)
+    }
+}
+
 function Stop-OwnedProcess($record) {
     $process = Get-Process -Id $record.id -ErrorAction SilentlyContinue
     if ($process -and $process.StartTime.ToUniversalTime().Ticks.ToString() -eq [string]$record.startedAt) {
@@ -20,7 +35,11 @@ function Stop-OwnedProcess($record) {
 function Test-Ready($url, $kind) {
     try {
         $result = Invoke-RestMethod -Uri $url -TimeoutSec 2 -UseBasicParsing
-        if ($kind -eq 'workbench') { return ($null -ne $result.products -and $null -ne $result.assets) }
+        if ($kind -eq 'workbench') {
+            if ($null -eq $result.products -or $null -eq $result.assets) { return $false }
+            $runtime = Invoke-RestMethod -Uri "$workbenchUrl/api/runtime" -TimeoutSec 2 -UseBasicParsing
+            return ($runtime.interfaceVersion -eq 'embedded-collection-v1')
+        }
         return ($result.ok -eq $true -and $null -ne $result.platforms -and $null -ne $result.mediaDir)
     } catch { return $false }
 }
@@ -46,6 +65,21 @@ function Resolve-Tool($configured, $name, $fallbacks) {
 
 function Start-ServiceProcess($name, $executable, $arguments, $workingDirectory, $url, $kind, $port) {
     if (Test-Ready $url $kind) { Write-Host "[复用] $name 已运行"; return }
+    if ($kind -eq 'workbench') {
+        $legacy = $null
+        try { $legacy = Invoke-RestMethod -Uri $url -TimeoutSec 2 -UseBasicParsing } catch { }
+        if ($null -ne $legacy -and $null -ne $legacy.products -and $null -ne $legacy.assets) {
+            if ($legacy.activeExecution -or $legacy.libraryBusy) { throw '旧版工作台有任务运行，请等待任务结束后重新启动。' }
+            $owned = @(Read-OwnedRecords | Where-Object { $_.name -eq $name })
+            foreach ($record in $owned) { Stop-OwnedProcess $record }
+            try {
+                $stillRunning = Invoke-RestMethod -Uri $url -TimeoutSec 2 -UseBasicParsing
+                if ($null -ne $stillRunning.products) { throw '旧版工作台仍在运行，且不属于本脚本。请关闭旧的工作台进程后重新启动。' }
+            } catch {
+                if ($_.Exception.Message -like '旧版工作台仍在运行*') { throw }
+            }
+        }
+    }
     $listener = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
     if ($listener) { throw "端口 $port 已被其他程序占用或服务尚未就绪，请检查后重试。" }
     $outLog = Join-Path $runtimeDir "$kind.stdout.log"
@@ -54,8 +88,8 @@ function Start-ServiceProcess($name, $executable, $arguments, $workingDirectory,
     $record = [pscustomobject]@{ name = $name; id = $process.Id; startedAt = $process.StartTime.ToUniversalTime().Ticks.ToString() }
     $script:started += $record
     $records = @()
-    if (Test-Path -LiteralPath $stateFile) { $records = @(Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json) }
-    ConvertTo-Json -InputObject @($records + $record) | Set-Content -LiteralPath $stateFile -Encoding UTF8
+    $records = @(Read-OwnedRecords | Where-Object { $_.name -ne $name })
+    ConvertTo-Json -Depth 8 -InputObject @($records + $record) | Set-Content -LiteralPath $stateFile -Encoding UTF8
     $deadline = (Get-Date).AddSeconds(30)
     while ((Get-Date) -lt $deadline) {
         if (Test-Ready $url $kind) { Write-Host "[就绪] $name"; return }
@@ -69,7 +103,7 @@ function Start-ServiceProcess($name, $executable, $arguments, $workingDirectory,
 try {
     if ($Stop) {
         if (Test-Path -LiteralPath $stateFile) {
-            @(Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json) | ForEach-Object { Stop-OwnedProcess $_ }
+            Read-OwnedRecords | ForEach-Object { Stop-OwnedProcess $_ }
             Remove-Item -LiteralPath $stateFile
         } else { Write-Host '没有本脚本启动的服务记录。' }
         exit 0

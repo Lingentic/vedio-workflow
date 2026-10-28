@@ -83,6 +83,7 @@ const server = http.createServer(async (request, response) => {
     }
     if (parts[0] === 'api') {
       const data = ['POST','PATCH','PUT'].includes(method) ? await body(request) : {};
+      if (parts[1] === 'runtime' && method === 'GET') return json(response, { app: 'vedio-workflow', interfaceVersion: 'embedded-collection-v1' });
       if (parts[1] === 'state' && method === 'GET') {
         return json(response, { configured: true, dataRoot: store.root, defaultDataRoot: defaultRoot, modelReady: models.ready(), toolsReady: true, templates,
           products: store.products(), assets: store.assets().map(asset => library.publicAsset(asset)), tasks: store.tasks().map(task => workflow.publicTask(task)),

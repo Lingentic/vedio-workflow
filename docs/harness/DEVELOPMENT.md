@@ -93,3 +93,7 @@ node demo/server.ts
 只提交本次源码／文档／检查入口。先查看 diff 和暂存列表，不使用 `git add .` 顺带纳入未完成资料；不要提交 `.local`、验证产物、密钥、媒体、SQLite 或临时类型工具。对外称“已推送”前核对远端分支 SHA。
 
 变更规则写 [PRODUCT](PRODUCT.md)，变更数据及失效写 [DATA_AND_LIFECYCLE](DATA_AND_LIFECYCLE.md)，模块入口变化写 [ARCHITECTURE](ARCHITECTURE.md) 与 [导航](../../AGENT_WIKI.md)；实验结果写带日期的 [验证说明](../../demo/验证说明.md)。不要把一次性过程记录复制进 AGENTS。
+
+### 页面持续显示连接中
+
+如果 `/api/state` 正常而 `/collect/collect-api.js` 返回 404，说明仍有旧服务进程运行并读取了新版前端。启动脚本会校验 `/api/runtime` 的接口版本；脚本自己启动的空闲旧服务可安全替换，有任务时等待结束，不接管其他进程。商品获取脚本加载失败会在该模块显示错误，其余工作台模块仍可加载。
