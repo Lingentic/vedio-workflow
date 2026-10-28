@@ -157,7 +157,11 @@ def _ks_video_urls(photo):
         except Exception:
             man = None
     for ads in (man or {}).get("adaptationSet") or []:
+        if "audio" in str(ads.get("contentType") or "").lower():
+            continue
         for rep in ads.get("representation") or []:
+            if "audio" in str(rep.get("contentType") or rep.get("mediaType") or rep.get("mimeType") or "").lower():
+                continue
             u = rep.get("url")
             if u:
                 out.append({"quality": rep.get("qualityLabel") or rep.get("qualityType") or "?", "url": u})
@@ -269,10 +273,31 @@ def _platform_of(url):
     return "kuaishou"
 
 
+def _cookie_header(platform):
+    """把平台 cookie 文件转成 Cookie 请求头；支持单行 header 与 Netscape 两种格式。"""
+    path = KS_COOKIE if platform == "kuaishou" else DY_COOKIE
+    try:
+        raw = open(path, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return ""
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip() and not ln.startswith("#")]
+    if len(lines) == 1 and "=" in lines[0] and "\t" not in lines[0]:
+        return lines[0]
+    pairs = []
+    for ln in lines:
+        cols = ln.split("\t")
+        if len(cols) >= 7:
+            pairs.append(cols[5] + "=" + cols[6])
+    return "; ".join(pairs)
+
+
 def open_remote(url, platform):
     referer = "https://www.douyin.com/" if platform == "douyin" else "https://www.kuaishou.com/"
-    return creq.get(url, headers={"User-Agent": UA, "Referer": referer},
-                    impersonate="chrome131", timeout=60, stream=True)
+    headers = {"User-Agent": UA, "Referer": referer}
+    cookie = _cookie_header(platform)
+    if cookie:
+        headers["Cookie"] = cookie
+    return creq.get(url, headers=headers, impersonate="chrome131", timeout=60, stream=True)
 
 
 def safe_name(name, ext):
@@ -288,6 +313,43 @@ def _unique_media(name):
         dest = os.path.join(MEDIA, f"{stem}-{i}{dot}{suffix}")
         i += 1
     return dest
+
+
+_IMG_SIG = (b"\xff\xd8\xff", b"\x89PNG", b"GIF87", b"GIF89", b"RIFF", b"BM", b"II*\x00", b"MM\x00*")
+
+
+def _ffmpeg():
+    return os.environ.get("FFMPEG_PATH") or shutil.which("ffmpeg") or ""
+
+
+def _ffprobe():
+    p = os.environ.get("FFPROBE_PATH") or shutil.which("ffprobe") or ""
+    if p:
+        return p
+    ff = _ffmpeg()
+    if ff:
+        cand = os.path.join(os.path.dirname(ff), "ffprobe.exe" if os.name == "nt" else "ffprobe")
+        if os.path.isfile(cand):
+            return cand
+    return ""
+
+
+def _require_video_stream(path):
+    """校验文件含视频流；缺少 ffprobe 时放行，交由工作台判定。"""
+    fp = _ffprobe()
+    if not fp:
+        return
+    try:
+        out = subprocess.run([fp, "-v", "error", "-select_streams", "v:0",
+                              "-show_entries", "stream=codec_type", "-of", "csv=p=0", path],
+                             capture_output=True, timeout=120)
+    except Exception:
+        return
+    if out.returncode != 0:
+        err = (out.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+        raise RuntimeError("媒体文件不可解析" + ("：" + err[-1][:80] if err else ""))
+    if b"video" not in out.stdout:
+        raise RuntimeError("返回的是纯音频流，无视频画面")
 
 
 def download_to_media(url, platform, name, kind):
@@ -319,8 +381,13 @@ def download_to_media(url, platform, name, kind):
         if size < 1024:
             os.remove(dest)
             raise RuntimeError("HLS 分段下载失败")
+        try:
+            _require_video_stream(dest)
+        except Exception:
+            os.remove(dest)
+            raise
         # 浏览器无法播放 .ts：有 ffmpeg 时流复制转封装为 .mp4，便于预览与导入
-        ffmpeg = os.environ.get("FFMPEG_PATH") or shutil.which("ffmpeg") or ""
+        ffmpeg = _ffmpeg()
         if ffmpeg:
             mp4 = dest[:-3] + ".mp4"
             try:
@@ -342,6 +409,15 @@ def download_to_media(url, platform, name, kind):
     if size < 1024:
         os.remove(dest)
         raise RuntimeError("下载内容过小，疑似失效链接")
+    try:
+        if kind == "image":
+            if not head.startswith(_IMG_SIG):
+                raise RuntimeError("返回的是网页而非图片（防盗链或链接失效），请检查凭证后重新采集")
+        else:
+            _require_video_stream(dest)
+    except Exception:
+        os.remove(dest)
+        raise
     return "/media/" + os.path.basename(dest), size, False
 
 
@@ -390,16 +466,28 @@ def workbench_import(product, materials):
             if os.path.isfile(cand):
                 target = cand
         if target is None:
-            url = str(m.get("playUrl") or m.get("pageUrl") or m.get("src") or "")
-            if not url.startswith("http"):
+            # 候选地址：主地址 + playUrls 备选码流 + 页面/图源兜底，逐个尝试直到成功
+            cands = [m.get("src")] if kind == "image" else [m.get("playUrl")]
+            cands += [x.get("url") for x in (m.get("playUrls") or []) if isinstance(x, dict)]
+            cands += [m.get("pageUrl"), m.get("src") if kind == "video" else None]
+            urls = []
+            for u in cands:
+                if isinstance(u, str) and u.startswith("http") and u not in urls:
+                    urls.append(u)
+            if not urls:
                 skipped.append({"key": key, "kind": kind, "name": name, "reason": "没有可下载的播放地址"})
                 continue
-            platform = m.get("platform") if m.get("platform") in ("kuaishou", "douyin") else _platform_of(url)
-            try:
-                local, size, _hls = download_to_media(url, platform, name, kind)
-                target = os.path.join(MEDIA, os.path.basename(local))
-            except Exception as e:
-                skipped.append({"key": key, "kind": kind, "name": name, "reason": "下载失败：" + str(e)[:120]})
+            platform = m.get("platform") if m.get("platform") in ("kuaishou", "douyin") else _platform_of(urls[0])
+            err = None
+            for u in urls:
+                try:
+                    local, size, _hls = download_to_media(u, platform, name, kind)
+                    target = os.path.join(MEDIA, os.path.basename(local))
+                    break
+                except Exception as e:
+                    err = e
+            if target is None:
+                skipped.append({"key": key, "kind": kind, "name": name, "reason": "下载失败：" + str(err)[:120]})
                 continue
         files.append({"key": key, "kind": kind, "name": name, "path": target, "local": local})
 

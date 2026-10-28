@@ -360,7 +360,7 @@
       return real.map((r, i) => ({
         name: r.name || `${kind === 'video' ? '视频' : '图片'}素材 ${i + 1}`,
         duration: r.duration ?? null,
-        src: r.src || '', pageUrl: r.pageUrl || '', playUrl: r.playUrl || '',
+        src: r.src || '', pageUrl: r.pageUrl || '', playUrl: r.playUrl || '', playUrls: r.playUrls || [],
         videoId: r.videoId || '', platform: r.platform || '', from: r.from || '联网爬取', local: r.local || '',
       }));
     }
@@ -670,7 +670,7 @@
     name: (it.title || `视频 ${it.id}`).slice(0, 60), channel,
     duration: it.durationMs ? Math.round(it.durationMs / 1000) : null,
     size: '—', src: it.cover || '', videoId: it.id || '', pageUrl: it.pageUrl || '',
-    playUrl: it.playUrl || '', platform: it.platform || '', author: it.author || '', like: it.like ?? null,
+    playUrl: it.playUrl || '', playUrls: it.playUrls || [], platform: it.platform || '', author: it.author || '', like: it.like ?? null,
   });
   const imageRow = (it, channel) => ({
     name: `${(it.title || '素材').slice(0, 50)} 封面.jpg`, channel,
@@ -768,7 +768,7 @@
       const rows = crawlPickedByZone(crawl, zone.key);
       rows.forEach(row => draft.pool[zone.card].push({
         name: row.name, src: row.src || imgOf(row.name), from: row.channel, size: row.size, duration: row.duration,
-        videoId: row.videoId || '', pageUrl: row.pageUrl || '', playUrl: row.playUrl || '', platform: row.platform || '',
+        videoId: row.videoId || '', pageUrl: row.pageUrl || '', playUrl: row.playUrl || '', playUrls: row.playUrls || [], platform: row.platform || '',
       }));
       moved[zone.key] = rows.length;
       /* 原位更新：移除被归入的瓷砖、素材池追加 chip、剩余瓷砖重排索引 */
@@ -836,7 +836,7 @@
           price: String(item.price ?? ''), specification: String(item.spec || ''),
           sellingPoints: String(item.highlight || ''),
         },
-        materials: pending.map(p => ({ key: p.i, kind: p.kind, name: p.row.name, platform: p.row.platform || '', playUrl: p.row.playUrl || '', pageUrl: p.row.pageUrl || '', src: p.row.src || '', local: p.row.local || '' })),
+        materials: pending.map(p => ({ key: p.i, kind: p.kind, name: p.row.name, platform: p.row.platform || '', playUrl: p.row.playUrl || '', playUrls: p.row.playUrls || [], pageUrl: p.row.pageUrl || '', src: p.row.src || '', local: p.row.local || '' })),
       }),
     }).then(r => r.json()).then(res => {
       pushing.delete(item.id);
@@ -855,8 +855,9 @@
         else fail += 1;
       });
       const skipped = (res.skipped || []).length + unpushable;
+      const why = (res.skipped || [])[0]?.reason || (res.imported || []).find(r => r.status !== 'ready')?.error || '';
       persist(); paint();
-      toast(`已${manual ? '推送' : '同步'}到视频工作台：素材入库 ${ok} 条` + (fail ? `，失败 ${fail} 条` : '') + (skipped ? `，跳过 ${skipped} 条` : ''));
+      toast(`已${manual ? '推送' : '同步'}到视频工作台：素材入库 ${ok} 条` + (fail ? `，失败 ${fail} 条` : '') + (skipped ? `，跳过 ${skipped} 条` : '') + (why && (fail || skipped) ? `（${String(why).slice(0, 40)}）` : ''));
     }).catch(err => {
       pushing.delete(item.id); paint();
       toast(manual ? '导入工作台失败：' + (err?.message || '网络错误') : '商品已入库；视频工作台未连接，可到详情页手动导入');
@@ -1055,7 +1056,7 @@
       /* 真实素材明细随商品一同入库：视频 ID / 平台 / 来源链接 / 封面 / 播放地址 / 文件位置 */
       const materialDetails = {
         main: d.pool.main.map(f => ({ name: f.name, src: f.src || '', from: f.from || '采集', platform: f.platform || '' })),
-        video: d.pool.video.map(f => ({ name: f.name, src: f.src || '', from: f.from || '', size: f.size || '', duration: f.duration ?? null, videoId: f.videoId || '', pageUrl: f.pageUrl || '', playUrl: f.playUrl || '', platform: f.platform || '', local: f.local || '' })),
+        video: d.pool.video.map(f => ({ name: f.name, src: f.src || '', from: f.from || '', size: f.size || '', duration: f.duration ?? null, videoId: f.videoId || '', pageUrl: f.pageUrl || '', playUrl: f.playUrl || '', playUrls: f.playUrls || [], platform: f.platform || '', local: f.local || '' })),
         image: d.pool.image.map(f => ({ name: f.name, src: f.src || '', from: f.from || '', size: f.size || '', videoId: f.videoId || '', pageUrl: f.pageUrl || '', platform: f.platform || '', local: f.local || '' })),
       };
       state.items.unshift({
@@ -1128,7 +1129,7 @@
               det.video.push({
                 name: (it.title || `视频 ${it.id}`).slice(0, 60), src: it.cover || '', from: channel,
                 duration: it.durationMs ? Math.round(it.durationMs / 1000) : null,
-                videoId: it.id || '', pageUrl: it.pageUrl || '', playUrl: it.playUrl || '', platform: pf,
+                videoId: it.id || '', pageUrl: it.pageUrl || '', playUrl: it.playUrl || '', playUrls: it.playUrls || [], platform: pf,
               });
               if (it.cover) {
                 det.image.push({
