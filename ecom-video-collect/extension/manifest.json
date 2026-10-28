@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "快手商品信息采集器（接入版）",
+  "version": "1.2.0",
+  "minimum_chrome_version": "111",
+  "description": "输入快手快分销选品中心的 relItemId，打开详情页并读取可见商品信息；同时为电商 AI 视频工作流页面提供采集桥接。",
+  "action": { "default_title": "查询商品信息", "default_popup": "src/popup.html" },
+  "permissions": ["tabs", "scripting", "storage"],
+  "host_permissions": ["https://cps.kwaixiaodian.com/pc/promoter/selection-center/detail*"],
+  "background": { "service_worker": "src/background.mjs", "type": "module" },
+  "content_scripts": [
+    {
+      "matches": ["http://127.0.0.1/*", "http://localhost/*", "http://192.168.1.12/*"],
+      "js": ["src/page-bridge.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

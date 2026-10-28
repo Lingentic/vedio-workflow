@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>电商视频素材采集</title>
+<link rel="stylesheet" href="./vendor/client-design-tokens.css">
+<link rel="stylesheet" href="./vendor/ecommerce-video-products.css">
+<link rel="stylesheet" href="./vendor/ecommerce-video-ledger.css">
+<link rel="stylesheet" href="./vendor/ecommerce-video-assets.css">
+<link rel="stylesheet" href="./host.css">
+</head>
+<body>
+<header class="collect-top">
+  <strong>电商视频素材采集</strong>
+  <nav id="collectTabs" aria-label="视图切换">
+    <button type="button" data-view="products">商品获取</button>
+    <button type="button" data-view="assets">素材中心</button>
+  </nav>
+  <span id="health" class="health" title="采集服务自检"></span>
+</header>
+<div id="app"></div>
+<div id="toast" class="toast" role="status"></div>
+<script src="./vendor/ecommerce-video-account-scope.js"></script>
+<script src="./vendor/ecommerce-video-images.js"></script>
+<script src="./vendor/ecommerce-video-product-images.js"></script>
+<script src="./vendor/ecommerce-video-assets.js"></script>
+<script src="./vendor/ecommerce-video-products.js"></script>
+<script src="./host.js"></script>
+</body>
+</html>

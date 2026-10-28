@@ -18,6 +18,8 @@
 
 只有一个本地 Node 服务，没有独立“自动队列微服务”。浏览器刷新、切换模块不控制云任务或 FFmpeg 的进程生命周期。
 
+仓库根的 [ecom-video-collect/](../../ecom-video-collect/) 是独立上游采集进程，与 demo 无共享代码：Chrome 扩展读取快分销详情与图集，Python 服务检索并下载快手／抖音视频，经 `POST /api/products` 与 `POST /api/products/:id/import`（`processed:true`）把商品和已下载视频推入素材库。demo 对素材来源不做区分；该模块按需单独启动，不运行时不影响 demo。
+
 | 模块 | 责任与关键边界 |
 | --- | --- |
 | [server.ts](../../demo/server.ts) | 组装服务；校验 Host、Origin、JSON、路径等外部输入；路由 API；流式媒体 Range；擦除前端 TypeScript 类型；绑定 `127.0.0.1`。 |

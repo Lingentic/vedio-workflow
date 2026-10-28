@@ -29,6 +29,10 @@ node server.ts
 
 完整流程还需要准备阿里云调用配置和本地媒体，详见 [Demo 使用说明](demo/README.md)。仓库不包含密钥、商品／主播视频、BGM 或已经生成的成片。
 
+## 上游素材采集
+
+`ecom-video-collect/` 是独立的上游采集模块：Chrome 扩展读取快分销商品详情与图集，本地 Python 服务检索快手／抖音视频并入池，随后一键经 `/api/products` 上游接口把商品与已下载视频导入工作台素材库。运行方式、扩展安装与凭证配置见 [ecom-video-collect/README.md](ecom-video-collect/README.md)。它不是 demo 启动流程的一部分，不采集时无需启动。
+
 ## 一次制作流程
 
 1. 在素材库选择商品，准备好商品视频与模板对应的固定主播素材。

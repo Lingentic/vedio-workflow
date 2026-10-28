@@ -1,0 +1,183 @@
+/* Desktop client shell design tokens.
+ * The default appearance is a light, neutral workspace. */
+
+:root {
+  /* Primitive: color */
+  --client-p-white: #ffffff;
+  --client-p-panel: #fafafa;
+  --client-p-subtle: #ededed;
+  --client-p-muted: #dbdbdb;
+  --client-p-border-strong: #bdbdbd;
+  --client-p-text: #494949;
+  --client-p-text-strong: #202020;
+  --client-p-text-muted: #5c5c5c;
+  --client-p-text-soft: #848484;
+  --client-p-accent: #353535;
+  --client-p-brand-green: #87ea5c;
+  --client-p-success: #00aa54;
+  --client-p-info: #1a74ff;
+  --client-p-danger: #f04142;
+  --client-p-warning: #ff7528;
+
+  /* Primitive: type */
+  --client-p-font-ui: "Albert Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --client-p-font-mono: "JiduMono Pro", ui-monospace, "SFMono-Regular", monospace;
+  --client-p-size-12: 12px;
+  --client-p-size-13: 13px;
+  --client-p-size-14: 14px;
+  --client-p-size-16: 16px;
+  --client-p-size-20: 20px;
+  --client-p-size-home-title: 28.8px;
+  --client-p-body-leading: 1.25;
+  --client-p-prose-leading: 1.7;
+
+  /* Primitive: shape, spacing, motion */
+  --client-p-radius-xs: 2px;
+  --client-p-radius-sm: 4px;
+  --client-p-radius-md: 8px;
+  --client-p-radius-lg: 12px;
+  --client-p-radius-pill: 999px;
+  --client-p-stroke: 1px;
+  --client-p-space-4: 4px;
+  --client-p-space-8: 8px;
+  --client-p-space-12: 12px;
+  --client-p-space-16: 16px;
+  --client-p-space-22: 22px;
+  --client-p-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --client-p-duration-fast: 150ms;
+  --client-p-duration-enter: 200ms;
+  --client-p-duration-gentle: 250ms;
+
+  /* Primitive: elevation and material */
+  --client-p-shadow-xs: 0 1px 0 rgba(28, 27, 26, 0.04);
+  --client-p-shadow-sm: 0 1px 2px rgba(28, 27, 26, 0.05), 0 1px 3px rgba(28, 27, 26, 0.04);
+  --client-p-shadow-md: 0 6px 24px rgba(28, 27, 26, 0.07), 0 2px 6px rgba(28, 27, 26, 0.04);
+  --client-p-shadow-lg: 0 24px 60px rgba(28, 27, 26, 0.16), 0 8px 16px rgba(28, 27, 26, 0.07);
+  --client-p-glass-regular: rgba(250, 250, 250, 0.66);
+  --client-p-glass-blur: 28px;
+  --client-p-material-thin: rgba(250, 250, 250, 0.60);
+  --client-p-material-regular: rgba(250, 250, 250, 0.72);
+  --client-p-material-thick: rgba(250, 250, 250, 0.85);
+  --client-p-material-thin-blur: 16px;
+  --client-p-material-regular-blur: 24px;
+  --client-p-material-thick-blur: 40px;
+
+  /* Semantic: surfaces and text */
+  --client-bg: var(--client-p-white);
+  --client-bg-app: var(--client-p-white);
+  --client-bg-panel: var(--client-p-panel);
+  --client-bg-subtle: var(--client-p-subtle);
+  --client-bg-muted: var(--client-p-muted);
+  --client-border: var(--client-p-muted);
+  --client-border-strong: var(--client-p-border-strong);
+  --client-text: var(--client-p-text);
+  --client-text-strong: var(--client-p-text-strong);
+  --client-text-muted: var(--client-p-text-muted);
+  --client-text-soft: var(--client-p-text-soft);
+  --client-accent: var(--client-p-accent);
+  --client-brand: var(--client-p-brand-green);
+  --client-shadow-xs: var(--client-p-shadow-xs);
+  --client-shadow-sm: var(--client-p-shadow-sm);
+  --client-shadow-md: var(--client-p-shadow-md);
+  --client-shadow-lg: var(--client-p-shadow-lg);
+  --client-ease-out: var(--client-p-ease-out);
+  --client-dur-enter: var(--client-p-duration-enter);
+  --client-dur-exit: var(--client-p-duration-fast);
+
+  /* Component: layout */
+  --client-tabs-height: 44px;
+  --client-rail-width: 236px;
+  --client-chat-width: 460px;
+  --client-chat-min-width: 345px;
+  --client-chat-max-width: 720px;
+  --client-split-handle-width: 8px;
+  --client-workspace-min-width: 400px;
+
+  /* Component: controls */
+  --client-control-height: 36px;
+  --client-icon-control-size: 28px;
+  --client-button-radius: var(--client-p-radius-sm);
+  --client-primary-radius: var(--client-p-radius-pill);
+  --client-dialog-width: 520px;
+  --client-dialog-padding: 22px;
+  --client-dialog-radius: var(--client-p-radius-lg);
+  --client-composer-width: 820px;
+  --client-composer-inner-width: 720px;
+  --client-composer-input-min-height: 66px;
+  --client-composer-input-max-height: 180px;
+
+  /* Component: material */
+  --client-glass-regular: var(--client-p-glass-regular);
+  --client-glass-backdrop: blur(var(--client-p-glass-blur)) saturate(1.8);
+  --client-material-thin: var(--client-p-material-thin);
+  --client-material-thin-backdrop: blur(var(--client-p-material-thin-blur)) saturate(1.6);
+  --client-material-regular: var(--client-p-material-regular);
+  --client-material-regular-backdrop: blur(var(--client-p-material-regular-blur)) saturate(1.6);
+  --client-material-thick: var(--client-p-material-thick);
+  --client-material-thick-backdrop: blur(var(--client-p-material-thick-blur)) saturate(1.6);
+}
+
+/* Shared semantic aliases for the prototype's existing page families. */
+:root {
+  --client-font-ui: var(--client-p-font-ui);
+  --client-font-mono: var(--client-p-font-mono);
+  --client-font-size: var(--client-p-size-14);
+  --client-font-size-small: var(--client-p-size-13);
+  --client-font-size-caption: var(--client-p-size-12);
+  --client-font-size-title: var(--client-p-size-16);
+  --client-font-size-home: var(--client-p-size-home-title);
+  --client-line-height: var(--client-p-body-leading);
+  --client-line-height-prose: var(--client-p-prose-leading);
+  --client-radius-card: var(--client-p-radius-lg);
+  --client-radius-small: var(--client-p-radius-sm);
+  --client-radius-medium: var(--client-p-radius-md);
+  --client-radius-pill: var(--client-p-radius-pill);
+  --client-space-4: var(--client-p-space-4);
+  --client-space-8: var(--client-p-space-8);
+  --client-space-12: var(--client-p-space-12);
+  --client-space-16: var(--client-p-space-16);
+  --client-space-22: var(--client-p-space-22);
+  --client-stroke: var(--client-p-stroke);
+  --client-text-on-accent: var(--client-p-white);
+  --client-success: var(--client-p-success);
+  --client-info: var(--client-p-info);
+  --client-danger: var(--client-p-danger);
+  --client-warning: var(--client-p-warning);
+  /* Darker foreground companions keep status labels readable on light surfaces. */
+  --client-p-success-text: #007a3d;
+  --client-p-info-text: #145dcc;
+  --client-p-danger-text: #bd2627;
+  --client-p-warning-text: #a3470d;
+  --client-success-text: var(--client-p-success-text);
+  --client-info-text: var(--client-p-info-text);
+  --client-danger-text: var(--client-p-danger-text);
+  --client-warning-text: var(--client-p-warning-text);
+  --client-success-bg: color-mix(in srgb, var(--client-success) 7%, var(--client-bg));
+  --client-danger-bg: color-mix(in srgb, var(--client-danger) 7%, var(--client-bg));
+  --client-warning-bg: color-mix(in srgb, var(--client-warning) 7%, var(--client-bg));
+  --client-backdrop: rgba(32, 32, 32, .28);
+  --client-focus-width: 2px;
+  --client-focus-offset: 2px;
+  --client-home-width: 960px;
+}
+
+/* Accessibility fallback for reduced transparency. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --client-glass-regular: var(--client-bg-panel);
+    --client-material-thin: var(--client-bg-panel);
+    --client-material-regular: var(--client-bg-panel);
+    --client-material-thick: var(--client-bg-panel);
+    --client-glass-backdrop: none;
+    --client-material-thin-backdrop: none;
+    --client-material-regular-backdrop: none;
+    --client-material-thick-backdrop: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --client-dur-enter: 1ms;
+    --client-dur-exit: 1ms;
+  }
+}

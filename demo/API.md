@@ -9,7 +9,7 @@
 - `POST /api/dialog` `{kind:"folder"|"videos"}` → `{paths:[]}`；取消返回空列表。
 - `POST /api/seed` → 导入本机用户提供的两个商品和固定素材，原文件不动；已有导入不重复复制。
 - `GET /api/products` / `GET /api/products/:id` → 商品资料与当前素材。
-- `POST /api/products` `{productId,name,price,specification,sellingPoints,localVideos:[{path,processed:true}]}` → 接收商品及本地文件；追加走同一接口。卖点为文本。
+- `POST /api/products` `{productId,name,price,specification,sellingPoints,localVideos:[{path,processed:true}]}` → 接收商品及本地文件；追加走同一接口。卖点为文本。仓库内参考上游实现见 [ecom-video-collect/](../ecom-video-collect/)。
 - `PATCH /api/products/:id` `{price,specification,sellingPoints,name}` → 仅库中修改，不追溯已建立任务的快照。
 - `POST /api/products/:id/import` `{paths:[绝对路径],processed:true|false}` → 按文件入库。原始视频进入本地切分；已处理片段直接校验入库。
 - `POST /api/assets/:id/retry` → 仅补失败的文件/输出。
