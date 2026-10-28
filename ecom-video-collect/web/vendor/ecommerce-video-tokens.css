@@ -1,0 +1,8 @@
+/* 独立页面没有 .ecommerce-video-workspace 容器，把电商工作流的主题变量提升到 :root，
+   取值与 pm 原型 ecommerce-video-workflow.css 保持一致（products/ledger 组件都引用） */
+:root {
+  --ec-video-purple: #7048d8;
+  --ec-video-purple-soft: #f1ecfc;
+  --ec-video-line: #e5e3eb;
+  --ec-video-muted: #8a8794;
+}
