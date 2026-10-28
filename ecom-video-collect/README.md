@@ -45,8 +45,8 @@ python server/collect_service.py --port 8765
 1. 商品获取 → 录入商品 → 填快手商品 ID → 「采集」回填名称/价格/佣金/规格/类目/主图 + 详情图集进入图片分区
 2. 「开始爬取」按商品名检索快手/抖音视频候选（只爬视频分区）
 3. 勾选候选 → 归入素材池 → 确认添加；素材明细（videoId/来源链接/封面/播放地址/本地文件）随商品持久化
-4. 确认添加后**自动同步**到视频工作台：商品资料 upsert + 已入池视频素材下载落盘后入库（`processed` 片段直接入库）；同步结果以 toast 提示，工作台未启动时商品仍保存在本页，可到详情页手动补推
-5. 商品详情页「导入视频工作台」：手动补推/推后续追加的素材（已推素材不重复推送）
+4. 确认添加后**自动同步**到视频工作台：商品资料 upsert + 已入池视频/**图片**素材下载落盘后入库（`processed` 片段直接入库）；同步结果以 toast 提示，工作台未启动时商品仍保存在本页，可到详情页手动补推
+5. 商品详情页「导入视频工作台」：手动补推/推后续追加的素材（已推素材不重复推送）；「预览」对已落盘素材直接播本地文件，m3u8 分段视频会先下载并转封装为 mp4
 6. 「素材中心」视图查看已入库素材；`/api/health` 检查凭证与工作台配置
 
 ## 与服务接口
@@ -55,7 +55,7 @@ python server/collect_service.py --port 8765
 - `GET /api/search?platform=&keyword=&pages=` — 双平台视频搜索
 - `GET /api/proxy?platform=&url=` — 封面/视频流中转（预览用）
 - `POST /api/download` — 单条媒体落盘
-- `POST /api/workbench-import` `{product, materials}` — 素材落盘并推入工作台；逐条返回入库状态与跳过原因
+- `POST /api/workbench-import` `{product, materials}` — 素材落盘并推入工作台；materials 含 `kind`（video/image）与 `src`，逐条返回入库状态与跳过原因
 
 ## 检查
 

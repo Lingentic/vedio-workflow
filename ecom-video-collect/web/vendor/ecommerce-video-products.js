@@ -136,7 +136,10 @@
   const imgTag = key => { const src = imgOf(key); return src ? `<img src="${esc(src)}" alt="">` : ''; };
   const materialTotal = item => (item?.materials?.main || 0) + (item?.materials?.video || 0) + (item?.materials?.image || 0);
   /* 可推送工作台：有远程播放/来源地址，或已在采集服务落盘 */
-  const pushable = v => /^https?:/.test(v?.playUrl || '') || /^https?:/.test(v?.pageUrl || '') || String(v?.local || '').startsWith('media/');
+  const pushable = v => /^https?:/.test(v?.playUrl || '') || /^https?:/.test(v?.pageUrl || '') || /^media\//.test(String(v?.local || '').replace(/^\//, ''));
+  /* 图片素材可推送：有远程图源地址，或已落盘 */
+  const imgPushable = v => /^https?:/.test(v?.src || '') || /^media\//.test(String(v?.local || '').replace(/^\//, ''));
+  const localUrl = p => p ? (String(p).startsWith('/') ? p : '/' + p) : '';
 
   /* ---------- 真实采集接入：商品走浏览器插件桥，视频走本地采集服务 ---------- */
   const apiBase = () => (/^https?:$/.test(location.protocol) ? location.origin : 'http://127.0.0.1:8765') + '/api';
@@ -356,13 +359,13 @@
     if (Array.isArray(real) && real.length) {
       return real.map((r, i) => ({
         name: r.name || `${kind === 'video' ? '视频' : '图片'}素材 ${i + 1}`,
-        duration: r.duration ?? (kind === 'video' ? 10 : null),
+        duration: r.duration ?? null,
         src: r.src || '', pageUrl: r.pageUrl || '', playUrl: r.playUrl || '',
         videoId: r.videoId || '', platform: r.platform || '', from: r.from || '联网爬取', local: r.local || '',
       }));
     }
     return Array.from({ length: kind === 'video' ? item.materials.video : item.materials.image }, (_, i) => ({
-      name: `${kind === 'video' ? '视频素材' : '图片素材'} ${i + 1}`, duration: kind === 'video' ? 10 : null,
+      name: `${kind === 'video' ? '视频素材' : '图片素材'} ${i + 1}`, duration: null,
       src: imgOf(`${item.id}-${kind}-${i}`),
     }));
   };
@@ -410,9 +413,11 @@
         <button type="button" class="ec-prod-btn ec-prod-btn--primary" data-lp="add-to-assets" data-id="${item.id}">⇪ 加入素材中心</button>
         ${(() => {
           const vs = item.materialDetails?.video || [];
-          const left = vs.filter(v => !v.workbench && pushable(v)).length;
+          const ims = item.materialDetails?.image || [];
+          const left = vs.filter(v => !v.workbench && pushable(v)).length + ims.filter(v => !v.workbench && imgPushable(v)).length;
+          const total = vs.length + ims.length;
           const busy = pushing.has(item.id);
-          return `<button type="button" class="ec-prod-btn${left ? ' ec-prod-btn--primary' : ''}" data-lp="push-workbench" data-id="${item.id}" ${busy ? 'disabled' : ''} title="把该商品的已入池视频素材下载并导入视频工作台素材库">${busy ? '导入中…' : `⇨ 导入视频工作台${vs.length ? `（${left}/${vs.length} 条）` : ''}`}</button>`;
+          return `<button type="button" class="ec-prod-btn${left ? ' ec-prod-btn--primary' : ''}" data-lp="push-workbench" data-id="${item.id}" ${busy ? 'disabled' : ''} title="把该商品的已入池视频/图片素材下载并导入视频工作台素材库">${busy ? '导入中…' : `⇨ 导入视频工作台${total ? `（${left}/${total} 条）` : ''}`}</button>`;
         })()}
         <button type="button" class="ec-prod-btn" data-lp="close-detail">关闭</button>
       </div>
@@ -812,10 +817,14 @@
   const pushToWorkbench = (item, manual) => {
     if (!item || pushing.has(item.id)) return;
     const videos = item.materialDetails?.video || [];
-    const pendingIdx = videos.map((v, i) => (!v.workbench && pushable(v) ? i : -1)).filter(i => i >= 0);
-    const unpushable = videos.filter(v => !v.workbench && !pushable(v)).length;
-    if (manual && videos.length && !pendingIdx.length) {
-      toast(unpushable ? `剩余 ${unpushable} 条为本地上传素材，没有可推送的来源地址` : '视频素材已全部导入过工作台');
+    const images = item.materialDetails?.image || [];
+    const pending = [];
+    videos.forEach((v, i) => { if (!v.workbench && pushable(v)) pending.push({ kind: 'video', i, row: v }); });
+    images.forEach((v, i) => { if (!v.workbench && imgPushable(v)) pending.push({ kind: 'image', i, row: v }); });
+    const unpushable = videos.filter(v => !v.workbench && !pushable(v)).length
+      + images.filter(v => !v.workbench && !imgPushable(v)).length;
+    if (manual && (videos.length + images.length) && !pending.length) {
+      toast(unpushable ? `剩余 ${unpushable} 条为本地上传素材，没有可推送的来源地址` : '素材已全部导入过工作台');
       return;
     }
     pushing.add(item.id); paint();
@@ -827,7 +836,7 @@
           price: String(item.price ?? ''), specification: String(item.spec || ''),
           sellingPoints: String(item.highlight || ''),
         },
-        materials: pendingIdx.map(i => ({ key: i, name: videos[i].name, platform: videos[i].platform || '', playUrl: videos[i].playUrl || '', pageUrl: videos[i].pageUrl || '', local: videos[i].local || '' })),
+        materials: pending.map(p => ({ key: p.i, kind: p.kind, name: p.row.name, platform: p.row.platform || '', playUrl: p.row.playUrl || '', pageUrl: p.row.pageUrl || '', src: p.row.src || '', local: p.row.local || '' })),
       }),
     }).then(r => r.json()).then(res => {
       pushing.delete(item.id);
@@ -838,10 +847,10 @@
         toast(manual ? `导入工作台失败：${res?.message || '服务无响应'}` : '商品已入库；视频工作台未连接，可到详情页手动导入');
         return;
       }
-      const tvideos = target.materialDetails?.video || [];
       let ok = 0, fail = 0;
       (res.imported || []).forEach(r => {
-        const v = tvideos[r.key];
+        const arr = r.kind === 'image' ? (target.materialDetails?.image || []) : (target.materialDetails?.video || []);
+        const v = arr[r.key];
         if (r.status === 'ready' && v) { v.workbench = true; if (r.local) v.local = r.local; ok += 1; }
         else fail += 1;
       });
@@ -1146,11 +1155,34 @@
     if (action === 'push-workbench') { if (item) pushToWorkbench(item, true); return; }
     if (action === 'media-preview') {
       if (!item) return;
-      const row = mediaFiles(item, trigger.dataset.kind)[Number(trigger.dataset.index)];
-      /* HLS(m3u8) 直链浏览器无法原生播放，退到来源页 */
-      if (row?.playUrl && !/\.m3u8(\?|$)/i.test(row.playUrl)) { window.open(proxyOf(row.playUrl, row.platform), '_blank'); return; }
-      if (row?.pageUrl) { window.open(row.pageUrl, '_blank'); return; }
-      if (row?.src) { window.open(mediaSrc(row), '_blank'); return; }
+      const kind = trigger.dataset.kind;
+      const idx = Number(trigger.dataset.index);
+      const row = mediaFiles(item, kind)[idx];
+      if (!row) return;
+      /* 已下载落盘的素材直接播本地文件 */
+      if (row.local) { window.open(localUrl(row.local), '_blank'); return; }
+      if (kind === 'image') {
+        if (row.src) { window.open(mediaSrc(row), '_blank'); return; }
+        toast('该素材没有可预览的来源地址'); return;
+      }
+      if (row.playUrl && !/\.m3u8(\?|$)/i.test(row.playUrl)) { window.open(proxyOf(row.playUrl, row.platform), '_blank'); return; }
+      /* m3u8 等浏览器无法直链的地址：下载落盘（服务端拼段并转 mp4）后播本地文件 */
+      if (row.playUrl) {
+        toast('该素材为分段视频，正在下载用于预览…');
+        fetch('./api/download', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: row.playUrl, platform: row.platform || '', name: row.name, kind: 'video' }),
+        }).then(r => r.json()).then(res => {
+          if (res?.ok && res.path) {
+            const real = (item.materialDetails?.video || [])[idx];
+            if (real) { real.local = res.path; persist(); }
+            window.open(res.path, '_blank');
+          } else if (row.pageUrl) { window.open(row.pageUrl, '_blank'); }
+          else toast('预览失败：' + (res?.message || '下载失败'));
+        }).catch(err => { toast('预览下载失败：' + (err?.message || '网络错误')); });
+        return;
+      }
+      if (row.pageUrl) { window.open(row.pageUrl, '_blank'); return; }
       toast('该素材没有可预览的来源地址');
       return;
     }

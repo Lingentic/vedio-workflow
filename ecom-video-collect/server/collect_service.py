@@ -35,6 +35,8 @@ import json
 import mimetypes
 import os
 import re
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -317,6 +319,18 @@ def download_to_media(url, platform, name, kind):
         if size < 1024:
             os.remove(dest)
             raise RuntimeError("HLS 分段下载失败")
+        # 浏览器无法播放 .ts：有 ffmpeg 时流复制转封装为 .mp4，便于预览与导入
+        ffmpeg = os.environ.get("FFMPEG_PATH") or shutil.which("ffmpeg") or ""
+        if ffmpeg:
+            mp4 = dest[:-3] + ".mp4"
+            try:
+                subprocess.run([ffmpeg, "-y", "-nostdin", "-loglevel", "error", "-i", dest,
+                                "-c", "copy", "-movflags", "+faststart", mp4],
+                               check=True, timeout=300, capture_output=True)
+                os.remove(dest)
+                return "/media/" + os.path.basename(mp4), size, False
+            except Exception:
+                pass  # 转封装失败时保留 .ts
         return "/media/" + os.path.basename(dest), size, True
     dest = _unique_media(safe_name(name, ".mp4" if kind == "video" else ".jpg"))
     size = len(head)
@@ -368,6 +382,7 @@ def workbench_import(product, materials):
     for m in materials:
         name = str(m.get("name") or "素材")
         key = m.get("key")
+        kind = "image" if m.get("kind") == "image" else "video"
         local = str(m.get("local") or "").lstrip("/")
         target = None
         if local.startswith("media/"):
@@ -375,18 +390,18 @@ def workbench_import(product, materials):
             if os.path.isfile(cand):
                 target = cand
         if target is None:
-            url = str(m.get("playUrl") or m.get("pageUrl") or "")
+            url = str(m.get("playUrl") or m.get("pageUrl") or m.get("src") or "")
             if not url.startswith("http"):
-                skipped.append({"key": key, "name": name, "reason": "没有可下载的播放地址"})
+                skipped.append({"key": key, "kind": kind, "name": name, "reason": "没有可下载的播放地址"})
                 continue
             platform = m.get("platform") if m.get("platform") in ("kuaishou", "douyin") else _platform_of(url)
             try:
-                local, size, _hls = download_to_media(url, platform, name, "video")
+                local, size, _hls = download_to_media(url, platform, name, kind)
                 target = os.path.join(MEDIA, os.path.basename(local))
             except Exception as e:
-                skipped.append({"key": key, "name": name, "reason": "下载失败：" + str(e)[:120]})
+                skipped.append({"key": key, "kind": kind, "name": name, "reason": "下载失败：" + str(e)[:120]})
                 continue
-        files.append({"key": key, "name": name, "path": target, "local": local})
+        files.append({"key": key, "kind": kind, "name": name, "path": target, "local": local})
 
     wb_post("/api/products", fields)
     imported = []
@@ -397,7 +412,7 @@ def workbench_import(product, materials):
         by_path = {a.get("sourcePath"): a for a in (assets or []) if isinstance(a, dict)}
         for f in files:
             asset = by_path.get(f["path"]) or {}
-            imported.append({"key": f["key"], "name": f["name"], "local": f["local"],
+            imported.append({"key": f["key"], "kind": f["kind"], "name": f["name"], "local": f["local"],
                              "status": asset.get("status") or "unknown",
                              "assetId": asset.get("id") or "",
                              "error": asset.get("error") or ""})
