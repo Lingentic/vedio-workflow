@@ -3,3 +3,4 @@ media/*
 !media/.gitkeep
 server/collect_service.json
 __pycache__/
+server/.local/

@@ -40,7 +40,19 @@
 python server/collect_service.py --port 8765
 ```
 
-或双击 `server/启动采集服务.bat`。打开 `http://127.0.0.1:8765/index.html`，或在工作台侧栏点「商品获取」（自动打开本页面）：
+或双击 `server/启动采集服务.bat` 同时启动双服务。脚本自动寻找 Node 24+、带 curl_cffi 的 Python、FFmpeg/FFprobe；复用已就绪的服务，端口被其他程序占用时会报错。服务在后台运行，日志位于 `server/.local/launcher/`，启动成功才打开工作台。双击 `server/停止采集服务.bat` 可停止由此脚本启动的进程。
+
+PowerShell 也可运行（仓库根目录）：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ecom-video-collect\server\start-services.ps1
+# 仅检查依赖，不启动服务
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ecom-video-collect\server\start-services.ps1 -CheckOnly
+# 停止本脚本启动的服务
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ecom-video-collect\server\start-services.ps1 -Stop
+```
+
+双服务就绪后，工作台为 `http://127.0.0.1:4186`，采集页为 `http://127.0.0.1:8765/index.html`。在安装了采集扩展的 Chrome 中打开采集页：
 
 1. 商品获取 → 录入商品 → 填快手商品 ID → 「采集」回填名称/价格/佣金/规格/类目/主图 + 详情图集进入图片分区
 2. 「开始爬取」按商品名检索快手/抖音视频候选（只爬视频分区）
