@@ -486,10 +486,11 @@ select.ec-prod-control { appearance: none; padding-right: 28px; background-image
 }
 
 /* 放大查看候选素材 */
-.ec-prod-lightbox { position: relative; display: grid; justify-items: center; gap: 12px; max-width: min(880px, 92vw); padding: 18px; border: 1px solid #e3e0ea; border-radius: 14px; background: var(--prod-surface); box-shadow: var(--prod-shadow-pop); animation: ec-prod-in var(--client-dur-enter) var(--client-ease-out) both; }
-.ec-prod-lightbox > img { max-width: 100%; max-height: calc(100dvh - 190px); border-radius: 10px; background: #24212d; object-fit: contain; }
-.ec-prod-lightbox > p { display: grid; justify-items: center; gap: 3px; margin: 0; text-align: center; }
-.ec-prod-lightbox > p b { font-size: 13px; font-weight: 650; }
+.ec-prod-lightbox { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 12px; width: min(880px, 92vw); max-height: calc(100dvh - 32px); min-height: 0; padding: 18px; overflow: auto; border: 1px solid #e3e0ea; border-radius: 14px; background: var(--prod-surface); box-shadow: var(--prod-shadow-pop); animation: ec-prod-in var(--client-dur-enter) var(--client-ease-out) both; }
+.ec-prod-lightbox > img, .ec-prod-lightbox > video { display: block; width: auto; max-width: 100%; max-height: min(72dvh, calc(100dvh - 150px)); border-radius: 10px; background: #24212d; object-fit: contain; }
+.ec-prod-lightbox > video { min-width: 0; }
+.ec-prod-lightbox > p { display: grid; justify-items: center; gap: 3px; max-width: 100%; min-width: 0; margin: 0; text-align: center; }
+.ec-prod-lightbox > p b { display: -webkit-box; max-width: 100%; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
 .ec-prod-lightbox > p span { color: var(--prod-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .ec-prod-lightbox-empty { display: grid; place-items: center; width: min(520px, 80vw); aspect-ratio: 4 / 3; border-radius: 10px; background: #24212d; color: #cfc7dd; font-size: 12px; }
 .ec-prod-lightbox > button { position: absolute; top: 10px; right: 12px; width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 7px; font-size: 19px; line-height: 1; cursor: pointer; }

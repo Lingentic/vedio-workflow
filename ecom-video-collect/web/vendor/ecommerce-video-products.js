@@ -496,6 +496,7 @@
     root.addEventListener('dragover', onDragOver);
     root.addEventListener('dragleave', onDragLeave);
     root.addEventListener('drop', onDrop);
+    root.addEventListener('error', onPreviewMediaError, true);
   };
   /* 由 app.js 在渲染整块外壳后调用；只接管 .ec-video-products 子树，不碰左侧导航 */
   const mount = (root, options = {}) => {
@@ -814,6 +815,25 @@
       if (state.preview?.previewId === previewId) state.preview = { ...row, kind, local: result.path, previewLocal: preview.path, previewId };
     } catch (error) { if (state.preview?.previewId === previewId) state.preview = { ...row, kind, error: error.message, previewId }; }
     paint();
+  };
+  const onPreviewMediaError = async event => {
+    if (!event.target?.matches?.('.ec-prod-lightbox video')) return;
+    const current = state.preview;
+    if (!current || current.kind !== 'video' || current.loading) return;
+    if (current.retried) {
+      state.preview = { ...current, error: '视频已下载，但浏览器仍无法播放。请尝试重新爬取这条视频。' };
+      paint(); return;
+    }
+    const previewId = current.previewId;
+    state.preview = { ...current, loading: true, retried: true };
+    paint();
+    try {
+      const result = await window.CollectApi.previewVideo(current.local, true);
+      if (state.preview?.previewId === previewId) state.preview = { ...current, previewLocal: result.path, retried: true };
+    } catch (error) {
+      if (state.preview?.previewId === previewId) state.preview = { ...current, error: `自动转码失败：${error.message}`, retried: true };
+    }
+    if (state.preview?.previewId === previewId) paint();
   };
   const onClick = event => {
     syncDraftFromDom();

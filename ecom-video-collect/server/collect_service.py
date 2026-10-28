@@ -355,7 +355,7 @@ def _require_video_stream(path):
 _PREVIEW_LOCK = threading.Lock()
 
 
-def browser_preview(local):
+def browser_preview(local, force=False):
     """Keep the downloaded original; make a browser-compatible MP4 only when needed."""
     if not isinstance(local, str) or not local.startswith("/media/"):
         raise ValueError("请选择已下载的本地视频")
@@ -377,14 +377,14 @@ def browser_preview(local):
     audio = [s.get("codec_name") for s in streams if s.get("codec_type") == "audio"]
     if not video:
         raise RuntimeError("视频文件没有画面，无法预览")
-    if filename.lower().endswith(".mp4") and video == "h264" and all(codec == "aac" for codec in audio):
+    if not force and filename.lower().endswith(".mp4") and video == "h264" and all(codec == "aac" for codec in audio):
         return local
     ffmpeg = _ffmpeg()
     if not ffmpeg:
         raise RuntimeError("此视频编码需要 FFmpeg 转为浏览器可播放格式")
     preview = os.path.join(MEDIA, os.path.splitext(filename)[0] + "-browser-preview.mp4")
     with _PREVIEW_LOCK:
-        if os.path.isfile(preview) and os.path.getsize(preview) > 1024 and os.path.getmtime(preview) >= os.path.getmtime(source):
+        if not force and os.path.isfile(preview) and os.path.getsize(preview) > 1024 and os.path.getmtime(preview) >= os.path.getmtime(source):
             return "/media/" + os.path.basename(preview)
         temporary = preview + ".partial"
         try:
@@ -618,7 +618,7 @@ class Handler(BaseHTTPRequestHandler):
                 },
                 "mediaDir": MEDIA,
                 "workbench": WORKBENCH,
-                "interfaceVersion": "browser-preview-v1",
+                "interfaceVersion": "browser-preview-v2",
             })
         if path == "/api/search":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -666,7 +666,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
         if path == "/api/preview":
             try:
-                return self._json({"ok": True, "path": browser_preview(self._read_json().get("path"))})
+                body = self._read_json()
+                return self._json({"ok": True, "path": browser_preview(body.get("path"), force=body.get("force") is True)})
             except ValueError as e:
                 return self._json({"ok": False, "message": str(e)[:300]}, 400)
             except Exception as e:

@@ -53,6 +53,24 @@ class PreviewTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     service.browser_preview(value)
 
+    def test_forced_conversion_of_h264_when_browser_rejects_original(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(service, "MEDIA", directory), \
+             patch.object(service, "_ffprobe", return_value="probe"), patch.object(service, "_ffmpeg", return_value="ffmpeg"):
+            Path(directory, "source.mp4").write_bytes(b"original-video" * 100)
+
+            def run(args, **_kwargs):
+                if args[0] == "probe":
+                    return SimpleNamespace(returncode=0, stdout=json.dumps({"streams": [
+                        {"codec_type": "video", "codec_name": "h264"},
+                        {"codec_type": "audio", "codec_name": "aac"}]}).encode(), stderr=b"")
+                Path(args[-1]).write_bytes(b"browser-video" * 100)
+                return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+            with patch.object(service.subprocess, "run", side_effect=run):
+                self.assertEqual(service.browser_preview("/media/source.mp4", force=True),
+                                 "/media/source-browser-preview.mp4")
+            self.assertTrue(Path(directory, "source-browser-preview.mp4").is_file())
+
     def test_media_byte_ranges_and_head(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(service, "MEDIA", directory):
             data = b"0123456789" * 200
