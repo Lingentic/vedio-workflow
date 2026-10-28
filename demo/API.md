@@ -4,7 +4,7 @@
 
 所有 JSON 接口成功返回直接的数据对象；失败返回 `{error,message}`，HTTP 状态为 400/404/409/500 等。付费模型不会自动重试。异步操作返回 202 和当前 task，前端每秒刷新当前任务；生成记录保持同一 task ID。
 
-- `GET /api/runtime` → `{app:"vedio-workflow",interfaceVersion:"embedded-collection-v2"}`；启动脚本据此识别支持视频预览和原版视频制作界面的服务，避免复用旧进程。
+- `GET /api/runtime` → `{app:"vedio-workflow",interfaceVersion:"embedded-collection-v3"}`；启动脚本据此识别支持视频预览与统一侧边栏的服务，避免复用旧进程。
 - `GET /api/state` → `{configured,dataRoot,defaultDataRoot,modelReady,toolsReady,templates,products,assets,tasks,bgms,seedAvailable,activeExecution}`。
 - `POST /api/setup` `{dataRoot?}` → 初始保存目录，省略则取运行电脑实际 Videos 已知文件夹/电商视频工作台Demo。已经配置后只能在没有任务执行时修改；已有数据不自动搬迁。
 - `POST /api/dialog` `{kind:"folder"|"videos"}` → `{paths:[]}`；取消返回空列表。

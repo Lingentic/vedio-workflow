@@ -10,6 +10,7 @@
     const response = await fetch(apiPath(path), options);
     let result;
     try { result = await response.json(); } catch { throw new Error('采集服务返回了无效响应，请检查服务日志'); }
+    if (path === '/api/preview' && response.status === 404) throw new Error('当前运行的是旧版工作台或采集服务。请关闭旧服务，重新运行“启动视频工作台.bat”后刷新页面');
     if (!response.ok || result.ok === false) throw new Error(result.message || `请求失败（HTTP ${response.status}）`);
     return result;
   };
