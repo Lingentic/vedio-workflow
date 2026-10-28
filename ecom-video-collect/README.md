@@ -52,7 +52,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ecom-video-collect\ser
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\ecom-video-collect\server\start-services.ps1 -Stop
 ```
 
-双服务就绪后，工作台为 `http://127.0.0.1:4186`，采集页为 `http://127.0.0.1:8765/index.html`。在安装了采集扩展的 Chrome 中打开采集页：
+双服务就绪后，工作台为 `http://127.0.0.1:4186`，商品获取入口为 `http://127.0.0.1:4186/?page=collection`，在工作台内切换。8765 仅供内部采集服务使用。在安装了采集扩展的 Chrome 中打开采集页：
 
 1. 商品获取 → 录入商品 → 填快手商品 ID → 「采集」回填名称/价格/佣金/规格/类目/主图 + 详情图集进入图片分区
 2. 「开始爬取」按商品名检索快手/抖音视频候选（只爬视频分区）

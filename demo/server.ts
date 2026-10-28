@@ -11,6 +11,7 @@ import { Library, seedAvailable, seedLibrary, validateProduct } from './lib/libr
 import { Workflow } from './lib/workflow.ts';
 import { templates } from './lib/templates.ts';
 import { AppError } from './lib/types.ts';
+import { forwardCollection } from './lib/collector.ts';
 
 const port = Number(process.env.PORT || 4186);
 const defaultRoot = defaultDataRoot();
@@ -71,6 +72,15 @@ const server = http.createServer(async (request, response) => {
     if (request.headers.origin && ![`http://127.0.0.1:${port}`, `http://localhost:${port}`].includes(request.headers.origin)) throw new AppError('请求来源不受支持', 403);
     const url = new URL(request.url || '/', `http://127.0.0.1:${port}`), parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
     const method = request.method || 'GET';
+    if ((parts[0] === 'api' && parts[1] === 'collect') || parts[0] === 'collect-media') {
+      await forwardCollection(request, response, url); return;
+    }
+    if (parts[0] === 'collect' && ['GET', 'HEAD'].includes(method)) {
+      const webRoot = path.resolve(appRoot, '../ecom-video-collect/web');
+      const file = path.resolve(webRoot, ...parts.slice(1));
+      if (!inside(webRoot, file) || !['.js', '.css'].includes(path.extname(file))) throw new AppError('采集页面资源不存在', 404);
+      return await sendFile(request, response, file);
+    }
     if (parts[0] === 'api') {
       const data = ['POST','PATCH','PUT'].includes(method) ? await body(request) : {};
       if (parts[1] === 'state' && method === 'GET') {

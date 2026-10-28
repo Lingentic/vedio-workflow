@@ -16,7 +16,7 @@ interface Execution { id: string; kind: 'copy' | 'voice' | 'render'; status: Tas
 interface Task { id: string; name: string; productId: string; templateId: string; productSnapshot: Product; templateSnapshot: Template; variable: string; example: string; black: Record<string, string>; nodes: ScriptNode[]; confirmedNodes?: ScriptNode[]; stage: Stage; copyConfirmed: boolean; audioConfirmed: boolean; intervals: Interval[]; plan: Plan | null; settings: { subtitles: boolean; bgmId: string | null; bgmVolume: number }; preview: Preview | null; previewStale: boolean; previewChanges?: string[]; completed: boolean; execution: Execution | null; error: string; notice?: string; createdAt: string; updatedAt: string; }
 interface AppState { configured: boolean; dataRoot: string; defaultDataRoot: string; modelReady: boolean; toolsReady: boolean; templates: Template[]; products: Product[]; assets: Asset[]; tasks: Task[]; bgms: Asset[]; seedAvailable: boolean; activeExecution: ({ taskId: string } & Execution) | null; libraryBusy?: boolean; libraryMessage?: string; }
 interface ApiError { error?: string; message?: string; }
-type Page = 'production' | 'library' | 'records' | 'task';
+type Page = 'collection' | 'production' | 'library' | 'records' | 'task';
 
 const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('页面容器缺失');
@@ -27,8 +27,8 @@ let savedPointer: UiPointer | null = null;
 try { savedPointer = JSON.parse(localStorage.getItem(UI_POINTER_KEY) || 'null') as UiPointer | null; } catch { savedPointer = null; }
 const entryParams = new URLSearchParams(location.search);
 const entryPage = entryParams.get('page');
-let page: Page = savedPointer?.page === 'task' || savedPointer?.page === 'library' || savedPointer?.page === 'records' ? savedPointer.page : 'production';
-if (entryPage === 'library' || entryPage === 'production' || entryPage === 'records') page = entryPage;
+let page: Page = savedPointer?.page === 'collection' || savedPointer?.page === 'task' || savedPointer?.page === 'library' || savedPointer?.page === 'records' ? savedPointer.page : 'production';
+if (entryPage === 'collection' || entryPage === 'library' || entryPage === 'production' || entryPage === 'records') page = entryPage;
 let selectedTaskId = savedPointer?.taskId || '';
 let libraryTab = 'product';
 let libraryMediaType: 'all' | 'video' | 'image' | 'audio' = 'all';
@@ -113,9 +113,24 @@ function navButton(id: Page, icon: string, label: string, description = ''): str
   const active = page === id || (id === 'production' && page === 'task');
   return `<button class="${active ? 'active' : ''}" data-page="${id}" aria-pressed="${active}" title="${label}"><i class="nav-icon" aria-hidden="true">${icon}</i><span><strong>${label}</strong><small>${description}</small></span></button>`;
 }
-const COLLECT_PAGE_URL = 'http://127.0.0.1:8765/index.html';
+const collector = (window as unknown as { EcommerceVideoProducts: {
+  setAccount(id: string): void; html(): string; mount(root: HTMLElement, options: { toast: typeof showToast; goto: (page: string, productId?: string) => void }): void;
+} }).EcommerceVideoProducts;
+await (window as unknown as { CollectApi: { migrateLegacyStorage(): Promise<void> } }).CollectApi.migrateLegacyStorage();
+collector.setAccount('local');
+let collectorMounted: HTMLElement | null = null;
+function mountCollection(): void {
+  const container = document.querySelector<HTMLElement>('[data-collection-root]');
+  if (!container || container === collectorMounted) return;
+  container.innerHTML = collector.html();
+  collector.mount(container, { toast: showToast, goto: (_target, productId) => {
+    libraryGroup = 'product'; libraryProductId = productId || 'all'; libraryFolder = 'all';
+    void refresh().then(() => navigate('library')).catch(showError);
+  } });
+  collectorMounted = container;
+}
 function shell(content: string): string {
-  return `<div class="shell pm-workflow"><header class="workspace-header"><div class="workspace-brand"><img src="/brand.png" alt="" width="34" height="34"><div><strong>电商AI视频工作流</strong><span>本地视频工作台</span></div></div><div class="top-actions"><span class="connection"><i class="dot"></i>本地服务已连接</span><button class="icon-button" data-action="refresh" title="刷新工作区" aria-label="刷新工作区">↻</button></div></header><aside class="sidebar"><div class="workflow-nav-title">工作流程</div><nav class="nav" aria-label="电商视频工作流模块"><button data-action="open-collect" title="商品获取"><i class="nav-icon" aria-hidden="true">商</i><span><strong>商品获取</strong><small>商品资料录入与联网爬取</small></span></button>${navButton('production','制','视频制作','脚本编排与视频生成')}${navButton('records','记','生成记录','制作进度与成片台账')}${navButton('library','材','素材中心','素材管理与处理')}</nav><div class="side-spacer"></div><div class="sidebar-footer"><span class="local-mode"><i class="dot"></i>本地工作区</span><button class="button folder-setting" data-action="change-root">管理数据目录</button><div class="local-note" title="${esc(state?.dataRoot ?? '')}">${esc(state?.dataRoot ?? '')}</div></div></aside><main class="main" data-ui-key="workspace:${page}:${page === 'task' ? esc(selectedTaskId) : ''}"><div class="page" data-ui-key="page:${page}:${page === 'task' ? esc(selectedTaskId) : ''}">${content}</div></main></div>`;
+  return `<div class="shell pm-workflow"><header class="workspace-header"><div class="workspace-brand"><img src="/brand.png" alt="" width="34" height="34"><div><strong>电商AI视频工作流</strong><span>本地视频工作台</span></div></div><div class="top-actions"><span class="connection"><i class="dot"></i>本地服务已连接</span><button class="icon-button" data-action="refresh" title="刷新工作区" aria-label="刷新工作区">↻</button></div></header><aside class="sidebar"><div class="workflow-nav-title">工作流程</div><nav class="nav" aria-label="电商视频工作流模块">${navButton('collection','商','商品获取','商品资料录入与联网爬取')}${navButton('production','制','视频制作','脚本编排与视频生成')}${navButton('records','记','生成记录','制作进度与成片台账')}${navButton('library','材','素材中心','素材管理与处理')}</nav><div class="side-spacer"></div><div class="sidebar-footer"><span class="local-mode"><i class="dot"></i>本地工作区</span><button class="button folder-setting" data-action="change-root">管理数据目录</button><div class="local-note" title="${esc(state?.dataRoot ?? '')}">${esc(state?.dataRoot ?? '')}</div></div></aside><main class="main" data-ui-key="workspace:${page}:${page === 'task' ? esc(selectedTaskId) : ''}"><div class="page" data-ui-key="page:${page}:${page === 'task' ? esc(selectedTaskId) : ''}">${content}</div></main></div>`;
 }
 function patchView(container: HTMLElement, markup: string): void {
   const template = document.createElement('template'); template.innerHTML = markup;
@@ -141,6 +156,7 @@ function patchView(container: HTMLElement, markup: string): void {
     while (cursor) { const obsolete = cursor; cursor = cursor.nextSibling; live.removeChild(obsolete); }
   };
   const update = (live: Node, next: Node): void => {
+    if (live instanceof HTMLElement && live.hasAttribute('data-collection-root')) return;
     const previous = renderedNodes.get(live);
     if (previous?.isEqualNode(next)) return;
     if (live instanceof Element && next instanceof Element) {
@@ -168,10 +184,15 @@ function render(): void {
   if (bgmAudition && (!auditionTask || auditionTask.stage !== 'visual' || auditionTask.id !== bgmAuditionTaskId || auditionTask.settings.bgmId !== bgmAuditionAssetId)) stopBgmAudition();
   rememberPointer();
   if (!state.configured) { patchView(root, renderSetup()); bind(); return; }
-  let content = page === 'library' ? renderLibrary() : page === 'records' ? renderRecords() : page === 'task' && selectedTask() ? renderTask(selectedTask()!) : renderProduction();
+  let content = page === 'collection' ? '<section data-collection-root></section>' : page === 'library' ? renderLibrary() : page === 'records' ? renderRecords() : page === 'task' && selectedTask() ? renderTask(selectedTask()!) : renderProduction();
   if (page === 'task' && !selectedTask()) page = 'production';
+  const url = new URL(location.href); url.searchParams.set('page', page);
+  if (page === 'library' && libraryProductId !== 'all') url.searchParams.set('productId', libraryProductId);
+  else url.searchParams.delete('productId');
+  history.replaceState(null, '', url);
   patchView(root, shell(content));
   bind();
+  mountCollection();
   updateBgmAuditionButton();
   const task = page === 'task' ? selectedTask() : undefined;
   if (task?.stage === 'preview' && task.previewStale && !task.completed && task.execution?.status !== 'running' && !document.querySelector('.modal-backdrop')) {
@@ -203,7 +224,7 @@ function renderProduction(): string {
   if (!state!.templates.some(item => item.id === productionTemplateId)) productionTemplateId = state!.templates[0]?.id || '';
   if (!state!.products.some(item => item.productId === productionProductId)) productionProductId = state!.products[0]?.productId || '';
   const template = state!.templates.find(item => item.id === productionTemplateId);
-  return `${productionSteps()}<div class="page-head"><div><h1>选择架构模版</h1><p class="subhead">选择商品与固定架构，开始一条新视频。</p></div><button class="button" data-page="records">查看生成记录</button></div>${state!.libraryBusy ? `<div class="busy-bar"><span class="spinner"></span>${esc(state!.libraryMessage || '正在整理素材…')}</div>` : ''}<section class="architecture-layout"><form class="card production-config" data-form="new-task"><span class="section-kicker">新建制作</span><h2>商品与架构</h2><label class="field-label" for="production-product">选择商品</label><select id="production-product" class="select" name="productId" data-production-product ${state!.products.length ? '' : 'disabled'}><option value="" ${productionProductId ? 'hidden' : ''}>请选择商品</option>${state!.products.map(product => `<option value="${esc(product.productId)}" ${product.productId === productionProductId ? 'selected' : ''}>${esc(product.name)}</option>`).join('')}</select><label class="field-label" for="production-template">架构模版</label><select id="production-template" class="select" name="templateId" data-production-template>${state!.templates.map(item => `<option value="${esc(item.id)}" ${item.id === productionTemplateId ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select><p class="production-template-note">${esc(template?.summary || '')}</p>${!state!.products.length ? '<div class="notice">先录入商品，或从素材中心添加商品资料。</div><button type="button" class="button" data-action="open-collect">前往商品获取 ↗</button>' : ''}<button class="button primary production-next" ${!productionProductId || !productionTemplateId || state!.activeExecution ? 'disabled' : ''}>下一步：文案 →</button></form><section class="card architecture-preview" aria-label="架构模版内容"><header><h2>${esc(template?.title || '架构预览')}</h2><div class="architecture-legend"><span class="host-legend">主播原声</span><span class="fixed-legend">固定口播</span><span>商品文案</span></div></header>${template ? templateArchitecture(template) : '<div class="empty">暂无可用模版</div>'}</section></section><div class="section-head"><h2 class="section-title">继续已有任务 <span class="section-count">${drafts.length}</span></h2></div><div class="task-list">${drafts.length ? drafts.map(taskRow).join('') : '<div class="card empty"><strong>暂无可继续的任务</strong>开始制作后，未完成的编辑会保存在这里。</div>'}</div>`;
+  return `${productionSteps()}<div class="page-head"><div><h1>选择架构模版</h1><p class="subhead">选择商品与固定架构，开始一条新视频。</p></div><button class="button" data-page="records">查看生成记录</button></div>${state!.libraryBusy ? `<div class="busy-bar"><span class="spinner"></span>${esc(state!.libraryMessage || '正在整理素材…')}</div>` : ''}<section class="architecture-layout"><form class="card production-config" data-form="new-task"><span class="section-kicker">新建制作</span><h2>商品与架构</h2><label class="field-label" for="production-product">选择商品</label><select id="production-product" class="select" name="productId" data-production-product ${state!.products.length ? '' : 'disabled'}><option value="" ${productionProductId ? 'hidden' : ''}>请选择商品</option>${state!.products.map(product => `<option value="${esc(product.productId)}" ${product.productId === productionProductId ? 'selected' : ''}>${esc(product.name)}</option>`).join('')}</select><label class="field-label" for="production-template">架构模版</label><select id="production-template" class="select" name="templateId" data-production-template>${state!.templates.map(item => `<option value="${esc(item.id)}" ${item.id === productionTemplateId ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select><p class="production-template-note">${esc(template?.summary || '')}</p>${!state!.products.length ? '<div class="notice">先录入商品，或从素材中心添加商品资料。</div><button type="button" class="button" data-action="open-collect">前往商品获取</button>' : ''}<button class="button primary production-next" ${!productionProductId || !productionTemplateId || state!.activeExecution ? 'disabled' : ''}>下一步：文案 →</button></form><section class="card architecture-preview" aria-label="架构模版内容"><header><h2>${esc(template?.title || '架构预览')}</h2><div class="architecture-legend"><span class="host-legend">主播原声</span><span class="fixed-legend">固定口播</span><span>商品文案</span></div></header>${template ? templateArchitecture(template) : '<div class="empty">暂无可用模版</div>'}</section></section><div class="section-head"><h2 class="section-title">继续已有任务 <span class="section-count">${drafts.length}</span></h2></div><div class="task-list">${drafts.length ? drafts.map(taskRow).join('') : '<div class="card empty"><strong>暂无可继续的任务</strong>开始制作后，未完成的编辑会保存在这里。</div>'}</div>`;
 }
 function renderRecords(): string {
   const filters = appliedRecordFilters;
@@ -454,6 +475,7 @@ function bind(): void {
   });
 }
 async function navigate(target: Page): Promise<void> {
+  if (page === 'collection') collector.html();
   const task = selectedTask(); if (task) await flushTaskDraft(task.id);
   if (target !== 'task') { page = target; selectedTaskId = ''; }
   else page = target;
@@ -582,7 +604,7 @@ async function toggleBgmAudition(): Promise<void> {
 }
 async function handleAction(button: HTMLButtonElement): Promise<void> {
   const action = button.dataset.action; let task = selectedTask();
-  if (action === 'open-collect') { window.open(COLLECT_PAGE_URL + '?workbench=' + encodeURIComponent(location.origin), '_blank', 'noopener'); return; }
+  if (action === 'open-collect') { await navigate('collection'); return; }
   if (action === 'audition-bgm') return toggleBgmAudition();
   if (task) { await flushTaskDraft(task.id); task = selectedTask(); }
   if (action === 'refresh' || action === 'task-refresh') return refresh();

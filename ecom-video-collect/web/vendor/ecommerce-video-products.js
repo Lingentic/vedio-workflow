@@ -63,6 +63,11 @@
   const pushing = new Map();
   const draftDomValues = new WeakMap();
   const mediaKey = row => row.videoId ? `${row.platform || row.channel}:${row.videoId}:${row.kind || 'video'}` : row.src || row.local || row.name;
+  const openWorkbench = item => {
+    const productId = item.kuaishouId || item.id;
+    if (api.goto) api.goto('library', productId);
+    else location.href = window.CollectApi.workbenchUrl + '/?page=library&productId=' + encodeURIComponent(productId);
+  };
   const mediaSrc = row => window.CollectApi.thumbnail(row);
   const syncDraftFromDom = () => {
     if (!state.draft || state.dialog !== 'entry') return;
@@ -221,7 +226,7 @@
   const lightbox = () => {
     const p = state.preview;
     if (!p) return '';
-    return `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-lightbox" role="dialog" aria-modal="true" aria-label="素材预览"><button type="button" data-lp="close-preview" aria-label="关闭">×</button>${p.loading ? '<div class="ec-prod-preview-loading"><span class="ec-prod-spinner"></span>正在下载并校验素材…</div>' : p.error ? `<div class="ec-prod-preview-error">${esc(p.error)}</div>` : p.kind === 'video' && p.local ? `<video controls playsinline preload="metadata" src="${esc(p.local)}" poster="${esc(mediaSrc(p))}"></video>` : p.local || p.src ? `<img src="${esc(p.local || mediaSrc(p))}" alt="${esc(p.name)}">` : '<div class="ec-prod-lightbox-empty">这条素材没有可用的预览地址</div>'}<p><b>${esc(p.name)}</b><span>${p.kind === 'video' ? '视频预览' : '图片'} · ${esc(p.channel || p.from || '')}</span></p></div></div>`;
+    return `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-lightbox" role="dialog" aria-modal="true" aria-label="素材预览"><button type="button" data-lp="close-preview" aria-label="关闭">×</button>${p.loading ? '<div class="ec-prod-preview-loading"><span class="ec-prod-spinner"></span>正在下载并校验素材…</div>' : p.error ? `<div class="ec-prod-preview-error">${esc(p.error)}</div>` : p.kind === 'video' && p.local ? `<video controls playsinline preload="metadata" src="${esc(window.CollectApi.mediaUrl(p.local))}" poster="${esc(mediaSrc(p))}"></video>` : p.local || p.src ? `<img src="${esc(p.local ? window.CollectApi.mediaUrl(p.local) : mediaSrc(p))}" alt="${esc(p.name)}">` : '<div class="ec-prod-lightbox-empty">这条素材没有可用的预览地址</div>'}<p><b>${esc(p.name)}</b><span>${p.kind === 'video' ? '视频预览' : '图片'} · ${esc(p.channel || p.from || '')}</span></p></div></div>`;
   };
   /* ---------- 爬取记录（只出现在「联网爬取」tab；带时间，详情只列已归入的素材） ---------- */
   const RECORD_STATUS = {
@@ -380,7 +385,7 @@
   /* 素材墙上的单张卡：禁用是真实开关（灰显、可恢复、计入黑段缺料） */
   const mediaCard = (item, kind, row) => `<article class="ec-prod-media${row.disabled ? ' is-off' : ''}"><button type="button" class="ec-prod-media-frame" data-lp="stored-preview" data-id="${esc(item.id)}" data-kind="${kind}" data-media-key="${esc(mediaKey(row))}">${row.src ? `<img src="${esc(mediaSrc(row))}" alt="">` : ''}<span class="ec-prod-tag">${kind === 'video' ? '视频' : '图片'}</span>${kind === 'video' ? '<span class="ec-prod-play">▶</span>' : ''}${row.duration ? `<span class="ec-prod-dur">${row.duration}s</span>` : ''}</button><div class="ec-prod-media-body"><strong>${esc(row.name)}</strong><small>来源 ${esc(row.origin || row.from || row.channel || '采集')} · ${row.workbench ? '已同步工作台' : row.inPool ? '待同步工作台' : '候选素材'}</small></div><div class="ec-prod-media-ops"><button type="button" data-lp="stored-preview" data-id="${esc(item.id)}" data-kind="${kind}" data-media-key="${esc(mediaKey(row))}">预览</button>${row.inPool ? `<button type="button" data-lp="${row.disabled ? 'media-enable' : 'media-disable'}" data-id="${esc(item.id)}" data-kind="${kind}" data-index="${row.assetIndex ?? 0}">${row.disabled ? '恢复同步' : '暂停同步'}</button>` : ''}</div></article>`;
   const ingestFiles = (kind, item) => {
-    if (item) window.open(window.CollectApi.workbenchUrl + "/?page=library&productId=" + encodeURIComponent(item.kuaishouId || item.id), "_blank", "noopener");
+    if (item) openWorkbench(item);
     toast("请在工作台素材库中使用“添加视频”增补本地素材");
   };
   const supplementView = () => {
@@ -835,7 +840,7 @@
     const host = crawlHost();
     if (action === 'ext-help') { toast('Chrome 扩展管理：开启开发者模式 → 加载已解压的扩展 → 选择 ecom-video-collect/extension，并登录快分销。'); return; }
     if (action === 'push-workbench') { pushToWorkbench(item, true); return; }
-    if (action === 'open-workbench') { window.open(window.CollectApi.workbenchUrl + '/?page=library&productId=' + encodeURIComponent(item.kuaishouId || item.id), '_blank', 'noopener'); return; }
+    if (action === 'open-workbench') { openWorkbench(item); return; }
     if (action === 'stored-preview') {
       const kind = trigger.dataset.kind;
       const row = crawledOf(item, kind).find(row => mediaKey(row) === trigger.dataset.mediaKey);

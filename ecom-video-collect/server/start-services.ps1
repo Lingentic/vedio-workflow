@@ -117,6 +117,7 @@ try {
     $env:PATH = (Split-Path $nodeExe -Parent) + ';' + (Split-Path $env:FFMPEG_PATH -Parent) + ';' + (Split-Path $env:FFPROBE_PATH -Parent) + ';' + $env:PATH
     $env:PORT = '4186'
     $env:WORKBENCH_URL = $workbenchUrl
+    $env:COLLECT_SERVICE_URL = $collectUrl
     $env:PYTHONUNBUFFERED = '1'
     $env:PYTHONIOENCODING = 'utf-8'
     if ($CheckOnly) { Write-Host '依赖检查通过；未启动服务。'; exit 0 }
@@ -126,7 +127,7 @@ try {
     Start-ServiceProcess '视频工作台' $nodeExe @('server.ts') (Join-Path $repoRoot 'demo') "$workbenchUrl/api/state" 'workbench' 4186
     Start-ServiceProcess '采集服务' $pythonExe @('collect_service.py', '--port', '8765') $PSScriptRoot "$collectUrl/api/health" 'collect' 8765
     Write-Host "视频工作台：$workbenchUrl"
-    Write-Host "商品采集页：$collectUrl/index.html"
+    Write-Host "商品获取：$workbenchUrl/?page=collection"
     Write-Host "运行日志：$runtimeDir"
     Write-Host '服务在后台运行。需要停止时，双击同目录的“停止采集服务.bat”。'
     if (-not $NoBrowser) { Start-Process $workbenchUrl }

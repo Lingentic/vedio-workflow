@@ -18,9 +18,9 @@
 
 只有一个本地 Node 服务，没有独立“自动队列微服务”。浏览器刷新、切换模块不控制云任务或 FFmpeg 的进程生命周期。
 
-工作台与采集页的界面基于 `Lingentic/pm@21704c8` 对齐：工作台在 `demo/public/pm-ui.css` 维护适配样式，仍由 `app.ts` 读取真实服务端状态；采集页沿用上游商品获取布局，由 `web/collect-api.js` 接回现有扩展、搜索、下载及工作台导入接口。采集页「素材中心」导航打开真实工作台素材库；本地增补入口也跳转该商品的素材目录，不再使用原型浏览器素材库作为真实入库结果。
+工作台与采集页的界面基于 `Lingentic/pm@21704c8` 对齐：工作台在 `demo/public/pm-ui.css` 维护适配样式，仍由 `app.ts` 读取真实服务端状态；采集页沿用上游商品获取布局，由 `web/collect-api.js` 接回现有扩展、搜索、下载及工作台导入接口。采集页「素材中心」导航在同一工作台内切换到真实素材库；本地增补入口也跳转该商品的素材目录，不再使用原型浏览器素材库作为真实入库结果。
 
-仓库根的 [ecom-video-collect/](../../ecom-video-collect/) 是独立上游采集进程，与 demo 无共享代码：Chrome 扩展读取快分销详情与图集，Python 服务检索并下载快手／抖音视频，经 `POST /api/products` 与 `POST /api/products/:id/import`（`processed:true`）把商品和已下载的视频/图片素材推入素材库。demo 侧栏「商品获取」按钮在默认浏览器打开采集页（`http://127.0.0.1:8765/index.html`）；demo 对素材来源不做区分，该模块按需单独启动，不运行时不影响 demo。
+仓库根的 [ecom-video-collect/](../../ecom-video-collect/) 保留独立 Python 采集进程，商品获取界面由 demo 原生挂载：Chrome 扩展读取快分销详情与图集，Python 服务检索并下载快手／抖音视频，经 `POST /api/products` 与 `POST /api/products/:id/import`（`processed:true`）把商品和已下载的视频/图片素材推入素材库。demo 侧栏「商品获取」在当前页面切换，统一入口为 `http://127.0.0.1:4186/?page=collection`。Node 服务托管采集 JS/CSS，以 `/api/collect/*` 和 `/collect-media/*` 转发 Python API 和媒体；Python 默认 8765，仅作为内部采集服务。扩展桥接位于工作台顶层文档，沿用现有 localhost 匹配规则。采集组件独立管理 DOM，工作台轮询不覆盖录入草稿。首次进入时通过受来源和随机标识校验的隐藏页面读取同主机 8765 的 localStorage 记录，仅在新域没有记录时迁移，不改写旧记录；采集服务离线时不阻塞工作台其他模块。
 
 | 模块 | 责任与关键边界 |
 | --- | --- |

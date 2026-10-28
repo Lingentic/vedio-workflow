@@ -38,3 +38,7 @@
 方案：`mode,entries:[{entryId,assetId,title,duration,url,posterUrl,available}],requiredDuration,availableDuration,valid,repeated,warnings,events,signature`。手动列表允许重复，条目身份不等于素材ID。
 
 状态使用中文界面文案，内部执行 `kind=copy|voice|render`、`status=running|done|failed|stopped|interrupted`。确认完成后 `completed=true`；清理状态独立记录。删除/暂不可用不等同，完成成片不因源素材删除而失效。
+
+## 商品获取同源入口
+
+`/?page=collection` 在工作台内显示商品获取，不新开标签页。`/collect/*.js` 与 `/collect/vendor/*.{js,css}` 只读托管采集组件。`GET /api/collect/health`、`GET /api/collect/search`、`GET /api/collect/proxy`、`POST /api/collect/download`、`POST /api/collect/workbench-import` 保留采集接口格式，由 Node 转发到 `COLLECT_SERVICE_URL`（默认 `http://127.0.0.1:8765`，仅允许本机 HTTP）。`GET/HEAD /collect-media/:filename` 转发采集媒体，组件把返回的 `/media/` 地址映射到此入口显示；入库仍保留原采集文件路径。上游不可达返回 502 与可读错误，不影响其他模块。
