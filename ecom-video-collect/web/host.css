@@ -1,35 +1,75 @@
-/* 宿主薄壳样式：顶栏、标签页、toast。模块内部样式在各 vendor css 中。 */
+/* Shared standalone workspace frame, adapted from pm@21704c8. */
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
-body {
-  background: #f4f5f7;
-  color: #34313d;
-  font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", system-ui, sans-serif;
-  font-size: 14px;
+html, body { width: 100%; height: 100%; margin: 0; }
+body { min-width: 320px; overflow: hidden; color: #34313d; background: #f4f5f7; font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; font-size: 13px; }
+button, input, textarea, select { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible { outline: 3px solid #d4c5f7; outline-offset: 3px; }
+.collect-top { display: flex; align-items: center; justify-content: space-between; gap: 20px; height: 64px; padding: 0 24px; border-bottom: 1px solid #e4e2e9; background: #fbfafc; }
+.collect-brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.collect-brand img { width: 34px; height: 34px; object-fit: contain; }
+.collect-brand strong { display: block; color: #34303d; font-size: 15px; }
+.collect-brand span { display: block; margin-top: 3px; color: #9b91a6; font-size: 10px; }
+.collect-service { display: flex; align-items: center; gap: 14px; }
+.health { color: #7c9184; font-size: 11px; }
+.health.is-warn { color: #b18b51; }
+#refreshHealth { width: 34px; height: 34px; padding: 0; border: 1px solid #e7e1ef; border-radius: 8px; color: #8e79b4; background: #fff; font-size: 17px; cursor: pointer; }
+.collect-layout { display: grid; grid-template-columns: 192px minmax(0,1fr); height: calc(100dvh - 64px); min-height: 0; }
+.collect-sidebar { display: flex; flex-direction: column; gap: 20px; min-height: 0; padding: 23px 12px 16px; overflow: auto; border-right: 1px solid #e5e3eb; background: #fff; }
+.collect-nav-title { padding: 0 10px; color: #746b81; font-size: 12px; font-weight: 650; }
+.collect-sidebar nav { display: grid; gap: 8px; }
+.collect-sidebar nav a { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 62px; padding: 11px 10px; border: 1px solid transparent; border-radius: 11px; color: #6e647b; text-decoration: none; }
+.collect-sidebar nav a:hover { border-color: #ece7f3; background: #f9f7fc; }
+.collect-sidebar nav a.active { border-color: #e0d5f7; background: #f6f2ff; color: #6541b7; box-shadow: 0 4px 12px #6c44be08; }
+.collect-sidebar nav i { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border-radius: 9px; color: #8063b9; background: #f2eef9; font-size: 15px; font-style: normal; font-weight: 700; }
+.collect-sidebar nav a.active i { color: #fff; background: #7549df; }
+.collect-sidebar nav a > span { min-width: 0; }
+.collect-sidebar nav strong, .collect-sidebar nav small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.collect-sidebar nav strong { font-size: 13px; line-height: 1.5; font-weight: 650; }
+.collect-sidebar nav small { margin-top: 4px; color: #a198ab; font-size: 10px; }
+.collect-nav-footer { display: grid; gap: 9px; margin-top: auto; padding: 17px 8px 0; border-top: 1px solid #f1eef5; color: #9e8fad; font-size: 11px; }
+.collect-nav-footer small { color: #b0a3bb; font-size: 10px; line-height: 1.9; }
+#app { min-width: 0; min-height: 0; height: 100%; overflow: hidden; }
+.ec-video-products { min-height: 0; height: 100%; }
+.ec-video-products-scroll { height: 100%; scrollbar-width: thin; scrollbar-color: #ddd6e8 transparent; }
+.ec-video-products-inner { max-width: 1560px; margin: 0 auto; padding: 25px; }
+.ec-prod-head h1 { font-size: 20px; }
+.ec-prod-head p { font-size: 12px; line-height: 1.7; }
+.ec-prod-crawl-top { line-height: 1.7; }
+.ec-prod-zone-fail span { overflow-wrap: anywhere; }
+.ec-prod-btn[aria-disabled="true"] { border-color: #e5e0ed; color: #aba2b4; background: #f1eef5; cursor: help; }
+.ec-prod-group > header { display: flex; align-items: center; justify-content: space-between; }
+.ec-prod-group > header .ec-prod-btn { min-height: 25px; padding: 2px 6px; font-size: 10px; }
+.ec-prod-sync-status { flex: 1; min-width: 180px; margin-right: auto; color: #9682a5; font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+.ec-prod-detail-footer { flex-wrap: wrap; }
+.ec-prod-media-frame { display: block; width: 100%; padding: 0; border: 0; cursor: pointer; }
+.ec-prod-lightbox video { display: block; width: 100%; max-height: 70vh; border-radius: 8px; background: #1c1522; object-fit: contain; }
+.ec-prod-preview-loading { display: flex; align-items: center; justify-content: center; gap: 13px; min-height: 220px; color: #9f89b0; }
+.ec-prod-preview-error { display: grid; place-items: center; min-height: 220px; padding: 30px; color: #ba6978; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.toast { position: fixed; right: 24px; bottom: 24px; z-index: 1000; max-width: min(650px,calc(100vw - 32px)); padding: 14px 19px; border: 1px solid #e5d7ef; border-radius: 10px; color: #80668f; background: #fff; box-shadow: 0 8px 30px #47205b26; font-size: 13px; line-height: 1.8; opacity: 0; transform: translateY(15px); pointer-events: none; transition: opacity .18s, transform .18s; overflow-wrap: anywhere; }
+.toast.is-show { opacity: 1; transform: translateY(0); }
+@media(max-width:1200px) { .ec-video-products-inner { padding: 20px 18px; } }
+@media(max-width:1000px) {
+  .collect-layout { grid-template-columns: 72px minmax(0,1fr); }
+  .collect-sidebar { padding-inline: 8px; }
+  .collect-nav-title, .collect-sidebar nav a > span, .collect-nav-footer { display: none; }
+  .collect-sidebar nav a { justify-content: center; min-height: 55px; padding: 8px; }
 }
-.collect-top {
-  position: sticky; top: 0; z-index: 30;
-  display: flex; align-items: center; gap: 18px;
-  padding: 10px 18px; background: #fff; border-bottom: 1px solid #e4e1ea;
+@media(max-width:780px) {
+  .collect-top { padding-inline: 16px; }
+  .collect-brand strong { font-size: 13px; }
+  .health { max-width: 125px; font-size: 10px; line-height: 1.8; }
+  .ec-prod-sync-status { flex-basis: 100%; }
 }
-.collect-top > strong { font-size: 15px; }
-#collectTabs { display: flex; gap: 6px; }
-#collectTabs button {
-  border: 1px solid transparent; background: transparent; border-radius: 8px;
-  padding: 6px 14px; font-size: 13px; cursor: pointer; color: #625c6e;
+@media(max-width:480px) {
+  .collect-top { height: 58px; padding-inline: 12px; }
+  .collect-layout { grid-template-columns: 56px minmax(0,1fr); height: calc(100dvh - 58px); }
+  .collect-brand img { width: 28px; height: 28px; }
+  .collect-brand span { font-size: 9px; }
+  .collect-sidebar { padding-inline: 4px; }
+  .collect-sidebar nav a { min-height: 50px; padding-inline: 5px; }
+  .collect-sidebar nav i { flex-basis: 29px; width: 29px; height: 29px; }
+  .collect-service { gap: 7px; }
+  .health { max-width: 95px; font-size: 9px; }
+  .ec-video-products-inner { padding: 16px 12px; }
 }
-#collectTabs button.active {
-  background: #f0ebfc; border-color: #c9b8f0; color: #5b3bb5; font-weight: 600;
-}
-.health { margin-left: auto; font-size: 12px; color: #3d7a4f; }
-.health.is-warn { color: #b06a12; }
-#app { padding: 18px; }
-#app > main { margin: 0 auto; }
-.toast {
-  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(12px);
-  max-width: 70vw; padding: 10px 18px; border-radius: 10px;
-  background: rgba(38, 33, 52, 0.92); color: #fff; font-size: 13px;
-  opacity: 0; pointer-events: none; transition: opacity .18s ease, transform .18s ease;
-  z-index: 200;
-}
-.toast.is-show { opacity: 1; transform: translateX(-50%) translateY(0); }

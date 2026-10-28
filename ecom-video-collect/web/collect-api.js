@@ -1,0 +1,67 @@
+/* Real local-service and extension bridge for the pm collection UI. */
+(() => {
+  'use strict';
+  let workbenchUrl = 'http://127.0.0.1:4186';
+  const platformOf = value => value === '抖音' || value === 'douyin' ? 'douyin' : 'kuaishou';
+  const request = async (path, options) => {
+    const response = await fetch(path, options);
+    let result;
+    try { result = await response.json(); } catch { throw new Error('采集服务返回了无效响应，请检查服务日志'); }
+    if (!response.ok || result.ok === false) throw new Error(result.message || `请求失败（HTTP ${response.status}）`);
+    return result;
+  };
+  const post = (path, body) => request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const extensionCall = (type, payload, timeoutMs) => new Promise(resolve => {
+    const reqId = `collect-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const cleanup = () => { clearTimeout(timer); window.removeEventListener('message', onMessage); };
+    const onMessage = event => {
+      const message = event.data;
+      if (event.source !== window || event.origin !== location.origin || message?.source !== 'ks-product-bridge' || message.reqId !== reqId) return;
+      cleanup(); resolve(message);
+    };
+    const timer = setTimeout(() => { cleanup(); resolve(null); }, timeoutMs);
+    window.addEventListener('message', onMessage);
+    window.postMessage({ source: 'ec-prod-page', type, reqId, ...payload }, location.origin);
+  });
+  const collectProduct = async id => {
+    const ping = await extensionCall('KS_PRODUCT_PING', {}, 1500);
+    if (ping?.type !== 'KS_PRODUCT_PONG') throw new Error('未检测到快手采集扩展，请在装有扩展、已登录快分销的 Chrome 中打开本页');
+    const response = await extensionCall('KS_PRODUCT_LOOKUP', { id }, 60000);
+    if (!response?.ok) throw new Error(response?.error || '商品采集超时，请确认快分销登录状态后重试');
+    return response;
+  };
+  const proxy = (url, platform) => /^https?:\/\//.test(url || '') ? `/api/proxy?platform=${platformOf(platform)}&url=${encodeURIComponent(url)}` : url || '';
+  const thumbnail = row => /\.(?:jpe?g|png|webp|gif|bmp|tiff?|avif)(?:\?|$)/i.test(row?.local || '') ? row.local : proxy(row?.src || '', row?.platform);
+  const download = async (row, kind) => {
+    if (/^\/?media\//.test(row.local || '')) return { path: '/' + row.local.replace(/^\//, '') };
+    const urls = [...new Set((kind === 'image' ? [row.src] : [row.playUrl, ...(row.playUrls || []).map(item => item?.url)]).filter(url => /^https?:\/\//.test(url || '')))];
+    if (!urls.length) throw new Error(kind === 'video' ? '这条旧记录没有视频播放地址，请重新爬取视频' : '这条记录没有图片地址');
+    let error;
+    for (const url of urls) {
+      try { return await post('/api/download', { url, name: row.name, kind, platform: row.platform || platformOf(row.channel || row.from) }); }
+      catch (failure) { error = failure; }
+    }
+    throw error;
+  };
+  const setWorkbench = value => {
+    try {
+      const url = new URL(value);
+      if (url.protocol === 'http:' && ['127.0.0.1','localhost'].includes(url.hostname) && !url.username && !url.password) workbenchUrl = url.origin;
+    } catch { /* Keep the known local workbench address. */ }
+  };
+  const categories = [
+    ['美妆|护肤|洗护|个护','美妆个护'], ['食品|零食|饮料|粮油|生鲜|调味|酒','食品饮料'],
+    ['数码|家电|电器|手机|电脑|电子','数码家电'], ['服饰|服装|鞋|箱包|内衣|配饰','服饰鞋包'],
+    ['家居|百货|收纳|厨具|日用|清洁|家装','家居百货'],
+  ];
+  window.CollectApi = {
+    platformOf, proxy, thumbnail, collectProduct, download, setWorkbench,
+    get workbenchUrl() { return workbenchUrl; },
+    search: (channel, keyword, signal) => request(`/api/search?platform=${platformOf(channel)}&keyword=${encodeURIComponent(keyword)}&pages=1`, { signal }),
+    importProduct: payload => post('/api/workbench-import', payload),
+    categoryOf: record => {
+      const text = [...(record?.category?.path || []), record?.category?.name || '', record?.productName || ''].join(' ');
+      return categories.find(([pattern]) => new RegExp(pattern).test(text))?.[1] || '其他';
+    },
+  };
+})();

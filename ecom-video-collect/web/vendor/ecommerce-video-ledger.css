@@ -164,6 +164,11 @@ textarea.ec-led-control { min-height: 74px; padding: 9px 11px; resize: vertical;
 .ec-led-cell-product > span:last-child { min-width: 0; }
 .ec-led-cell-product strong { display: block; max-width: 260px; overflow: hidden; font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .ec-led-cell-product small { display: block; margin-top: 2px; color: var(--led-muted); font-size: 11px; }
+
+/* 合并列后的次级信息行：水印/字幕并进商品信息，提交状态并进任务状态 */
+.ec-led-cell-meta { display: flex; align-items: center; gap: 6px; margin-top: 5px; padding-left: 2px; }
+.ec-led-cell-meta > small { color: var(--led-muted); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.ec-led-cell-status { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .ec-led-thumb { width: 40px; height: 40px; flex: 0 0 auto; position: relative; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--led-line); border-radius: 8px; color: var(--led-ink-faint); background: #f3f2f7; font-size: 11px; font-weight: 600; }
 .ec-led-thumb > img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
 .ec-led-price { color: var(--led-danger); font-weight: 650; }

@@ -1,13 +1,12 @@
-/* 商品获取模块（PRD v2.4 §4，原「商品素材」）。
+/* UI adapted from Lingentic/pm@21704c8; collection/import use the real local API.
+ * 商品获取模块（PRD v2.4 §4，原「商品素材」）。
  * 工作流第 1 步：商品资料录入 + 联网爬取素材；单一商品列表，整行可点进入商品详情子页。
  * 内容架构取自 UUclip 实测截图与 PRD §4.4 规则表，配色与控件走 pm 电商工作流风格。
  * 自包含：状态、渲染、事件委托都在本文件内，通过 window.EcommerceVideoProducts 暴露给 app.js。
  */
 (() => {
   'use strict';
-
   const STORE_KEY = 'laogge-products-v2';
-
   /* ---------- 素材状态机（PRD §3.1 在本模块侧可达的子集） ---------- */
   const STATUS = {
     pending: { label: '待爬取', tone: 'neutral' },
@@ -18,10 +17,8 @@
     review: { label: '待审核', tone: 'warn' },
     done: { label: '已生成', tone: 'ok' },
   };
-
   const CATEGORIES = ['家居百货', '食品饮料', '数码家电', '服饰鞋包', '美妆个护', '其他'];
-  const PLATFORMS = ['快手', '抖音', 'TikTok'];
-
+  const PLATFORMS = ['快手', '抖音'];
   /* 黑段（AI 补全）装配所需的素材位，用于「素材缺失清单」（PRD §3.3 末行 / §4.4-②） */
   const REQUIRED_SLOTS = [
     { key: 'product', label: '产品画面' },
@@ -29,99 +26,58 @@
     { key: 'detail', label: '细节特写' },
     { key: 'price', label: '价格机制' },
   ];
-
   /* ---------- 联网爬取（PRD §4.7：视频 / 图片两个独立分区，分开回填、分开勾选） ---------- */
   const CRAWL_CHANNELS = ['快手', '抖音'];
   const CRAWL_ZONES = [
     { key: 'video', label: '视频', mark: '▶', card: 'video' },
     { key: 'image', label: '图片', mark: '⛰', card: 'image' },
   ];
-  /* 候选库（原型演示数据）：按「分区 → 渠道」两级组织；两渠道刻意共用一条同名素材，用于演示去重标识 */
-  const CRAWL_BANK = {
-    video: {
-      快手: [
-        { name: '开箱展示.mp4', duration: 12.4, size: '18.2 MB' },
-        { name: '上身演示.mp4', duration: 9.8, size: '14.6 MB' },
-        { name: '同角度实拍.mp4', duration: 8.6, size: '11.3 MB' },
-      ],
-      抖音: [
-        { name: '使用过程实拍.mp4', duration: 15.6, size: '22.1 MB' },
-        { name: '细节特写运镜.mp4', duration: 7.2, size: '9.4 MB' },
-        { name: '同角度实拍.mp4', duration: 8.6, size: '11.3 MB' },
-      ],
-    },
-    image: {
-      快手: [
-        { name: '白底主图.jpg', size: '1.8 MB' },
-        { name: '使用场景.jpg', size: '2.4 MB' },
-        { name: '规格对比.jpg', size: '1.1 MB' },
-      ],
-      抖音: [
-        { name: '手持实拍图.jpg', size: '2.1 MB' },
-        { name: '效果对比图.jpg', size: '1.9 MB' },
-        { name: '规格对比.jpg', size: '1.1 MB' },
-      ],
-    },
-  };
-  /* 演示用的固定失败规则（刻意不随机）：抖音图片接口反爬最重 → 首轮只有「图片」分区失败，
-   * 该分区「重试该分区」即放行，另一分区全程不受影响。真实接入后由后端返回的渠道状态驱动同一套 UI。 */
-  const crawlFails = (zoneKey, channel, attempts) => zoneKey === 'image' && channel === '抖音' && attempts === 0;
 
-  const newZone = () => ({ running: false, results: [], failed: [], attempts: {}, errors: {} });
-  const newCrawl = () => ({ channels: [CRAWL_CHANNELS[0]], zones: { video: newZone(), image: newZone() }, taken: new Set() });
+  const newZone = () => ({ running: false, paused: false, errors: {}, pending: 0, queue: [], requestId: 0, results: [], failed: [], attempts: {}, plan: [], cursor: 0, epoch: 0, pace: null, record: null });
+  const newCrawl = () => ({ channels: [CRAWL_CHANNELS[0]], zones: { video: newZone(), image: newZone() }, taken: new Set(), epoch: 0, open: new Set() });
   const crawlBusy = crawl => Object.values(crawl.zones).some(zone => zone.running);
-  const crawlPicked = crawl => CRAWL_ZONES.reduce((sum, zone) => sum + crawl.zones[zone.key].results.filter(row => row.picked && !row.dup).length, 0);
-  const crawlPickedByZone = (crawl, key) => crawl.zones[key].results.filter(row => row.picked && !row.dup);
-
   /* ---------- 种子数据（单一列表，不区分我的 / 全部） ---------- */
-  const seedItems = () => [
-    { id: 'p-58096', kuaishouId: '38908', name: '家用立体收纳压缩袋抽两用棉季衣服棉被真空防尘袋', cat: '家居百货', price: 9.99, spec: '包邮到家', comm: 35, cma: 3.5, gen: 25, platform: '快手', status: 'ready', updated: '2026-09-27', highlight: '换季的厚棉被、羽绒服，塞进柜子顶占地方，落灰还返潮。这压缩袋立体设计，装得多，抽压两用，气泵抽手压都行，压完薄薄一摞，衣柜腾出大半空间。防尘防潮，来年拿出来没霉味，晒晒就能盖。', negatives: '最好,第一,绝对', team: '铮铮-雅琪糯米胶', materials: { main: 1, video: 5, image: 8 } },
-    { id: 'p-58005', kuaishouId: '58005', name: '加厚锁腰孩子肩背服饰高弹力秋冬季衣保暖护腰披肩A20', cat: '家居百货', price: 7.99, spec: '均码', comm: 30, cma: 2.4, gen: 3, platform: '抖音', status: 'ready', updated: '2026-09-26', highlight: '高弹针织不勒肩，秋冬打底或外披都行，孩子写作业披着不凉背。', negatives: '', team: '铮铮-雅琪糯米胶', materials: { main: 1, video: 3, image: 6 } },
-    { id: 'p-34337', kuaishouId: '34337', name: '【到手5斤】原切牛肋排2500g*1碗 顺丰+云仓发货JY', cat: '食品饮料', price: 99.9, spec: '2500g/碗', comm: 8, cma: 7.99, gen: 3, platform: '快手', status: 'ready', updated: '2026-07-30', highlight: '原切不拼接，肥瘦相间，炖煮煎烤都合适，顺丰冷链到手。', negatives: '顶级,最便宜', team: '铮铮-雅琪糯米胶', materials: { main: 1, video: 4, image: 7 } },
-    { id: 'p-34349', kuaishouId: '34349', name: '【特惠49.9】黑土玉米胚芽油5升 非转基因物理压榨', cat: '食品饮料', price: 49.9, spec: '5L', comm: 5, cma: 2.5, gen: 6, platform: '快手', status: 'ready', updated: '2026-07-30', highlight: '黑土地玉米胚芽，物理压榨非转基因，5升装一家人吃一季。', negatives: '', team: '铮铮-雅琪糯米胶', materials: { main: 1, video: 3, image: 5 } },
-    { id: 'p-34340', kuaishouId: '34340', name: '充电器适用于安全车系统低温快速充电器配type-c口通用', cat: '数码家电', price: 27.9, spec: 'type-c', comm: 40, cma: 11.16, gen: 11, platform: '快手', status: 'crawlFailed', updated: '2026-07-30', highlight: '', negatives: '', team: '', materials: { main: 1, video: 0, image: 2 } },
-    { id: 'p-35121', kuaishouId: '35121', name: '电动车头盔男女半盔电瓶车冬季保暖四季通用骑行防护安全帽E07', cat: '数码家电', price: 26.9, spec: '四季通用', comm: 20, cma: 5.38, gen: 0, platform: '抖音', status: 'crawling', updated: '2026-10-21', highlight: '', negatives: '', team: '', materials: { main: 1, video: 2, image: 3 } },
-    { id: 'p-36077', kuaishouId: '36077', name: '【17.9元抢12箱】正宗黑糯玉米新鲜甜糯玉米真空独立装粗粮代餐', cat: '食品饮料', price: 17.9, spec: '250g*12箱', comm: 18, cma: 3.22, gen: 0, platform: '快手', status: 'pending', updated: '2026-10-20', highlight: '', negatives: '', team: '', materials: { main: 0, video: 0, image: 1 } },
-    { id: 'p-36090', kuaishouId: '36090', name: '【到手5斤】原味生核腰果皮核桃话梅味休闲零食', cat: '食品饮料', price: 15.9, spec: '5斤', comm: 12, cma: 1.91, gen: 0, platform: '快手', status: 'ready', updated: '2026-10-19', highlight: '带皮核桃加话梅同装，咸甜回甘，追剧零嘴一次到手5斤。', negatives: '', team: '铮铮-雅琪糯米胶', materials: { main: 1, video: 1, image: 2 } },
-    { id: 'p-70012', kuaishouId: '70012', name: '加厚保暖鞋垫 男女同款 踩屎感软弹 5双装', cat: '服饰鞋包', price: 6.9, spec: '5双装', comm: 45, cma: 3.11, gen: 0, platform: '快手', status: 'ready', updated: '2026-10-18', highlight: '踩上去软弹不硌脚，冬天出门脚底不凉，5双换着垫。', negatives: '', team: '', materials: { main: 1, video: 3, image: 5 } },
-    { id: 'p-70034', kuaishouId: '70034', name: '不锈钢锅清洁全过程 去黑垢不伤手', cat: '家居百货', price: 19.9, spec: '单只', comm: 30, cma: 5.97, gen: 0, platform: '抖音', status: 'crawling', updated: '2026-10-22', highlight: '', negatives: '', team: '', materials: { main: 1, video: 1, image: 2 } },
-    { id: 'p-70051', kuaishouId: '70051', name: '海藻泥清洁膏 厨房去污 一擦即净 3罐装', cat: '家居百货', price: 12.9, spec: '3罐装', comm: 38, cma: 4.9, gen: 0, platform: '快手', status: 'ready', updated: '2026-10-17', highlight: '厨房油污一擦就掉，不伤手不伤锅面，3罐够用一季。', negatives: '', team: '', materials: { main: 1, video: 2, image: 4 } },
-    { id: 'p-70068', kuaishouId: '70068', name: 'BOTTLED JOY 星空杯 吸管杯 高硼硅玻璃 500ml', cat: '美妆个护', price: 39.9, spec: '500ml', comm: 25, cma: 9.98, gen: 0, platform: '抖音', status: 'crawlFailed', updated: '2026-10-16', highlight: '', negatives: '', team: '', materials: { main: 0, video: 0, image: 1 } },
-    { id: 'p-70090', kuaishouId: '70090', name: '冬季加绒护膝 老人保暖 防滑不卷边 一双', cat: '服饰鞋包', price: 14.9, spec: '一双', comm: 42, cma: 6.26, gen: 0, platform: '快手', status: 'pending', updated: '2026-10-15', highlight: '', negatives: '', team: '', materials: { main: 0, video: 0, image: 0 } },
-    { id: 'p-70115', kuaishouId: '70115', name: '多功能插排 Type-C 快充 独立开关 5位', cat: '数码家电', price: 34.9, spec: '5位', comm: 28, cma: 9.77, gen: 0, platform: '快手', status: 'ready', updated: '2026-10-14', highlight: '5位独立开关，Type-C 快充不用找插头，桌面走线干净。', negatives: '', team: '', materials: { main: 1, video: 2, image: 3 } },
-  ];
-
-  /* ---------- 状态 ---------- */
-  const blankFilters = () => ({ q: '', priceMin: '', priceMax: '', commMin: '', commMax: '', cat: '', platform: '', status: '' });
-  const blank = () => ({ filters: blankFilters(), items: seedItems(), dialog: null, detailId: null, draft: null, confirm: null });
-
+  const seedItems = () => [];
+  const blankFilters = () => ({ q: '', cat: '', platform: '', status: '' });
+  const blank = () => ({ filters: blankFilters(), items: seedItems(), dialog: null, detailId: null, detailPanel: 'info', recordOpen: null, supplementId: null, preview: null, leaveConfirm: null, draft: null });
   let state = blank();
   let timers = [];
   let api = {};
-
   const accountScope = window.EcommerceVideoAccountScope.create({
     storeKey: STORE_KEY, createState: blank, getState: () => state,
     setState: next => { state = next; api = {}; },
     serialize: current => ({ items: current.items }),
     restore: (fresh, saved) => {
-      if (Array.isArray(saved?.items)) fresh.items = saved.items;
+      if (Array.isArray(saved?.items)) fresh.items = saved.items.map(item => {
+        const assets = item.assets || item.materialDetails || { main: [], video: [], image: [] };
+        for (const kind of ['main','video','image']) assets[kind] = (Array.isArray(assets[kind]) ? assets[kind] : []).map(row => ({ ...row, kind: kind === 'video' ? 'video' : 'image' }));
+        const materials = { main: assets.main.length, video: assets.video.filter(row => !row.disabled).length, image: assets.image.filter(row => !row.disabled).length };
+        const status = ['crawling','ready'].includes(item.status) ? (materials.video + materials.image + materials.main ? 'ready' : 'pending') : item.status;
+        return { ...item, assets, materials, status, collectedImages: item.collectedImages || [], crawls: (item.crawls || []).map(record => ['running','paused'].includes(record.status) ? { ...record, status: 'interrupted', pending: 0 } : record) };
+      });
       return fresh;
     },
     suspend: () => clearTimers(),
   });
   const persist = accountScope.persist;
-  /* 导入工作台进行中的商品 id；不持久化 */
-  const pushing = new Set();
-
+  const pushing = new Map();
+  const draftDomValues = new WeakMap();
+  const mediaKey = row => row.videoId ? `${row.platform || row.channel}:${row.videoId}:${row.kind || 'video'}` : row.src || row.local || row.name;
+  const mediaSrc = row => window.CollectApi.thumbnail(row);
+  const syncDraftFromDom = () => {
+    if (!state.draft || state.dialog !== 'entry') return;
+    const current = document.querySelector('.ec-video-products');
+    if (current?.dataset.draftOwner !== state.draft.id) return;
+    current.querySelectorAll('[data-lp-draft]:not(button)').forEach(el => {
+      if (draftDomValues.has(el) && draftDomValues.get(el) !== el.value) state.draft[el.dataset.lpDraft] = el.value;
+      draftDomValues.set(el, el.value);
+    });
+  };
   /* ---------- 工具 ---------- */
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const productImage = (item, fallback) => {
-    const real = item?.materialDetails?.main?.[0];
-    if (real?.src) {
-      return `<img src="${esc(mediaSrc(real))}" alt="${esc(item.name)}" title="采集主图" width="46" height="46" loading="lazy" decoding="async">`;
-    }
-    const image = window.EcommerceVideoProductImages?.get(item);
-    return image ? `<img src="${esc(image.src)}" alt="${esc(image.alt || item.name)}" title="${esc(image.label || '相似商品示意图')}" width="46" height="46" loading="lazy" decoding="async">` : esc(fallback);
+    const own = item.assets?.main?.[0];
+    return own?.src || own?.local ? `<img src="${esc(mediaSrc(own))}" alt="${esc(item.name)}" title="采集主图" width="46" height="46" loading="lazy">` : esc(fallback);
   };
   const money = value => `¥${Number(value || 0).toFixed(2)}`;
   const pct = value => `${Number(value || 0)}%`;
@@ -135,50 +91,6 @@
   const imgOf = (key, count) => window.EcommerceVideoImages?.of(key, count) || '';
   const imgTag = key => { const src = imgOf(key); return src ? `<img src="${esc(src)}" alt="">` : ''; };
   const materialTotal = item => (item?.materials?.main || 0) + (item?.materials?.video || 0) + (item?.materials?.image || 0);
-  /* 可推送工作台：有远程播放/来源地址，或已在采集服务落盘 */
-  const pushable = v => /^https?:/.test(v?.playUrl || '') || (v?.playUrls || []).some(p => /^https?:/.test(p?.url || '')) || /^media\//.test(String(v?.local || '').replace(/^\//, ''));
-  /* 图片素材可推送：有远程图源地址，或已落盘 */
-  const imgPushable = v => /^https?:/.test(v?.src || '') || /^media\//.test(String(v?.local || '').replace(/^\//, ''));
-  const localUrl = p => p ? (String(p).startsWith('/') ? p : '/' + p) : '';
-
-  /* ---------- 真实采集接入：商品走浏览器插件桥，视频走本地采集服务 ---------- */
-  const apiBase = () => (/^https?:$/.test(location.protocol) ? location.origin : 'http://127.0.0.1:8765') + '/api';
-  const postTarget = () => (location.origin === 'null' ? '*' : location.origin);
-  /* 媒体直链带防盗链 Referer 要求，统一经服务中转后供页面预览 */
-  const proxyOf = (url, platform) => url ? `${apiBase()}/proxy?platform=${encodeURIComponent(platform || '')}&url=${encodeURIComponent(url)}` : '';
-  const extCall = (type, payload, timeoutMs) => new Promise(resolve => {
-    const reqId = uid('req');
-    const onMsg = event => {
-      const m = event.data;
-      if (!m || m.source !== 'ks-product-bridge' || m.reqId !== reqId) return;
-      cleanup(); resolve(m);
-    };
-    const cleanup = () => { clearTimeout(timer); window.removeEventListener('message', onMsg); };
-    const timer = setTimeout(() => { cleanup(); resolve(null); }, timeoutMs);
-    window.addEventListener('message', onMsg);
-    window.postMessage({ source: 'ec-prod-page', type, reqId, ...payload }, postTarget());
-  });
-  const extPing = () => extCall('KS_PRODUCT_PING', {}, 1200).then(m => (m && m.type === 'KS_PRODUCT_PONG' ? m : null));
-  const extLookup = id => extCall('KS_PRODUCT_LOOKUP', { id }, 60000);
-  const channelPlatform = channel => (channel === '抖音' ? 'douyin' : 'kuaishou');
-  const serviceSearch = (platform, keyword) =>
-    fetch(`${apiBase()}/search?platform=${platform}&keyword=${encodeURIComponent(keyword)}&pages=1`)
-      .then(r => r.json())
-      .catch(() => ({ ok: false, code: 'offline', message: '采集服务未启动：python tools/collect_service.py' }));
-  /* 选品中心类目路径 → 原型固定类目表 */
-  const CAT_KEYWORDS = [
-    ['美妆', '美妆个护'], ['个护', '美妆个护'], ['护肤', '美妆个护'], ['化妆', '美妆个护'], ['洗护', '美妆个护'],
-    ['食品', '食品饮料'], ['零食', '食品饮料'], ['饮料', '食品饮料'], ['粮油', '食品饮料'], ['生鲜', '食品饮料'], ['调味', '食品饮料'], ['冲饮', '食品饮料'], ['酒', '食品饮料'],
-    ['数码', '数码家电'], ['家电', '数码家电'], ['电器', '数码家电'], ['手机', '数码家电'], ['电脑', '数码家电'], ['电子', '数码家电'],
-    ['服饰', '服饰鞋包'], ['服装', '服饰鞋包'], ['鞋', '服饰鞋包'], ['箱包', '服饰鞋包'], ['内衣', '服饰鞋包'], ['配饰', '服饰鞋包'],
-    ['家居', '家居百货'], ['百货', '家居百货'], ['收纳', '家居百货'], ['厨具', '家居百货'], ['日用', '家居百货'], ['清洁', '家居百货'], ['家装', '家居百货'],
-  ];
-  const mapCategory = (record, name) => {
-    const text = [...(record?.category?.path || []), record?.category?.name || '', name || ''].join(' ');
-    const hit = CAT_KEYWORDS.find(([kw]) => text.includes(kw));
-    return hit ? hit[1] : '其他';
-  };
-
   /* 黑段缺料：按素材位规则推断，用于详情页缺失清单 */
   const missingSlots = item => {
     const videos = item?.materials?.video || 0;
@@ -190,7 +102,6 @@
     if (videos < 3) missing.push(REQUIRED_SLOTS[3]);
     return missing;
   };
-
   const filtered = () => {
     const f = state.filters;
     const q = f.q.trim().toLowerCase();
@@ -199,192 +110,304 @@
       if (f.cat && item.cat !== f.cat) return false;
       if (f.platform && item.platform !== f.platform) return false;
       if (f.status && item.status !== f.status) return false;
-      if (f.priceMin !== '' && Number(item.price) < Number(f.priceMin)) return false;
-      if (f.priceMax !== '' && Number(item.price) > Number(f.priceMax)) return false;
-      if (f.commMin !== '' && Number(item.comm) < Number(f.commMin)) return false;
-      if (f.commMax !== '' && Number(item.comm) > Number(f.commMax)) return false;
       return true;
     });
   };
-
   /* ---------- 片段 ---------- */
   const badge = status => {
     const meta = STATUS[status] || STATUS.pending;
     return `<span class="ec-prod-badge ec-prod-badge--${meta.tone}">${meta.label}</span>`;
   };
-
   const filterCard = () => {
     const f = state.filters;
     const option = (value, label, selected) => `<option value="${esc(value)}"${value === selected ? ' selected' : ''}>${esc(label)}</option>`;
     return `<div class="ec-prod-card"><div class="ec-prod-card-body"><div class="ec-prod-filters">
-      <div class="ec-prod-field ec-prod-field--search"><label for="lpQ">搜索商品名称 / 款式 / 快手商品ID</label><input id="lpQ" class="ec-prod-control" value="${esc(f.q)}" data-lp-filter="q" placeholder="搜索商品名称/款式/快手商品ID" autocomplete="off"></div>
-      <div class="ec-prod-field"><label>商品价格</label><div class="ec-prod-range"><input class="ec-prod-control is-num" data-lp-filter="priceMin" type="number" min="0" value="${esc(f.priceMin)}" placeholder="0"><span>–</span><input class="ec-prod-control is-num" data-lp-filter="priceMax" type="number" min="0" value="${esc(f.priceMax)}" placeholder="999"><span>元</span></div></div>
-      <div class="ec-prod-field"><label>佣金范围</label><div class="ec-prod-range"><input class="ec-prod-control is-num" data-lp-filter="commMin" type="number" min="0" max="100" value="${esc(f.commMin)}" placeholder="0"><span>–</span><input class="ec-prod-control is-num" data-lp-filter="commMax" type="number" min="0" max="100" value="${esc(f.commMax)}" placeholder="100"><span>%</span></div></div>
+      <div class="ec-prod-field ec-prod-field--search"><label for="lpQ">搜索商品名称 / 款式 / 快手商品ID</label>
+        <div class="ec-prod-searchbox"><input id="lpQ" class="ec-prod-control" value="${esc(f.q)}" data-lp-filter="q" placeholder="搜索商品名称/款式/快手商品ID" autocomplete="off">
+          <button type="button" class="ec-prod-btn ec-prod-btn--primary" data-lp="run-search">搜索</button>
+          <button type="button" class="ec-prod-btn" data-lp="reset-filters">⟳ 重置</button>
+        </div>
+      </div>
       <div class="ec-prod-field"><label for="lpCat">类目</label><select id="lpCat" class="ec-prod-control" data-lp-filter="cat">${option('', '全部类目', f.cat)}${CATEGORIES.map(c => option(c, c, f.cat)).join('')}</select></div>
       <div class="ec-prod-field"><label for="lpPf">平台</label><select id="lpPf" class="ec-prod-control" data-lp-filter="platform">${option('', '全部平台', f.platform)}${PLATFORMS.map(p => option(p, p, f.platform)).join('')}</select></div>
       <div class="ec-prod-field"><label for="lpSt">素材状态</label><select id="lpSt" class="ec-prod-control" data-lp-filter="status">${option('', '全部状态', f.status)}${Object.entries(STATUS).map(([k, v]) => option(k, v.label, f.status)).join('')}</select></div>
-      <div class="ec-prod-filter-actions"><span class="ec-prod-hint is-num">匹配 ${filtered().length} / ${state.items.length}</span><button type="button" class="ec-prod-btn" data-lp="reset-filters">⟳ 重置</button><button type="button" class="ec-prod-btn ec-prod-btn--primary" data-lp="open-entry">＋ 录入商品</button></div>
+      <div class="ec-prod-filter-actions"><span class="ec-prod-hint is-num">匹配 ${filtered().length} / ${state.items.length} 个商品</span></div>
     </div></div></div>`;
   };
-
-  /* 单一列表：整行可点，行内不放任何操作按钮（PRD §4.4-①） */
+  /* 单一列表：整行可点，行内不放任何操作按钮（PRD §4.4-①）。类目并进商品行小字、平台用徽标，商品ID 只在详情里看 */
   const table = rows => `<div class="ec-prod-table-wrap"><table class="ec-prod-table ec-prod-table--rows"><thead><tr>
-      <th>商品</th><th class="is-num">价格 · 规格</th><th>类目</th><th>平台</th><th>素材</th><th>素材状态</th><th class="is-num">更新时间</th>
+      <th>商品</th><th>素材</th><th>素材状态</th><th class="is-num">更新时间</th><th class="is-right">操作</th>
     </tr></thead><tbody>${rows.map(item => `<tr class="ec-prod-rowlink" tabindex="0" role="link" data-lp="open-detail" data-id="${item.id}" aria-label="查看商品详情：${esc(item.name)}">
-      <td><div class="ec-prod-cell-product"><span class="ec-prod-thumb">${productImage(item, item.materials.main ? '主图' : '无图')}${item.status === 'crawlFailed' ? '<em class="ec-prod-flag" title="爬取失败，进入详情可重新爬取">!</em>' : ''}</span><span><strong title="${esc(item.name)}">${esc(item.name)}</strong><small>快手 ID ${esc(item.kuaishouId || '—')} · 商品ID ${esc(item.id)}</small></span></div></td>
-      <td class="is-num"><span class="ec-prod-price">${money(item.price)}</span><small class="ec-prod-sub">${esc(item.spec || '—')} · 佣金 ${pct(item.comm)}</small></td>
-      <td>${item.cat ? `<span class="ec-prod-cat">${esc(item.cat)}</span>` : '<span class="ec-prod-hint">—</span>'}</td>
-      <td>${esc(item.platform)}</td>
+      <td><div class="ec-prod-cell-product"><span class="ec-prod-thumb">${productImage(item, item.materials.main ? '主图' : '无图')}${item.status === 'crawlFailed' ? '<em class="ec-prod-flag" title="爬取失败，进入详情可重新爬取">!</em>' : ''}</span><span><strong>${esc(item.name)}</strong><small>${esc(item.platform)} · ${money(item.price)} · ${esc(item.spec || '—')} · ID ${esc(item.kuaishouId || '—')}</small></span></div></td>
       <td><span class="is-num">${item.materials.video} 视 / ${item.materials.image + item.materials.main} 图</span></td>
       <td>${badge(item.status)}</td>
       <td class="is-num">${esc(item.updated)}</td>
+      <td class="is-right"><a class="ec-prod-link" role="button" data-lp="open-supplement" data-id="${item.id}" title="给这个商品增补本地素材">增补素材</a></td>
     </tr>`).join('')}</tbody></table></div>`;
-
-  const emptyState = () => `<div class="ec-prod-empty"><i>商</i><h3>${state.items.length ? '没有匹配的商品' : '还没有录入任何商品'}</h3><p>${state.items.length ? '换个关键词，或放宽价格、佣金区间再试。' : '点「录入商品」填写快手商品ID 并采集资料，右列联网爬取素材，确认添加即入库。'}</p><div>${state.items.length ? '<button type="button" class="ec-prod-btn" data-lp="reset-filters">⟳ 清空筛选</button>' : '<button type="button" class="ec-prod-btn ec-prod-btn--primary" data-lp="open-entry">＋ 录入第一个商品</button>'}</div></div>`;
-
+  const emptyState = () => `<div class="ec-prod-empty"><i>商</i><h3>${state.items.length ? '没有匹配的商品' : '还没有录入任何商品'}</h3><p>${state.items.length ? '换个关键词，或放宽价格、佣金区间再试。' : '点「录入商品」填写快手商品ID 并采集资料，右列联网爬取素材，点确认即入库。'}</p><div>${state.items.length ? '<button type="button" class="ec-prod-btn" data-lp="reset-filters">⟳ 清空筛选</button>' : '<button type="button" class="ec-prod-btn ec-prod-btn--primary" data-lp="open-entry">＋ 录入第一个商品</button>'}</div></div>`;
   const gapNotice = () => {
     const rows = state.items.filter(item => item.status === 'ready' && missingSlots(item).length);
     if (!rows.length) return '';
     return `<div class="ec-prod-gap"><strong>${rows.length} 个商品已「素材就绪」，但黑段素材位仍缺料，进视频制作生成时会逐项提示：</strong><ul>${rows.map(item => `<li>${esc(item.name.slice(0, 18))}… 缺 ${missingSlots(item).map(s => s.label).join('、')}</li>`).join('')}</ul></div>`;
   };
-
-  /* ---------- 爬取面板（唯一实现，录入弹窗右列直接调用） ---------- */
-  const dupText = dup => dup === 'pool' ? '素材池已有' : dup === 'seen' ? '与其他渠道重复' : '';
-  const mediaSrc = file => (file?.src && /^https?:/.test(file.src)) ? proxyOf(file.src, file.platform) : (file?.src || '');
-
-  const candidateTile = (row, index, zone) => `<button type="button" class="ec-prod-cand${row.picked ? ' is-picked' : ''}${row.dup ? ' is-dup' : ''}" data-lp="pick" data-zone="${zone.key}" data-index="${index}" ${row.dup ? 'disabled' : ''} aria-pressed="${row.picked}">
-      <span class="ec-prod-cand-media">
-        ${row.src ? `<img src="${esc(mediaSrc(row))}" alt="" loading="lazy" decoding="async">` : (imgTag(row.name) || `<i class="ec-prod-cand-mark">${zone.mark}</i>`)}
-        <span class="ec-prod-cand-ck" aria-hidden="true">✓</span>
+  /* ---------- 联网爬取面板：两个候选区（视频 / 图片）＋ 一个合并的归档区 ---------- */
+  const dupText = dup => dup === 'seen' ? '与其他渠道重复' : '';
+  /* 候选卡：左上角复选框＝唯一的勾选开关，点图/封面＝放大；不做单条删除、不做归入按钮 */
+  const candidateTile = (row, index, zone) => `<article class="ec-prod-cand${row.picked ? ' is-picked' : ''}${row.dup ? ' is-dup' : ''}">
+      <button type="button" class="ec-prod-cand-ck" data-lp="pick" data-zone="${zone.key}" data-index="${index}" aria-pressed="${row.picked}"${row.dup ? ' disabled' : ''} title="${row.dup ? esc(dupText(row.dup)) : row.picked ? '已勾选，点一下取消' : '勾选'}"></button>
+      <button type="button" class="ec-prod-cand-media" data-lp="preview" data-zone="${zone.key}" data-index="${index}" title="放大查看">
+        ${row.src ? `<img src="${esc(mediaSrc(row))}" alt="">` : imgTag(row.name) || `<i class="ec-prod-cand-mark">${zone.mark}</i>`}
         <span class="ec-prod-cand-src">${esc(row.channel)}</span>
-        ${row.dup ? `<span class="ec-prod-cand-dup">${esc(dupText(row.dup))}</span>` : `<span class="ec-prod-cand-dur">${row.duration ? `${row.duration}s` : esc(row.size)}</span>`}
-      </span>
-      <span class="ec-prod-cand-cap"><strong title="${esc(row.name)}">${esc(row.name)}</strong><small class="is-num">${esc(row.author ? row.author + ' · ' : '')}${esc(row.size)}${row.duration ? ` · ${row.duration}s` : ''}</small></span>
-      <span class="ec-prod-cand-preview">${row.dup ? '重复素材' : row.picked ? '已选 · 再点取消' : '点击勾选'}</span>
-    </button>`;
-
-  const poolStrip = (files, zoneKey) => `<div class="ec-prod-pool">
-      <span class="ec-prod-pool-label">已归入 ${files.length}</span>
-      ${files.length ? files.map((file, index) => `<span class="ec-prod-chip">${file.src ? `<img src="${esc(mediaSrc(file))}" alt="">` : `<i>${zoneKey === 'video' ? '▶' : '图'}</i>`}<span title="${esc(file.name)}">${esc(file.from ? `${file.from} · ${file.name}` : file.name)}</span><button type="button" data-lp="remove-pool" data-zone="${zoneKey}" data-index="${index}" aria-label="移出 ${esc(file.name)}">×</button></span>`).join('') : '<span class="ec-prod-hint">勾选候选后点「归入素材池」</span>'}
+        <span class="ec-prod-cand-dur is-num">${row.duration ? `${row.duration}s` : esc(row.size)}</span>
+        ${row.dup ? `<span class="ec-prod-cand-dup">${esc(dupText(row.dup))}</span>` : ''}
+      </button>
+      ${zone.key === 'video' ? `<span class="ec-prod-cand-cap"><strong title="${esc(row.name)}">${esc(row.name)}</strong></span>` : ''}
+    </article>`;
+  /* 归档区：视频与图片合在同一个块里，靠角标区分类型；索引仍按各自分区算 */
+  const archiveStrip = (pool, locked, draft) => {
+    const files = [
+      ...pool.video.map((file, at) => ({ ...file, kind: 'video', at })),
+      ...pool.image.map((file, at) => ({ ...file, kind: 'image', at })),
+    ];
+    return `<div class="ec-prod-pool">
+      <span class="ec-prod-pool-label">${draft ? '已归档' : '已归入'} ${files.length}</span>
+      ${files.length ? files.map(file => `<span class="ec-prod-chip">${file.src ? `<img src="${esc(mediaSrc(file))}" alt="">` : `<i>${file.kind === 'video' ? '▶' : '图'}</i>`}<em>${file.kind === 'video' ? '视频' : '图片'}</em><span title="${esc(file.name)}">${esc(file.from ? `${file.from} · ${file.name}` : file.name)}</span>${locked ? '' : `<button type="button" data-lp="remove-pool" data-zone="${file.kind}" data-index="${file.at}" aria-label="移出 ${esc(file.name)}">×</button>`}</span>`).join('') : `<span class="ec-prod-hint">${draft ? '勾选左上角复选框即归档' : '勾选候选后点下面的「归入素材中心」'}</span>`}
     </div>`;
-
-  const crawlZone = (crawl, pool, zone) => {
+  };
+  const crawlZone = (host, crawl, zone, locked) => {
     const data = crawl.zones[zone.key];
-    const picked = crawlPickedByZone(crawl, zone.key).length;
-    const emptyText = zoneEmptyText(data, zone);
+    const tried = Object.keys(data.attempts).length;
+    const idle = !data.running && !data.paused;
+    const canRun = !idle || (crawl.channels.length > 0 && Boolean(crawlBasis(host).name.trim()));
+    /* 一个按钮走完状态循环 */
+    const runLabel = data.running ? '■ 暂停爬取' : data.paused ? '▶ 继续爬取' : tried ? '⟳ 重新爬取' : '↓ 开始爬取';
+    const emptyText = tried && !data.results.length
+      ? `已重试仍未取到${zone.label}候选，可完善商品名称 / 类目后重试本区。`
+      : `点右上按钮按所选渠道爬${zone.label}，候选只回填到这个区。`;
     return `<div class="ec-prod-zone ec-prod-zone--${zone.key}">
-      <header><i>${zone.mark}</i><b>${zone.label}</b>${data.running ? '<span class="ec-prod-badge ec-prod-badge--working ec-prod-badge--plain">爬取中</span>' : ''}<span class="ec-prod-zone-count${data.results.length ? '' : ' is-zero'}">${data.results.length} 条候选</span>${picked ? `<span class="ec-prod-zone-picked">已选 ${picked}</span>` : ''}</header>
+      <header><i>${zone.mark}</i><b>${zone.label}候选</b>${data.paused ? '<span class="ec-prod-badge ec-prod-badge--warn ec-prod-badge--plain">已暂停</span>' : ''}<span class="ec-prod-zone-count${data.results.length ? '' : ' is-zero'}">${data.results.length} 条</span>
+        <button type="button" class="ec-prod-btn ec-prod-btn--sm${data.running ? '' : ' ec-prod-btn--collect'}" data-lp="run-zone" data-zone="${zone.key}"${canRun ? '' : ' aria-disabled="true" title="先填商品名称并至少选一个渠道"'}>${runLabel}</button>
+      </header>
       <div class="ec-prod-zone-body${data.running && !data.results.length ? ' is-loading' : ''}">
         ${data.running && !data.results.length ? `<span class="ec-prod-spinner"></span><span>正在检索同类${zone.label}素材…</span>` : ''}
         ${!data.results.length && !data.running ? `<div class="ec-prod-zone-empty">${esc(emptyText)}</div>` : ''}
         ${data.results.length ? `<div class="ec-prod-zone-grid">${data.results.map((row, index) => candidateTile(row, index, zone)).join('')}</div>` : ''}
       </div>
-      ${poolStrip(pool[zone.key], zone.key)}
-      ${data.failed.length ? `<div class="ec-prod-zone-fail"><span><b>${esc(data.failed.join('、'))} 渠道未返回${zone.label}候选</b>${esc(data.failed.map(ch => data.errors[ch] || `${ch} 未返回候选`).join('；'))}；本分区已按「可用即通过」跳过，可完善信息后重试本分区。</span><button type="button" class="ec-prod-btn ec-prod-btn--sm" data-lp="retry-zone" data-zone="${zone.key}" ${data.running ? 'disabled' : ''}>⟳ 重试该分区</button></div>` : ''}
+      ${data.failed.length ? `<div class="ec-prod-zone-fail"><span><b>${esc(data.failed.join('、'))} 渠道未返回${zone.label}候选</b>${esc(data.failed.map(channel => data.errors[channel] || '未返回候选').join('；'))}</span><button type="button" class="ec-prod-btn ec-prod-btn--sm" data-lp="retry-zone" data-zone="${zone.key}" ${data.running || data.paused ? 'disabled' : ''}>⟳ 重试本区</button></div>` : ''}
     </div>`;
   };
-
-  const crawlPanel = (crawl, pool, basis) => {
-    const busy = crawlBusy(crawl);
-    const noName = !basis.name.trim();
-    const canRun = !noName && crawl.channels.length > 0 && !busy;
-    const disabledTitle = noName ? '请先填写商品名称，爬取按名称 / 类目发起'
-      : !crawl.channels.length ? '请先至少选择一个渠道'
-      : busy ? '候选正在流式回填中' : '';
-    const picked = crawlPicked(crawl);
-    return `<div class="ec-prod-crawl">
+  /* 同一套面板，两种结构：录入弹窗＝勾选即归档（确认即入库，不放归入按钮）；
+   * 商品详情＝勾选只是选中，必须点「↓ 归入素材中心」才入档 */
+  const crawlPanel = host => {
+    const crawl = crawlFor(host);
+    const pool = poolFor(host);
+    const locked = poolLocked(host);
+    const basis = crawlBasis(host);
+    const draft = isDraft(host);
+    const kept = poolTotal(host);
+    const picked = CRAWL_ZONES.reduce((sum, zone) => sum + crawl.zones[zone.key].results.filter(row => row.picked && !row.dup).length, 0);
+    return `<div class="ec-prod-crawl" data-crawl-owner="${esc(host.id)}">
+      <p class="ec-prod-crawl-top">切换工作区可继续等待；刷新或关闭采集页会结束本次候选接收，已确认归档的素材会保留。</p>
       <div class="ec-prod-crawl-bar">
         <div class="ec-prod-channel" role="group" aria-label="爬取渠道"><span>渠道</span>${CRAWL_CHANNELS.map(ch => `<button type="button" class="${crawl.channels.includes(ch) ? 'active' : ''}" data-lp-channel="${ch}" aria-pressed="${crawl.channels.includes(ch)}">${ch}</button>`).join('')}</div>
-        <button type="button" class="ec-prod-btn ec-prod-btn--sm ec-prod-btn--collect" data-lp="run-crawl" ${canRun ? '' : `disabled title="${esc(disabledTitle)}"`}>${busy ? '爬取中…' : '↓ 开始爬取'}</button>
-        ${noName ? '<span class="ec-prod-crawl-note is-warn">⚠ 未填商品名称，暂不可发起爬取</span>' : `<span class="ec-prod-crawl-note">依据 <b>${esc(basis.name.trim().slice(0, 14))}</b>${basis.cat ? ` · <b>${esc(basis.cat)}</b>` : ''} 检索同类型素材</span>`}
+        ${!basis.name.trim() ? '<span class="ec-prod-crawl-note is-warn">先填商品名称，爬取按名称 / 类目发起</span>' : `<span class="ec-prod-crawl-note">依据 <b>${esc(basis.name.trim().slice(0, 14))}</b>${basis.cat ? ` · <b>${esc(basis.cat)}</b>` : ''} 检索同类素材</span>`}
       </div>
-      ${CRAWL_ZONES.map(zone => crawlZone(crawl, pool, zone)).join('')}
-      <div class="ec-prod-crawl-actions"><small>勾选后归入对应分区，底栏「视频 / 图片」计数同步更新；确认添加时随商品一同入库。</small><button type="button" class="ec-prod-btn ec-prod-btn--sm ec-prod-btn--primary" data-lp="commit-crawl" ${picked ? '' : 'disabled title="先点击勾选上方的候选素材，再归入素材池"'}>↓ 归入素材池${picked ? ` (${picked})` : ''}</button></div>
+      ${CRAWL_ZONES.map(zone => crawlZone(host, crawl, zone, locked)).join('')}
+      ${archiveStrip(pool, locked, draft)}
+      <div class="ec-prod-crawl-actions"><small>${locked ? '下面是在库素材，来自记录导入、暂无逐条留痕。' : draft ? '勾了就算归档；点「确认」随商品一起入库。重新爬取只刷新候选区，<b>已归档的不会丢</b>。' : '重新爬取只刷新候选区，<b>已归入的不会丢</b>。'}</small>${!draft && picked ? `<button type="button" class="ec-prod-btn ec-prod-btn--sm ec-prod-btn--primary" data-lp="commit-crawl">↓ 归入素材中心 (${picked})</button>` : ''}</div>
     </div>`;
   };
-
-  /* ---------- 录入商品弹窗（PRD §4.4-③：左基本信息 ＋ 右联网爬取） ---------- */
-  const entryValid = d => Boolean(d.kuaishouId.trim() && d.name.trim() && d.price !== '' && d.spec.trim() && d.comm !== '' && d.cat && d.highlight.trim());
-
-  const entryDialog = () => {
+  /* 放大查看：点候选卡的图/封面进来 */
+  const lightbox = () => {
+    const p = state.preview;
+    if (!p) return '';
+    return `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-lightbox" role="dialog" aria-modal="true" aria-label="素材预览"><button type="button" data-lp="close-preview" aria-label="关闭">×</button>${p.loading ? '<div class="ec-prod-preview-loading"><span class="ec-prod-spinner"></span>正在下载并校验素材…</div>' : p.error ? `<div class="ec-prod-preview-error">${esc(p.error)}</div>` : p.kind === 'video' && p.local ? `<video controls playsinline preload="metadata" src="${esc(p.local)}" poster="${esc(mediaSrc(p))}"></video>` : p.local || p.src ? `<img src="${esc(p.local || mediaSrc(p))}" alt="${esc(p.name)}">` : '<div class="ec-prod-lightbox-empty">这条素材没有可用的预览地址</div>'}<p><b>${esc(p.name)}</b><span>${p.kind === 'video' ? '视频预览' : '图片'} · ${esc(p.channel || p.from || '')}</span></p></div></div>`;
+  };
+  /* ---------- 爬取记录（只出现在「联网爬取」tab；带时间，详情只列已归入的素材） ---------- */
+  const RECORD_STATUS = {
+    interrupted: { label: '已中断', tone: 'warn' },
+    running: { label: '进行中', tone: 'working' },
+    paused: { label: '已暂停', tone: 'warn' },
+    done: { label: '成功', tone: 'ok' },
+    partial: { label: '部分成功', tone: 'warn' },
+    failed: { label: '没抓到', tone: 'danger' },
+  };
+  const crawlRecords = host => {
+    const rows = [...(host.crawls || [])].reverse();
+    const head = `<header><b><i>⛰</i>爬取记录</b><small class="ec-prod-hint">${rows.length ? `共 ${rows.length} 次 · 详情只列勾选归入过的素材` : '每次联网爬取留一条，按时间倒排'}</small></header>`;
+    if (!rows.length) {
+      const legacy = poolTotal(host) || (host.materials?.video || 0) + (host.materials?.image || 0);
+      return `<section class="ec-prod-records">${head}<p class="ec-prod-records-empty">${legacy
+        ? '这条商品的素材是在「爬取记录」上线前入库的，没有留痕；下方候选区照常可以继续爬，新爬的每一次都会记录在这里。'
+        : '还没有爬取过。选好渠道点「开始爬取」，这里会记下每次抓了多少、归入了哪些素材。'}</p></section>`;
+    }
+    return `<section class="ec-prod-records">${head}<ul>${rows.map(record => {
+      const kept = [...record.video, ...record.image].filter(row => row.picked);
+      const got = record.video.length + record.image.length;
+      const meta = RECORD_STATUS[record.status] || RECORD_STATUS.running;
+      return `<li class="ec-prod-record${open ? ' is-open' : ''}">
+        <div class="ec-prod-record-head">
+          <span class="ec-prod-record-when"><b>${esc(cnStamp(record.at))}</b>${record.status === 'running' ? '<span class="ec-prod-spinner" style="width:12px;height:12px;border-width:2px"></span>' : ''}</span>
+          <span class="ec-prod-badge ec-prod-badge--${meta.tone} ec-prod-badge--plain">${meta.label}</span>
+          <span class="ec-prod-record-note">渠道 ${esc(record.channel)} · 视频 ${record.video.length} / 图片 ${record.image.length}${record.failed.length ? ` · ${esc(record.failed.join('、'))} 未返回` : ''}</span>
+          <span class="ec-prod-record-kept is-num">已归入 ${kept.length}</span>
+          ${got ? `<a class="ec-prod-link" role="button" data-lp="toggle-record" data-record="${record.id}">查看详情</a>` : '<small class="ec-prod-hint">无素材</small>'}
+        </div>
+      </li>`;
+    }).join('')}</ul></section>`;
+  };
+  /* 爬取详情的二级页：只铺这次勾选归入过的素材，样式跟基本信息的素材墙一致 */
+  const recordView = () => {
+    const item = find(state.detailId);
+    const record = (item?.crawls || []).find(row => row.id === state.recordOpen);
+    if (!record) return '';
+    const kept = [...record.video.map(row => ({ ...row, kind: 'video' })), ...record.image.map(row => ({ ...row, kind: 'image' }))].filter(row => row.picked);
+    return `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-dialog ec-prod-dialog--slim" role="dialog" aria-modal="true" aria-label="爬取详情">
+      <header><div><h2>爬取详情</h2><p>${esc(cnStamp(record.at))} · 渠道 ${esc(record.channel)} · 抓到 视频 ${record.video.length} / 图片 ${record.image.length} · 已归入 ${kept.length}${record.failed.length ? ` · ${esc(record.failed.join('、'))} 未返回` : ''}</p></div><button type="button" data-lp="close-record" aria-label="关闭">×</button></header>
+      <div class="ec-prod-dialog-body">
+        ${kept.length ? `<div class="ec-prod-media-grid">${kept.map(row => `<article class="ec-prod-media"><div class="ec-prod-media-frame">${row.src ? `<img src="${esc(mediaSrc(row))}" alt="">` : ''}<span class="ec-prod-tag">${row.kind === 'video' ? '视频' : '图片'}</span>${row.kind === 'video' ? '<span class="ec-prod-play">▶</span>' : ''}${row.duration ? `<span class="ec-prod-dur is-num">00:${String(row.duration).padStart(2, '0')}</span>` : ''}</div><div class="ec-prod-media-body"><strong>${esc(row.name)}</strong><small>来源 ${esc(row.channel)} · 已归入素材中心</small></div></article>`).join('')}</div>` : '<p class="ec-prod-hint" style="padding:18px 0">这次抓到了素材，但还没勾选归入素材中心。</p>'}
+      </div>
+      <footer><span class="is-spacer"></span><button type="button" class="ec-prod-btn" data-lp="close-record">关闭</button></footer>
+    </div></div>`;
+  };
+  /* ---------- 商品详情的两 tab 导航：爬取在跑时徽标挂在「联网爬取」上，切过去就能看到进度 ---------- */
+  const panelTabs = item => {
+    const running = crawlBusy(crawlFor(item));
+    const tab = (key, label) => `<button type="button" role="tab" class="ec-prod-tab${state.detailPanel === key ? ' is-active' : ''}${key === 'crawl' && running ? ' is-running' : ''}" data-lp="panel" data-panel="${key}" aria-selected="${state.detailPanel === key}">${label}</button>`;
+    return `<nav class="ec-prod-tabs" role="tablist">${tab('info', '基本信息')}${tab('crawl', '联网爬取')}</nav>`;
+  };
+  /* 只有「采集带回」那组必填；「自行设定」可以空着，缺的信息在详情里显示为 — */
+  const missingField = d => [['快手商品ID', d.kuaishouId], ['商品名称', d.name], ['价格', d.price], ['佣金比例', d.comm]]
+    .find(([, value]) => !String(value ?? '').trim())?.[0] || '';
+  /* 输入框下方的自动建议（对齐淘宝搜索框习惯）：聚焦即出，边打边筛，点一条填进 ID */
+  const historyRows = term => {
+    const rows = [
+      ...state.items.slice(0, 8).map(item => ({ ks: item.kuaishouId, label: item.name, price: item.price, materials: item.materials })),
+    ];
+    const q = String(term ?? '').trim().toLowerCase();
+    return q ? rows.filter(row => `${row.ks} ${row.label}`.toLowerCase().includes(q)) : rows;
+  };
+  const historyList = () => {
+    const field = state.draft.suggestField || 'kuaishouId';
+    const rows = historyRows(state.draft[field]);
+    if (!rows.length) return `<div class="ec-prod-suggest"><p class="ec-prod-suggest-empty">没有匹配的商品，直接填新 ID 后点「采集」。</p></div>`;
+    return `<div class="ec-prod-suggest">
+      <header><b>可选商品</b><small>点一条填进上方输入框</small></header>
+      <ul>${rows.map(row => `<li><button type="button" data-lp="pick-history" data-ks="${esc(row.ks)}" data-label="${esc(row.label)}">
+        <strong title="${esc(row.label)}">${esc(row.label)}</strong>
+        <small>快手ID ${esc(row.ks)}${row.price != null ? ` · 到手 ${money(row.price)}` : ''}${row.materials ? ` · ${row.materials.video}视 / ${row.materials.image}图` : ''}</small>
+      </button></li>`).join('')}</ul>
+    </div>`;
+  };
+  /* 基本信息表单 = 录入弹窗的「基本信息」tab */
+  const entryForm = () => {
     const d = state.draft;
     const option = (value, label) => `<option value="${esc(value)}"${value === d.cat ? ' selected' : ''}>${esc(label)}</option>`;
+    return `<section class="ec-prod-form-section">
+          <header><b><i>1</i>基本信息</b></header>
+          <div class="ec-prod-form-section-body">
+            <div class="ec-prod-group">
+              <header><b>采集带回</b><button type="button" class="ec-prod-btn ec-prod-btn--sm" data-lp="ext-help">扩展安装说明</button></header>
+              <div class="ec-prod-group-body">
+                <div class="ec-prod-row"><div class="ec-prod-row-head"><label for="lpKsId">快手商品ID</label></div>
+                  <div class="ec-prod-ksbox">
+                    <div class="ec-prod-inline"><input id="lpKsId" class="ec-prod-control is-num" value="${esc(d.kuaishouId)}" data-lp-draft="kuaishouId" placeholder="输入或点选快手商品ID" autocomplete="off"><button type="button" class="ec-prod-btn ec-prod-btn--collect" data-lp="collect"${d.collecting ? ' disabled' : ''}>${d.collecting ? '<span class="ec-prod-spinner" style="width:14px;height:14px;border-width:2px"></span> 采集中' : '↓ 采集'}</button></div>
+                    ${d.suggestField === 'kuaishouId' ? historyList() : ''}
+                  </div>
+                </div>
+                <div class="ec-prod-row"><div class="ec-prod-row-head"><label for="lpName">商品名称</label></div>
+                  <div class="ec-prod-ksbox">
+                    <input id="lpName" class="ec-prod-control" value="${esc(d.name)}" data-lp-draft="name" placeholder="商品名称，爬取按它检索同类素材" autocomplete="off">
+                    ${d.suggestField === 'name' ? historyList() : ''}
+                  </div>
+                </div>
+                <div class="ec-prod-row ec-prod-row--split">
+                  <div><div class="ec-prod-row-head"><label for="lpPrice">价格（元）</label></div><input id="lpPrice" class="ec-prod-control is-num" type="number" min="0" max="99999" step="0.01" value="${esc(d.price)}" data-lp-draft="price" placeholder="0.00"></div>
+                  <div><div class="ec-prod-row-head"><label for="lpComm">佣金比例（%）</label></div><input id="lpComm" class="ec-prod-control is-num" type="number" min="0" max="100" value="${esc(d.comm)}" data-lp-draft="comm" placeholder="如 15"></div>
+                </div>
+              </div>
+            </div>
+            <div class="ec-prod-group ec-prod-group--own">
+              <header><b>自行设定</b></header>
+              <div class="ec-prod-group-body">
+                <div class="ec-prod-row"><div class="ec-prod-row-head"><label>所属平台</label></div><div class="ec-prod-seg" role="group" aria-label="所属平台">${PLATFORMS.map(p => `<button type="button" class="${d.platform === p ? 'active' : ''}" data-lp-draft="platform" data-value="${p}" aria-pressed="${d.platform === p}">${p}</button>`).join('')}</div></div>
+                <div class="ec-prod-row ec-prod-row--split">
+                  <div><div class="ec-prod-row-head"><label for="lpSpec">规格</label></div><input id="lpSpec" class="ec-prod-control" value="${esc(d.spec)}" data-lp-draft="spec" placeholder="如 41-46码 / 双"></div>
+                  <div><div class="ec-prod-row-head"><label for="lpCatSel">类目</label></div><select id="lpCatSel" class="ec-prod-control" data-lp-draft="cat"><option value="">请选择类目</option>${CATEGORIES.map(c => option(c, c)).join('')}</select></div>
+                </div>
+                <div class="ec-prod-row"><div class="ec-prod-row-head"><label for="lpHi">商品卖点</label></div><textarea id="lpHi" class="ec-prod-control" data-lp-draft="highlight" placeholder="填写用于工作台生成文案的真实商品卖点">${esc(d.highlight)}</textarea></div><div class="ec-prod-row"><div class="ec-prod-row-head"><label for="lpNeg">负面词汇</label></div><textarea id="lpNeg" class="ec-prod-control" style="min-height:64px" data-lp-draft="negatives" placeholder="生成时要规避的词，用逗号分隔">${esc(d.negatives)}</textarea></div>
+              </div>
+            </div>
+          </div>
+        </section>`;
+  };
+  /* 联网爬取：录入弹窗里是右列，详情页里是「联网爬取」tab（多一块爬取记录） */
+  const crawlTab = host => `<section class="ec-prod-form-section">
+      <header><b><i>2</i>联网爬取</b><small class="ec-prod-hint">${isDraft(host) ? '视频、图片分开爬，各自一个按钮；勾左上角复选框即归档' : '每次爬取都留记录，可回看这次归入了哪些素材'}</small></header>
+      <div class="ec-prod-form-section-body">
+        ${crawlPanel(host)}
+        ${isDraft(host) ? '' : crawlRecords(host)}
+      </div>
+    </section>`;
+  const entryDialog = () => {
+    const d = state.draft;
     return `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-dialog" role="dialog" aria-modal="true" aria-labelledby="lpEntryTitle">
-      <header><div><h2 id="lpEntryTitle">录入商品</h2><p>左列填商品资料（可「采集」自动填表），右列联网爬取素材；点「确认添加」即入库。</p></div><button type="button" data-lp="dismiss-entry" aria-label="关闭">×</button></header>
-      <div class="ec-prod-dialog-body"><div class="ec-prod-form-grid">
-        <section class="ec-prod-form-section">
-          <header><b><i>1</i>基本信息</b><button type="button" class="ec-prod-btn ec-prod-btn--sm ec-prod-btn--quiet" data-lp="ext-id">⚙ 设置扩展ID</button></header>
-          <div class="ec-prod-form-section-body">
-            <div class="ec-prod-row"><div class="ec-prod-row-head"><label>所属平台 <em>*</em></label></div><div class="ec-prod-seg" role="group" aria-label="所属平台">${['Kuaishou', 'TikTok'].map(p => `<button type="button" class="${d.platform === p ? 'active' : ''}" data-lp-draft="platform" data-value="${p}" aria-pressed="${d.platform === p}">${p}</button>`).join('')}</div></div>
-            <div class="ec-prod-row"><div class="ec-prod-row-head"><label for="lpKsId">快手商品ID <em>*</em></label></div>
-              <div class="ec-prod-inline"><input id="lpKsId" class="ec-prod-control is-num" value="${esc(d.kuaishouId)}" data-lp-draft="kuaishouId" placeholder="请输入快手商品ID" autocomplete="off"><button type="button" class="ec-prod-btn ec-prod-btn--collect" data-lp="collect"${d.collecting ? ' disabled' : ''}>${d.collecting ? '<span class="ec-prod-spinner" style="width:14px;height:14px;border-width:2px"></span> 采集中' : '↓ 采集'}</button><span class="ec-prod-hint"><a data-lp="ext-help">❓ 获取插件</a><a data-lp="ext-help">❓ 安装教程</a></span></div>
-              ${d.collectState ? `<div class="ec-prod-collect-state is-${d.collectState.tone}">${esc(d.collectState.text)}</div>` : ''}
-            </div>
-            <div class="ec-prod-row"><div class="ec-prod-row-head"><label for="lpName">商品名称 <em>*</em></label></div>
-              <div class="ec-prod-inline"><input id="lpName" class="ec-prod-control" value="${esc(d.name)}" data-lp-draft="name" placeholder="商品名称或商品名+价格+规格+佣金比例+商品ID的格式" autocomplete="off"><button type="button" class="ec-prod-btn ec-prod-btn--collect" data-lp="recognize">✦ 智能识别</button></div>
-            </div>
-            <div class="ec-prod-row ec-prod-row--split">
-              <div><div class="ec-prod-row-head"><label for="lpPrice">价格（元）<em>*</em></label></div><input id="lpPrice" class="ec-prod-control is-num" type="number" min="0" max="99999" step="0.01" value="${esc(d.price)}" data-lp-draft="price" placeholder="0.00，最高 99999"></div>
-              <div><div class="ec-prod-row-head"><label for="lpSpec">规格 <em>*</em></label></div><input id="lpSpec" class="ec-prod-control" value="${esc(d.spec)}" data-lp-draft="spec" placeholder="商品规格"></div>
-            </div>
-            <div class="ec-prod-row ec-prod-row--split">
-              <div><div class="ec-prod-row-head"><label for="lpComm">佣金比例（%）<em>*</em></label></div><input id="lpComm" class="ec-prod-control is-num" type="number" min="0" max="100" value="${esc(d.comm)}" data-lp-draft="comm" placeholder="如:15，最高 100"></div>
-              <div><div class="ec-prod-row-head"><label for="lpCatSel">类目 <em>*</em></label></div><select id="lpCatSel" class="ec-prod-control" data-lp-draft="cat"><option value="">请选择类目</option>${CATEGORIES.map(c => option(c, c)).join('')}</select></div>
-            </div>
-            <div class="ec-prod-row"><div class="ec-prod-row-head"><label for="lpTeam">团队</label></div><input id="lpTeam" class="ec-prod-control" value="${esc(d.team)}" data-lp-draft="team" placeholder="请选择团队" list="lpTeamList"><datalist id="lpTeamList"><option value="铮铮-雅琪糯米胶"></option><option value="老葛直播组"></option></datalist></div>
-            <div class="ec-prod-row"><div class="ec-prod-row-head"><label for="lpHi">商品亮点 <em>*</em></label><button type="button" class="ec-prod-ai" data-lp="ai-highlight"${d.generating ? ' disabled' : ''}>✦ AI生成卖点</button></div><textarea id="lpHi" class="ec-prod-control" data-lp-draft="highlight" placeholder="商品卖点、特色等">${esc(d.highlight)}</textarea></div>
-            <div class="ec-prod-row"><div class="ec-prod-row-head"><label for="lpNeg">负面词汇</label></div><textarea id="lpNeg" class="ec-prod-control" style="min-height:64px" data-lp-draft="negatives" placeholder="需要避免的负面词汇，用逗号分隔">${esc(d.negatives)}</textarea></div>
-          </div>
-        </section>
-        <section class="ec-prod-form-section">
-          <header><b><i>2</i>联网爬取</b><small class="ec-prod-hint">按商品名称 / 类目爬取快手 · 抖音同类型素材</small></header>
-          <div class="ec-prod-form-section-body">
-            ${crawlPanel(d.crawl, d.pool, { name: d.name, cat: d.cat })}
-            <p class="ec-prod-crawl-hint" style="padding:12px 0 0">本地上传不再是录入渠道：入库后如需补齐素材，到商品详情子页用「替换」走本地上传（文件不出本机）。</p>
-          </div>
-        </section>
-      </div></div>
+      <header><div><h2 id="lpEntryTitle">录入商品</h2><p>第一步通过扩展采集商品资料和图集；第二步检索视频候选，勾选即归档。确认后同步到工作台素材库。</p></div><button type="button" data-lp="leave-entry" aria-label="关闭">×</button></header>
+      <div class="ec-prod-dialog-body"><div class="ec-prod-form-grid">${entryForm()}${crawlTab(d)}</div></div>
       <footer>
         <div class="ec-prod-tally"><span>▶ 视频: <b>${d.pool.video.length}</b></span><span>⛰ 图片: <b>${d.pool.image.length + d.pool.main.length}</b></span></div>
         <span class="is-spacer"></span>
-        <button type="button" class="ec-prod-btn" data-lp="dismiss-entry">取消</button>
-        <button type="button" class="ec-prod-btn ec-prod-btn--primary" data-lp="submit-entry" ${entryValid(d) ? '' : 'disabled'}>✓ 确认添加</button>
+        <button type="button" class="ec-prod-btn" data-lp="leave-entry">取消</button>
+        <button type="button" class="ec-prod-btn ec-prod-btn--primary" data-lp="submit-entry">✓ 确认</button>
       </footer>
     </div></div>`;
   };
-
   /* ---------- 商品详情子页（PRD §4.4-②） ---------- */
-  const mediaFiles = (item, kind) => {
-    const real = item?.materialDetails?.[kind];
-    if (Array.isArray(real) && real.length) {
-      return real.map((r, i) => ({
-        name: r.name || `${kind === 'video' ? '视频' : '图片'}素材 ${i + 1}`,
-        duration: r.duration ?? null,
-        src: r.src || '', pageUrl: r.pageUrl || '', playUrl: r.playUrl || '', playUrls: r.playUrls || [],
-        videoId: r.videoId || '', platform: r.platform || '', from: r.from || '联网爬取', local: r.local || '',
-      }));
+  const mediaFiles = (item, kind) => (item.assets?.[kind] || []).map(file => ({ ...file, duration: file.duration ? Math.round(Number(file.duration)) : null, disabled: Boolean(file.disabled) }));
+  /* 基本信息里的素材墙 = 爬到的全部（含没归入的）＋ 详情页增补进来的本地素材；归入过的才谈得上禁用 */
+  const crawledOf = (item, kind) => {
+    const rows = new Map();
+    for (const record of item.crawls || []) for (const row of record[kind] || []) {
+      const full = { ...row, kind, origin: row.channel || row.from || record.channel || "联网爬取", inPool: false, assetIndex: -1 };
+      rows.set(mediaKey(full), full);
     }
-    return Array.from({ length: kind === 'video' ? item.materials.video : item.materials.image }, (_, i) => ({
-      name: `${kind === 'video' ? '视频素材' : '图片素材'} ${i + 1}`, duration: null,
-      src: imgOf(`${item.id}-${kind}-${i}`),
-    }));
+    (item.assets?.[kind] || []).forEach((row, assetIndex) => {
+      const full = { ...row, kind, origin: row.from || row.channel || "归档素材", inPool: true, assetIndex, disabled: Boolean(row.disabled) };
+      rows.set(mediaKey(full), { ...rows.get(mediaKey(full)), ...full });
+    });
+    return [...rows.values()];
   };
-
-  const detailView = () => {
-    const item = find(state.detailId);
+  /* 素材墙上的单张卡：禁用是真实开关（灰显、可恢复、计入黑段缺料） */
+  const mediaCard = (item, kind, row) => `<article class="ec-prod-media${row.disabled ? ' is-off' : ''}"><button type="button" class="ec-prod-media-frame" data-lp="stored-preview" data-id="${esc(item.id)}" data-kind="${kind}" data-media-key="${esc(mediaKey(row))}">${row.src ? `<img src="${esc(mediaSrc(row))}" alt="">` : ''}<span class="ec-prod-tag">${kind === 'video' ? '视频' : '图片'}</span>${kind === 'video' ? '<span class="ec-prod-play">▶</span>' : ''}${row.duration ? `<span class="ec-prod-dur">${row.duration}s</span>` : ''}</button><div class="ec-prod-media-body"><strong>${esc(row.name)}</strong><small>来源 ${esc(row.origin || row.from || row.channel || '采集')} · ${row.workbench ? '已同步工作台' : row.inPool ? '待同步工作台' : '候选素材'}</small></div><div class="ec-prod-media-ops"><button type="button" data-lp="stored-preview" data-id="${esc(item.id)}" data-kind="${kind}" data-media-key="${esc(mediaKey(row))}">预览</button>${row.inPool ? `<button type="button" data-lp="${row.disabled ? 'media-enable' : 'media-disable'}" data-id="${esc(item.id)}" data-kind="${kind}" data-index="${row.assetIndex ?? 0}">${row.disabled ? '恢复同步' : '暂停同步'}</button>` : ''}</div></article>`;
+  const ingestFiles = (kind, item) => {
+    if (item) window.open(window.CollectApi.workbenchUrl + "/?page=library&productId=" + encodeURIComponent(item.kuaishouId || item.id), "_blank", "noopener");
+    toast("请在工作台素材库中使用“添加视频”增补本地素材");
+  };
+  const supplementView = () => {
+    const item = find(state.supplementId);
     if (!item) return '';
-    const videos = mediaFiles(item, 'video');
-    const images = mediaFiles(item, 'image');
-    const missing = missingSlots(item);
-    return `<div class="ec-prod-detail">
-      <div class="ec-prod-detail-top">
+    const zone = (kind, mark, title, hint, accept) => `<label class="ec-prod-upzone ec-prod-upzone--${kind}" data-drop="${kind}" data-id="${item.id}">
+        <i aria-hidden="true">${mark}</i><b>上传${title}</b>
+        <span>${hint}</span><small>点击选择，或把文件拖到这里</small>
+        <input type="file" accept="${accept}" multiple data-lp-append="${kind}" hidden>
+      </label>`;
+    const local = key => (item.assets?.[key] || []).map((file, at) => ({ ...file, key, at })).filter(file => file.from === '本地增补');
+    return `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-dialog ec-prod-dialog--slim" role="dialog" aria-modal="true" aria-labelledby="lpUpTitle">
+      <header><div><h2 id="lpUpTitle">增补本地素材</h2><p>${esc(item.name)} · 文件只在本机读取，不发往任何服务端；增补进来的标「本地增补」，参与生成装配</p></div><button type="button" data-lp="close-supplement" aria-label="关闭">×</button></header>
+      <div class="ec-prod-dialog-body">
+        <div class="ec-prod-up-grid">
+          ${zone('video', '▶', '视频', `支持 MP4、MOV · 单个不超过 1GB · 已增补 ${local('video').length} 个`, 'video/*')}
+          ${zone('image', '⛰', '图片', `支持 JPG、PNG、GIF · 单个不超过 50MB · 已增补 ${local('image').length} 个`, 'image/*')}
+        </div>
+        ${[...local('video'), ...local('image')].length ? `<div class="ec-prod-local"><b>已增补 ${[...local('video'), ...local('image')].length} 个</b><ul>${[...local('video'), ...local('image')].map(row => `<li><i>${row.key === 'video' ? '▶' : '图'}</i><span><strong title="${esc(row.name)}">${esc(row.name)}</strong><small class="is-num">${esc(row.size || '')} · 本地增补</small></span><button type="button" data-lp="remove-local" data-id="${item.id}" data-kind="${row.key}" data-index="${row.at}" aria-label="移出 ${esc(row.name)}">×</button></li>`).join('')}</ul></div>` : '<p class="ec-prod-hint" style="padding:14px 0 0">还没有增补过本地素材。</p>'}
+      </div>
+      <footer><span class="is-spacer"></span><button type="button" class="ec-prod-btn" data-lp="close-supplement">关闭</button></footer>
+    </div></div>`;
+  };
+  /* 基本信息 tab（详情侧）：已获取的资料留存不动 ＋ 联网爬到的素材全铺在这（不标归入时间） */
+  const detailInfo = (item, missing) => `<div class="ec-prod-detail-top">
         <section class="ec-prod-hero">
-          <div class="ec-prod-hero-media"><span class="ec-prod-thumb" style="width:100%;height:100%;border:0;border-radius:0">${productImage(item, item.materials.main ? '商品主图' : '暂无主图')}</span>${window.EcommerceVideoProductImages?.get(item) ? '<em>相似商品示意图</em>' : item.materials.main ? '<em>商品主图</em>' : ''}</div>
-          <div class="ec-prod-hero-actions">
-            <button type="button" class="ec-prod-btn ec-prod-btn--sm" data-lp="sync" data-id="${item.id}">⟳ 同步商品</button>
-            ${['crawlFailed', 'pending'].includes(item.status) ? `<button type="button" class="ec-prod-btn ec-prod-btn--sm ec-prod-btn--primary" data-lp="recrawl" data-id="${item.id}">↓ 重新爬取</button>` : ''}
-          </div>
-          <p class="ec-prod-hint" style="margin-top:10px;line-height:1.7">同步只按 id 重爬价格 / 标题 / 主图并覆盖本地缓存，素材不覆盖。</p>
+          <div class="ec-prod-hero-media"><span class="ec-prod-thumb" style="width:100%;height:100%;border:0;border-radius:0">${productImage(item, item.materials.main ? '商品主图' : '暂无主图')}</span>${item.assets?.main?.[0]?.src ? '<em>采集主图</em>' : window.EcommerceVideoProductImages?.get(item) ? '<em>相似商品示意图</em>' : item.materials.main ? '<em>商品主图</em>' : ''}</div>
         </section>
         <section>
           <div class="ec-prod-split-label"><i>1</i>商品资料</div>
@@ -393,84 +416,82 @@
             <div class="ec-prod-info-row"><dt>价格 · 规格</dt><dd><span class="ec-prod-price is-num">${money(item.price)}</span> · ${esc(item.spec || '—')}</dd></div>
             <div class="ec-prod-info-row"><dt>佣金 · 类目</dt><dd class="is-num">${pct(item.comm)}（预估 ${money(item.cma)}） · <span class="ec-prod-cat">${esc(item.cat || '未分类')}</span></dd></div>
             <div class="ec-prod-info-row"><dt>快手商品ID</dt><dd class="is-num">${esc(item.kuaishouId || '—')} · ${esc(item.platform)}</dd></div>
-            <div class="ec-prod-info-row"><dt>团队</dt><dd>${esc(item.team || '—')}</dd></div>
-            <div class="ec-prod-info-row"><dt>素材状态</dt><dd>${badge(item.status)} <span class="ec-prod-hint is-num">生成 ${item.gen} 次 · 更新 ${esc(item.updated)}</span></dd></div>
+            <div class="ec-prod-info-row"><dt>素材状态</dt><dd>${badge(item.status)} <span class="ec-prod-hint is-num">更新 ${esc(item.updated)}</span></dd></div>
           </dl>
           <div class="ec-prod-split-label" style="margin-top:16px"><i>✦</i>商品亮点</div>
           <p class="ec-prod-highlight">${item.highlight ? esc(item.highlight) : '尚未填写商品亮点，生成时黑段缺少卖点依据。'}</p>
           ${item.negatives ? `<div class="ec-prod-split-label" style="margin-top:14px"><i>!</i>负面词汇（生成时规避）</div><p class="ec-prod-highlight">${esc(item.negatives)}</p>` : ''}
-          ${item.status === 'ready' && missing.length ? `<div class="ec-prod-gap"><strong>黑段素材缺失清单</strong><ul>${missing.map(s => `<li>${esc(s.label)}</li>`).join('')}</ul></div>` : ''}
+
         </section>
       </div>
       ${['video', 'image'].map(kind => {
-        const list = kind === 'video' ? videos : images;
+        const list = crawledOf(item, kind);
         return `<section class="ec-prod-media-group">
-        <header><i>${kind === 'video' ? '▶' : '⛰'}</i><b>${kind === 'video' ? '视频素材' : '图片素材'} <span>(${list.length})</span></b><span class="is-tail"><label class="ec-prod-btn ec-prod-btn--sm">＋ 上传补充<input type="file" accept="${kind === 'video' ? 'video/*' : 'image/*'}" multiple data-lp-append="${kind}" data-id="${item.id}" hidden></label></span></header>
-        ${list.length ? `<div class="ec-prod-media-grid${kind === 'video' ? ' ec-prod-media-grid--video' : ''}">${list.map((row, index) => `<article class="ec-prod-media"><div class="ec-prod-media-frame">${row.src ? `<img src="${esc(mediaSrc(row))}" alt="">` : ''}<span class="ec-prod-tag">${kind === 'video' ? '常规' : '图片'}</span>${kind === 'video' ? '<span class="ec-prod-play">▶</span>' : ''}${row.duration ? `<span class="ec-prod-dur is-num">00:${String(row.duration).padStart(2, '0')}</span>` : ''}</div><div class="ec-prod-media-body"><strong>${esc(row.name)}</strong><small>来源：${esc(row.from || '联网爬取')} · ${esc(item.team || '未分配团队')}</small></div><div class="ec-prod-media-ops"><button type="button" data-lp="media-preview" data-id="${item.id}" data-kind="${kind}" data-index="${index}">预览</button><label class="ec-prod-media-replace">替换<input type="file" accept="${kind === 'video' ? 'video/*' : 'image/*'}" data-lp-replace="${kind}" data-id="${item.id}" data-index="${index}" hidden></label><button type="button" class="is-danger" data-lp="media-disable" data-id="${item.id}" data-kind="${kind}" data-index="${index}">禁用</button></div></article>`).join('')}</div>` : `<div class="ec-prod-hint" style="padding:18px 0">还没有${kind === 'video' ? '视频' : '图片'}素材${kind === 'video' ? '，黑段将回退默认组合' : ''}；可用右上「＋ 上传补充」本地补齐。</div>`}
+        <header><i>${kind === 'video' ? '▶' : '⛰'}</i><b>${kind === 'video' ? '视频素材' : '图片素材'} <span>(${list.length})</span></b><small class="ec-prod-hint">联网爬到的都在这 · 已归入 ${list.filter(row => row.inPool).length}</small></header>
+        ${list.length ? `<div class="ec-prod-media-grid${kind === 'video' ? ' ec-prod-media-grid--video' : ''}">${list.map(row => mediaCard(item, kind, row)).join('')}</div>` : `<div class="ec-prod-hint" style="padding:18px 0">还没有${kind === 'video' ? '视频' : '图片'}素材${kind === 'video' ? '' : ''}；到「联网爬取」tab 再爬一次补齐。</div>`}
       </section>`;
-      }).join('')}
+      }).join('')}`;
+  /* 离开录入前的确认：文案照产品要求，确认后就关页面 + 提示保存成功 */
+  const leaveDialog = () => (state.leaveConfirm ? `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-dialog ec-prod-dialog--slim" role="alertdialog" aria-modal="true" aria-labelledby="lpLeaveTitle">
+      <header><div><h2 id="lpLeaveTitle">离开录入</h2></div><button type="button" data-lp="stay" aria-label="关闭">×</button></header>
+      <div class="ec-prod-leave-body"><p>您确定离开此页面吗？您所有操作将不被保存</p>${state.leaveConfirm.running ? '<p class="ec-prod-hint">还有素材正在爬，离开后这次爬到的不会保留。</p>' : ''}</div>
+      <footer><span class="is-spacer"></span><button type="button" class="ec-prod-btn" data-lp="stay">继续编辑</button><button type="button" class="ec-prod-btn ec-prod-btn--primary" data-lp="leave-yes">确认</button></footer>
+    </div></div>` : '');
+  /* 商品详情：两 tab（基本信息 / 联网爬取），联网爬取这侧只给重新爬取 ＋ 爬取记录 */
+  const detailView = () => {
+    const item = find(state.detailId);
+    if (!item) return '';
+    return `<div class="ec-prod-detail">
+      ${panelTabs(item)}
+      ${state.detailPanel === 'info' ? detailInfo(item, missingSlots(item)) : crawlTab(item)}
       <div class="ec-prod-detail-footer">
-        <button type="button" class="ec-prod-btn ec-prod-btn--primary" data-lp="add-to-assets" data-id="${item.id}">⇪ 加入素材中心</button>
-        ${(() => {
-          const vs = item.materialDetails?.video || [];
-          const ims = item.materialDetails?.image || [];
-          const left = vs.filter(v => !v.workbench && pushable(v)).length + ims.filter(v => !v.workbench && imgPushable(v)).length;
-          const total = vs.length + ims.length;
-          const busy = pushing.has(item.id);
-          return `<button type="button" class="ec-prod-btn${left ? ' ec-prod-btn--primary' : ''}" data-lp="push-workbench" data-id="${item.id}" ${busy ? 'disabled' : ''} title="把该商品的已入池视频/图片素材下载并导入视频工作台素材库">${busy ? '导入中…' : `⇨ 导入视频工作台${total ? `（${left}/${total} 条）` : ''}`}</button>`;
-        })()}
-        <button type="button" class="ec-prod-btn" data-lp="close-detail">关闭</button>
+        <div class="ec-prod-sync-status" role="status">${item.lastSync ? `${esc(item.lastSync.at)} · 已同步 ${item.lastSync.ready} 项${item.lastSync.failed ? `，未同步 ${item.lastSync.failed} 项：${esc(item.lastSync.error)}` : ''}` : '归档素材后，点击同步即可导入真实素材库。'}</div><button type="button" class="ec-prod-btn" data-lp="open-workbench" data-id="${esc(item.id)}">查看素材库 ↗</button><button type="button" class="ec-prod-btn ec-prod-btn--primary" data-lp="push-workbench" data-id="${esc(item.id)}" ${pushing.has(item.id) ? 'disabled' : ''}>${pushing.has(item.id) ? '同步中…' : '同步到素材库'}</button><button type="button" class="ec-prod-btn" data-lp="close-detail">关闭</button>
       </div>
     </div>`;
   };
-
-  /* ---------- 二次确认 ---------- */
-  const confirmDialog = () => {
-    const c = state.confirm;
-    return `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-dialog ec-prod-dialog--narrow" role="dialog" aria-modal="true" aria-labelledby="lpConfirmTitle">
-      <header><div><h2 id="lpConfirmTitle">${esc(c.title)}</h2></div><button type="button" data-lp="dismiss-confirm" aria-label="关闭">×</button></header>
-      <div class="ec-prod-confirm-body">
-        <p>${esc(c.body)}</p>
-        ${c.list ? `<ul class="ec-prod-confirm-list">${c.list.map(row => `<li><span>${esc(row.k)}</span><b>${esc(row.v)}</b></li>`).join('')}</ul>` : ''}
-      </div>
-      <footer><span class="is-spacer"></span><button type="button" class="ec-prod-btn" data-lp="dismiss-confirm">取消</button><button type="button" class="ec-prod-btn ${c.danger ? 'ec-prod-btn--solid-danger' : 'ec-prod-btn--primary'}" data-lp="do-confirm">${esc(c.okLabel || '确认')}</button></footer>
-    </div></div>`;
-  };
-
   /* ---------- 主渲染 ---------- */
   const head = () => `<div class="ec-prod-head"><div><h1>商品获取</h1><p>工作流第 1 步：录入商品资料 + 联网爬取素材；点击商品行进入详情查看资料与素材。</p></div>
-    <div class="ec-prod-head-actions"><span class="ec-prod-count is-num">共 ${state.items.length} 个商品 · 素材就绪 ${state.items.filter(i => i.status === 'ready').length}</span></div></div>`;
-
+    <div class="ec-prod-head-actions"><span class="ec-prod-count is-num">共 ${state.items.length} 个商品 · 素材就绪 ${state.items.filter(i => i.status === 'ready').length}</span><button type="button" class="ec-prod-btn ec-prod-btn--primary" data-lp="open-entry">＋ 录入商品</button></div></div>`;
   const body = () => {
     const rows = filtered();
     return `<div class="ec-video-products-scroll"><div class="ec-video-products-inner">
       ${state.detailId ? detailView() : `${head()}${filterCard()}
-      <div class="ec-prod-card"><div class="ec-prod-card-body">${rows.length ? table(rows) : emptyState()}${gapNotice()}</div></div>`}
+      <div class="ec-prod-card"><div class="ec-prod-card-body">${rows.length ? table(rows) : emptyState()}</div></div>`}
     </div></div>
     ${state.dialog === 'entry' ? entryDialog() : ''}
-    ${state.confirm ? confirmDialog() : ''}`;
+    ${leaveDialog()}
+    ${state.supplementId ? supplementView() : ''}
+    ${state.preview ? lightbox() : ''}
+    ${state.recordOpen ? recordView() : ''}`;
   };
-
-  const syncDraftFromDom = () => {
-    if (state.dialog !== 'entry' || !state.draft) return;
-    const current = document.querySelector('.ec-video-products .ec-prod-backdrop');
-    if (!current) return;
-    current.querySelectorAll('[data-lp-draft]:not(button)').forEach(el => {
-      state.draft[el.dataset.lpDraft] = el.value;
-    });
+  const html = () => { syncDraftFromDom(); return `<main class="ec-video-products" aria-label="商品获取${state.detailId ? ' · 商品详情' : ''}">${body()}</main>`; };
+  const onDragOver = event => {
+    const zone = event.target.closest?.('[data-drop]');
+    if (!zone) return;
+    event.preventDefault();
+    zone.classList.add('is-drag');
   };
-  const html = () => {
-    syncDraftFromDom();
-    return `<main class="ec-video-products" aria-label="商品获取${state.detailId ? ' · 商品详情' : ''}">${body()}</main>`;
+  const onDragLeave = event => { event.target.closest?.('[data-drop]')?.classList.remove('is-drag'); };
+  const onDrop = event => {
+    const zone = event.target.closest?.('[data-drop]');
+    if (!zone) return;
+    event.preventDefault();
+    zone.classList.remove('is-drag');
+    ingestFiles(zone.dataset.drop, find(zone.dataset.id), event.dataTransfer?.files);
   };
-
   const bind = root => {
+    root.dataset.draftOwner = state.draft?.id || '';
+    root.querySelectorAll('[data-lp-draft]:not(button)').forEach(el => draftDomValues.set(el, el.value));
+    root.addEventListener('compositionend', onInput);
     root.addEventListener('click', onClick);
     root.addEventListener('input', onInput);
     root.addEventListener('change', onChange);
+    root.addEventListener('focusin', onFocusIn);
     root.addEventListener('keydown', onKeyDown);
+    root.addEventListener('dragover', onDragOver);
+    root.addEventListener('dragleave', onDragLeave);
+    root.addEventListener('drop', onDrop);
   };
-
   /* 由 app.js 在渲染整块外壳后调用；只接管 .ec-video-products 子树，不碰左侧导航 */
   const mount = (root, options = {}) => {
     api = options;
@@ -479,7 +500,6 @@
     bind(el);
     return true;
   };
-
   const paint = () => {
     const current = document.querySelector('.ec-video-products');
     if (!current) return;
@@ -489,763 +509,531 @@
     current.replaceWith(replacement);
     bind(replacement);
   };
-
+  /* 重绘但保住焦点与光标位置（输入框下方的建议列表需要即时展开/收起） */
+  const paintKeepingFocus = () => {
+    const focusKey = document.activeElement?.id || null;
+    const caret = focusKey ? document.getElementById(focusKey)?.selectionStart ?? null : null;
+    paint();
+    if (!focusKey) return;
+    const next = document.getElementById(focusKey);
+    if (!next) return;
+    next.focus();
+    if (caret !== null && next.setSelectionRange) { try { next.setSelectionRange(caret, caret); } catch { /* 部分输入类型不支持光标定位 */ } }
+  };
   const dismissTop = () => {
-    if (state.confirm) { state.confirm = null; return paint(); }
-    if (state.dialog) { state.dialog = null; state.draft = null; return paint(); }
+    if (state.leaveConfirm) { state.leaveConfirm = null; return paint(); }
+    if (state.preview) { state.preview = null; return paint(); }
+    if (state.supplementId) { state.supplementId = null; return paint(); }
+    if (state.recordOpen) { state.recordOpen = null; return paint(); }
+    if (state.dialog) { const dropped = state.draft; state.dialog = null; state.draft = null; if (dropped) liveCrawls.delete(dropped.id); return paint(); }
     if (state.detailId) { state.detailId = null; return paint(); }
   };
-
-  /* ---------- 爬取行为（PRD §4.7） ---------- */
+  /* ---------- 爬取行为（PRD §4.7）：录入弹窗与商品详情共用同一套面板，只是宿主不同 ---------- */
   const newDraft = () => ({
-    kuaishouId: '', name: '', platform: 'Kuaishou', price: '', spec: '', comm: '', cat: '', team: '', highlight: '', negatives: '',
-    pool: { main: [], video: [], image: [] }, crawl: newCrawl(), collecting: false, generating: false, collectState: null,
+    id: uid('draft'),
+    kuaishouId: '', name: '', platform: '快手', price: '', spec: '', comm: '', cat: '', highlight: '', negatives: '',
+    pool: { main: [], video: [], image: [] }, crawls: [], collectedImages: [],
+    collecting: false, suggestField: null,
   });
-
-  const crawlBasis = () => ({ name: state.draft?.name || '', cat: state.draft?.cat || '' });
-
-  /* 素材池里已有的文件名：命中即打「素材池已有」重复标识 */
-  const poolNames = () => new Set(['main', 'video', 'image'].flatMap(key => (state.draft?.pool[key] || []).map(file => file.name)));
-
-  /* 勾选不重绘：仅同步分区“已选 N”徽标与底部“归入素材池”按钮 */
-  const syncCrawlPicked = () => {
-    const crawl = state.draft?.crawl;
-    if (!crawl) return;
-    CRAWL_ZONES.forEach(zone => {
-      const zoneEl = document.querySelector(`.ec-prod-zone--${zone.key}`);
-      if (!zoneEl) return;
-      const n = crawlPickedByZone(crawl, zone.key).length;
-      let badge = zoneEl.querySelector('.ec-prod-zone-picked');
-      if (n && !badge) {
-        badge = document.createElement('span');
-        badge.className = 'ec-prod-zone-picked';
-        zoneEl.querySelector('header')?.appendChild(badge);
-      }
-      if (badge) {
-        badge.textContent = `已选 ${n}`;
-        badge.style.display = n ? '' : 'none';
-      }
-    });
-    const btn = document.querySelector('[data-lp="commit-crawl"]');
-    if (btn) {
-      const n = crawlPicked(crawl);
-      btn.disabled = !n;
-      btn.textContent = `↓ 归入素材池${n ? ` (${n})` : ''}`;
-    }
+  const isDraft = host => host === state.draft;
+  /* 弹窗草稿与已入库商品都能发起爬取；爬取运行时（含 Set）只活在内存，确认入库时从草稿过户到商品 */
+  const liveCrawls = new Map();
+  const crawlHost = () => state.draft || (state.detailId ? find(state.detailId) : null);
+  const crawlFor = host => {
+    if (!host) return null;
+    if (!liveCrawls.has(host.id)) liveCrawls.set(host.id, newCrawl());
+    return liveCrawls.get(host.id);
   };
-
-  /* 底栏「视频 / 图片」计数局部同步 */
-  const syncPoolTally = () => {
-    const d = state.draft;
-    const tally = document.querySelector('.ec-prod-tally');
-    if (!d || !tally) return;
-    tally.innerHTML = `<span>▶ 视频: <b>${d.pool.video.length}</b></span><span>⛰ 图片: <b>${d.pool.image.length + d.pool.main.length}</b></span>`;
+  const crawlAlive = crawl => [...liveCrawls.values()].includes(crawl);
+  /* 确认后爬取过户给商品：按 crawl 对象找现在的宿主，谁在跑就写谁的记录 */
+  const ownerOf = crawl => state.items.find(row => liveCrawls.get(row.id) === crawl) || null;
+  /* 素材中心（原「素材池」）：草稿用 pool，商品用 assets；老商品没有 assets 时按材料数给只读占位 */
+  const poolFor = host => (isDraft(host)
+    ? host.pool
+    : host.assets || { main: [], video: mediaFiles(host, 'video'), image: mediaFiles(host, 'image') });
+  const poolLocked = host => !isDraft(host) && !host.assets;
+  /* 商品第一次真正归入素材时，把老的「按数量合成」素材落成实名文件，保证前后连续、计数不再造假 */
+  const ensureAssets = item => {
+    if (!item.assets) item.assets = { main: [], video: mediaFiles(item, 'video'), image: mediaFiles(item, 'image') };
+    return item.assets;
   };
-
-  /* ---------- 弹窗原位更新工具：候选流式回填 / 校验态 / 提示语都不重绘 ---------- */
-  const zoneMetaOf = key => CRAWL_ZONES.find(z => z.key === key);
-  const zoneElOf = key => document.querySelector(`.ec-prod-zone--${key}`);
-  const zoneBodyOf = key => zoneElOf(key)?.querySelector('.ec-prod-zone-body');
-
-  const zoneEmptyText = (zone, meta) => meta.key === 'image'
-    ? '商品图随「采集」从详情页自动回填到本分区，无需联网爬取；勾选后归入素材池。'
-    : Object.keys(zone.attempts).length && !zone.results.length
-      ? `${meta.label}分区已重试仍未取到候选，可完善商品名称 / 类目后再爬，或入库后在详情页替换补齐。`
-      : `选渠道后点「开始爬取」，${meta.label}候选只回填到这个分区。`;
-
-  const syncZoneCount = key => {
-    const zone = state.draft?.crawl?.zones[key];
-    const el = zoneElOf(key)?.querySelector('.ec-prod-zone-count');
-    if (zone && el) {
-      el.textContent = `${zone.results.length} 条候选`;
-      el.classList.toggle('is-zero', !zone.results.length);
-    }
+  const syncMaterials = item => {
+    const usable = key => item.assets[key].filter(file => !file.disabled).length;
+    item.materials = { ...item.materials, video: usable('video'), image: usable('image') };
   };
-
-  const syncZoneRunning = key => {
-    const zone = state.draft?.crawl?.zones[key];
-    const el = zoneElOf(key);
-    if (!zone || !el) return;
-    const header = el.querySelector('header');
-    let badge = header?.querySelector('.ec-prod-badge--working');
-    if (zone.running && !badge) {
-      badge = document.createElement('span');
-      badge.className = 'ec-prod-badge ec-prod-badge--working ec-prod-badge--plain';
-      badge.textContent = '爬取中';
-      header.insertBefore(badge, header.querySelector('.ec-prod-zone-count'));
-    } else if (!zone.running && badge) {
-      badge.remove();
-    }
-    const body = zoneBodyOf(key);
-    const meta = zoneMetaOf(key);
-    if (!body || !meta) return;
-    if (zone.running && !zone.results.length) {
-      body.classList.add('is-loading');
-      body.innerHTML = `<span class="ec-prod-spinner"></span><span>正在检索同类${meta.label}素材…</span>`;
-    } else if (!zone.running) {
-      body.classList.remove('is-loading');
-      if (!zone.results.length) {
-        body.innerHTML = `<div class="ec-prod-zone-empty">${esc(zoneEmptyText(zone, meta))}</div>`;
-      }
-    }
+  const crawlBasis = host => ({ name: host?.name || '', cat: host?.cat || '' });
+  const poolNames = host => new Set(['main', 'video', 'image'].flatMap(key => (poolFor(host)[key] || []).map(mediaKey)));
+  /* 「已归入」只数两个素材分区（采集主图不算爬取归入），避免与分区计数对不上 */
+  const poolTotal = host => {
+    const source = host ? poolFor(host) : {};
+    return (source.video?.length || 0) + (source.image?.length || 0);
   };
-
-  const syncZoneFail = key => {
-    const zone = state.draft?.crawl?.zones[key];
-    const el = zoneElOf(key);
-    if (!zone || !el) return;
-    el.querySelector('.ec-prod-zone-fail')?.remove();
-    if (!zone.failed.length) return;
-    const meta = zoneMetaOf(key);
-    const div = document.createElement('div');
-    div.className = 'ec-prod-zone-fail';
-    div.innerHTML = `<span><b>${esc(zone.failed.join('、'))} 渠道未返回${meta.label}候选</b>${esc(zone.failed.map(ch => zone.errors[ch] || `${ch} 未返回候选`).join('；'))}；本分区已按「可用即通过」跳过，可完善信息后重试本分区。</span><button type="button" class="ec-prod-btn ec-prod-btn--sm" data-lp="retry-zone" data-zone="${key}" ${zone.running ? 'disabled' : ''}>⟳ 重试该分区</button>`;
-    el.appendChild(div);
+  const stamp = () => {
+    const d = new Date();
+    const pad = value => String(value).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
-
-  /* 新候选只追加瓷砖，不重建分区 */
-  const appendZoneRows = (key, rows) => {
-    const zone = state.draft?.crawl?.zones[key];
-    const body = zoneBodyOf(key);
-    const meta = zoneMetaOf(key);
-    if (!zone || !body || !meta || !rows.length) return;
-    body.classList.remove('is-loading');
-    [...body.children].forEach(c => { if (!c.classList.contains('ec-prod-zone-grid')) c.remove(); });
-    let grid = body.querySelector('.ec-prod-zone-grid');
+  const cnStamp = at => {
+    const parts = /^(\d{4})-(\d{2})-(\d{2})(\s.*)?$/.exec(String(at || '')) || [];
+    return `${Number(parts[2]) || parts[2]}月${Number(parts[3]) || parts[3]}日${(parts[4] || '').trim()}`;
+  };
+  /* 一次爬取 = 一条记录：视频/图片各记自己抓到的条目，归入时回写 picked，随商品持久化 */
+  const openRecord = (host, channels, zoneKeys) => {
+    const record = { id: uid('cr'), at: stamp(), channel: channels.join(' · '), status: 'running', pending: zoneKeys.length, video: [], image: [], failed: [] };
+    if (!host.crawls) host.crawls = [];
+    host.crawls.push(record);
+    return record;
+  };
+  const settleRecord = record => {
+    record.pending = Math.max(0, record.pending - 1);
+    if (record.pending) return;
+    record.status = !record.video.length && !record.image.length ? 'failed' : record.failed.length ? 'partial' : 'done';
+  };
+  const markPicked = (host, names, value = true) => (host.crawls || []).forEach(record => ['video', 'image']
+    .forEach(key => record[key].forEach(row => { if (names.has(row.name)) row.picked = value; })));
+  const zoneMeta = key => CRAWL_ZONES.find(item => item.key === key);
+  /* 流式回填只往分区里追加新卡片，不整块重绘 —— 整块重绘会让弹窗一闪一闪
+     宿主 id 决定作用范围：弹窗草稿与某个商品的爬取同时在跑时，不能把卡片插进对方的分区 */
+  const idOf = crawl => [...liveCrawls.entries()].find(([, value]) => value === crawl)?.[0] || '';
+  const panelRoot = crawl => document.querySelector(`[data-crawl-owner="${idOf(crawl)}"]`);
+  const appendCandidate = (crawl, zoneKey) => {
+    const data = crawl.zones[zoneKey];
+    const root = panelRoot(crawl);
+    const host = root?.querySelector(`.ec-prod-zone--${zoneKey} .ec-prod-zone-body`);
+    if (!data?.results.length || !host) return false;
+    let grid = host.querySelector('.ec-prod-zone-grid');
     if (!grid) {
+      host.querySelector('.ec-prod-zone-empty')?.remove();
       grid = document.createElement('div');
       grid.className = 'ec-prod-zone-grid';
-      body.appendChild(grid);
+      host.append(grid);
     }
-    rows.forEach(row => grid.insertAdjacentHTML('beforeend', candidateTile(row, zone.results.indexOf(row), meta)));
-    syncZoneCount(key);
+    const index = data.results.length - 1;
+    grid.insertAdjacentHTML('beforeend', candidateTile(data.results[index], index, zoneMeta(zoneKey)));
+    const count = host.parentElement.querySelector('.ec-prod-zone-count');
+    if (count) { count.textContent = `${data.results.length} 条候选`; count.classList.remove('is-zero'); }
+    return true;
   };
-
-  /* 表单输入不触发重绘：只同步按钮可用态与爬取提示语 */
-  const syncEntryActions = () => {
-    const d = state.draft;
-    if (!d) return;
-    const busy = crawlBusy(d.crawl);
-    const noName = !d.name.trim();
-    const runBtn = document.querySelector('[data-lp="run-crawl"]');
-    if (runBtn) {
-      const canRun = !noName && d.crawl.channels.length > 0 && !busy;
-      runBtn.disabled = !canRun;
-      runBtn.title = noName ? '请先填写商品名称，爬取按名称 / 类目发起'
-        : !d.crawl.channels.length ? '请先至少选择一个渠道'
-        : busy ? '候选正在流式回填中' : '';
-      runBtn.textContent = busy ? '爬取中…' : '↓ 开始爬取';
-    }
-    const note = document.querySelector('.ec-prod-crawl-note');
-    if (note) {
-      if (noName) {
-        note.className = 'ec-prod-crawl-note is-warn';
-        note.textContent = '⚠ 未填商品名称，暂不可发起爬取';
-      } else {
-        note.className = 'ec-prod-crawl-note';
-        note.innerHTML = `依据 <b>${esc(d.name.trim().slice(0, 14))}</b>${d.cat ? ` · <b>${esc(d.cat)}</b>` : ''} 检索同类型素材`;
-      }
-    }
-    const submit = document.querySelector('[data-lp="submit-entry"]');
-    if (submit) submit.disabled = !entryValid(d);
+  /* 爬取面板不在屏上（切走 tab、或已确认入库回到列表）时不整屏重绘，只把 tab 上的「爬取中」徽标摘掉 */
+  const refreshCrawlView = crawl => {
+    if (panelRoot(crawl)) { paintKeepingFocus(); return; }
+    const tab = document.querySelector('.ec-prod-tab[data-panel="crawl"]');
+    if (tab) tab.classList.toggle('is-running', crawlBusy(crawl));
   };
-
-  const setCollectState = (d, tone, text) => {
-    d.collectState = { tone, text };
-    const row = document.getElementById('lpKsId')?.closest('.ec-prod-row');
-    if (!row) return;
-    let box = row.querySelector('.ec-prod-collect-state');
-    if (!box) {
-      box = document.createElement('div');
-      row.appendChild(box);
-    }
-    box.className = `ec-prod-collect-state is-${tone}`;
-    box.textContent = text;
-  };
-
-  const setDraftValue = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
-  const setCollecting = (d, on) => {
-    d.collecting = on;
-    const btn = document.querySelector('[data-lp="collect"]');
-    if (btn) {
-      btn.disabled = on;
-      btn.innerHTML = on ? '<span class="ec-prod-spinner" style="width:14px;height:14px;border-width:2px"></span> 采集中' : '↓ 采集';
-    }
-  };
-
-  const poolChipHtml = (file, index, zoneKey) =>
-    `<span class="ec-prod-chip">${file.src ? `<img src="${esc(mediaSrc(file))}" alt="">` : `<i>${zoneKey === 'video' ? '▶' : '图'}</i>`}<span title="${esc(file.name)}">${esc(file.from ? `${file.from} · ${file.name}` : file.name)}</span><button type="button" data-lp="remove-pool" data-zone="${zoneKey}" data-index="${index}" aria-label="移出 ${esc(file.name)}">×</button></span>`;
-
-  /* 真实候选行：保留来源链接 / 播放地址 / 封面，供入库与预览使用 */
-  const videoRow = (it, channel) => ({
-    name: (it.title || `视频 ${it.id}`).slice(0, 60), channel,
-    duration: it.durationMs ? Math.round(it.durationMs / 1000) : null,
-    size: '—', src: it.cover || '', videoId: it.id || '', pageUrl: it.pageUrl || '',
-    playUrl: it.playUrl || '', playUrls: it.playUrls || [], platform: it.platform || '', author: it.author || '', like: it.like ?? null,
-  });
-  const imageRow = (it, channel) => ({
-    name: `${(it.title || '素材').slice(0, 50)} 封面.jpg`, channel,
-    duration: null, size: '—', src: it.cover || '', videoId: it.id || '',
-    pageUrl: it.pageUrl || '', playUrl: '', platform: it.platform || '', author: it.author || '', like: it.like ?? null,
-  });
-
-  const runZone = (crawl, zoneKey, channels, reset) => {
+  /* 一条候选落地：失败渠道记一笔，或进候选区（已归档过的直接跳过，不摆进候选） */
+  const applyEntry = (host, crawl, zoneKey, entry) => {
     const zone = crawl.zones[zoneKey];
-    if (zone.running || !channels.length) return;
-    if (reset) { zone.results = []; zone.failed = []; zone.errors = {}; }
-    else { zone.failed = zone.failed.filter(ch => !channels.includes(ch)); channels.forEach(ch => { delete zone.errors[ch]; }); }
-    const keyword = crawlBasis().name.trim();
-    zone.running = true;
-    if (reset) {
-      /* 清空旧候选网格与失败条，原位重置 */
-      const body = zoneBodyOf(zoneKey);
-      body?.querySelector('.ec-prod-zone-grid')?.remove();
-      zoneElOf(zoneKey)?.querySelector('.ec-prod-zone-fail')?.remove();
-      syncZoneCount(zoneKey);
-      syncCrawlPicked();
-    } else {
-      syncZoneFail(zoneKey);
-    }
-    syncZoneRunning(zoneKey);
-    syncEntryActions();
-    let pending = channels.length;
-    const settle = () => {
-      pending -= 1;
-      if (!pending && state.draft?.crawl === crawl) {
-        zone.running = false;
-        syncZoneRunning(zoneKey);
-      }
-      syncEntryActions();
-    };
-    channels.forEach(channel => {
-      zone.attempts[channel] = (zone.attempts[channel] || 0) + 1;
-      serviceSearch(channelPlatform(channel), keyword).then(res => {
-        if (state.draft?.crawl !== crawl) return;
-        if (!res.ok || !(res.items || []).length) {
-          if (!zone.failed.includes(channel)) zone.failed.push(channel);
-          zone.errors[channel] = res.ok ? '该渠道搜索无结果' : (res.message || '未返回候选');
-          syncZoneFail(zoneKey);
-          return settle();
-        }
-        const batch = [];
-        res.items.forEach(it => {
-          if (zoneKey === 'image' && !it.cover) return;
-          const row = zoneKey === 'video' ? videoRow(it, channel) : imageRow(it, channel);
-          const dup = crawl.taken.has(row.name) ? 'pool'
-            : zone.results.some(old => (row.videoId && old.videoId === row.videoId) || old.name === row.name) ? 'seen'
-            : false;
-          row.picked = false;
-          row.dup = dup;
-          zone.results.push(row);
-          batch.push(row);
-        });
-        appendZoneRows(zoneKey, batch);
-        settle();
-      }).catch(() => {
-        if (state.draft?.crawl !== crawl) return;
-        if (!zone.failed.includes(channel)) zone.failed.push(channel);
-        zone.errors[channel] = '采集服务未响应';
-        syncZoneFail(zoneKey);
-        settle();
-      });
-    });
-  };
-
-  const startCrawl = () => {
-    const crawl = state.draft?.crawl;
-    if (!crawl || crawlBusy(crawl) || !crawl.channels.length || !crawlBasis().name.trim()) return;
-    crawl.taken = poolNames();
-    /* 图片分区素材由「采集」从详情页带回，联网爬取只跑视频分区 */
-    runZone(crawl, 'video', [...crawl.channels], true);
-    syncEntryActions();
-  };
-
-  const retryZone = zoneKey => {
-    const crawl = state.draft?.crawl;
-    const zone = crawl?.zones[zoneKey];
-    if (!zone || zone.running || !zone.failed.length) return;
-    const channels = [...zone.failed];
-    runZone(crawl, zoneKey, channels, false);
-    toast(`正在重试 ${channels.join('、')} 的${zoneKey === 'video' ? '视频' : '图片'}候选…`);
-  };
-
-  /* 归入素材池：勾选的候选进入对应分区，随商品一同入库 */
-  const commitCrawl = () => {
-    const draft = state.draft;
-    const crawl = draft?.crawl;
-    if (!crawl) return;
-    const moved = { video: 0, image: 0 };
-    CRAWL_ZONES.forEach(zone => {
-      const rows = crawlPickedByZone(crawl, zone.key);
-      rows.forEach(row => draft.pool[zone.card].push({
-        name: row.name, src: row.src || imgOf(row.name), from: row.channel, size: row.size, duration: row.duration,
-        videoId: row.videoId || '', pageUrl: row.pageUrl || '', playUrl: row.playUrl || '', playUrls: row.playUrls || [], platform: row.platform || '',
-      }));
-      moved[zone.key] = rows.length;
-      /* 原位更新：移除被归入的瓷砖、素材池追加 chip、剩余瓷砖重排索引 */
-      const zres = crawl.zones[zone.key];
-      const pickedIdx = new Set(zres.results.map((r, i) => (r.picked && !r.dup ? i : -1)).filter(i => i >= 0));
-      const el = zoneElOf(zone.key);
-      const grid = el?.querySelector('.ec-prod-zone-grid');
-      if (grid) {
-        [...grid.querySelectorAll('.ec-prod-cand')].forEach((t, i) => { if (pickedIdx.has(i)) t.remove(); });
-        [...grid.querySelectorAll('.ec-prod-cand')].forEach((t, i) => { t.dataset.index = String(i); });
-      }
-      zres.results = zres.results.filter(row => !(row.picked && !row.dup));
-      const poolEl = el?.querySelector('.ec-prod-pool');
-      if (poolEl) {
-        poolEl.querySelector('.ec-prod-hint')?.remove();
-        const label = poolEl.querySelector('.ec-prod-pool-label');
-        if (label) label.textContent = `已归入 ${draft.pool[zone.key].length}`;
-        const startIdx = draft.pool[zone.key].length - rows.length;
-        rows.forEach((row, i) => {
-          poolEl.insertAdjacentHTML('beforeend', poolChipHtml(draft.pool[zone.key][startIdx + i], startIdx + i, zone.key));
-        });
-      }
-      syncZoneCount(zone.key);
-    });
-    syncCrawlPicked();
-    syncPoolTally();
-    toast(`已归入素材池：视频 +${moved.video} · 图片 +${moved.image}`);
-  };
-
-  /* 加入素材中心（PRD §4.4-②）：按 productId 归集，重复加入去重不产生副本 */
-  const addToAssets = item => {
-    const bridge = window.EcommerceVideoAssets;
-    if (!bridge?.ingestProduct) { toast('素材中心模块未就绪，无法归集'); return; }
-    const result = bridge.ingestProduct({
-      productId: item.id, name: item.name, price: item.price, cat: item.cat, main: item.materials.main ? '主图' : '无图',
-      videos: mediaFiles(item, 'video').map(row => ({ name: row.name, duration: row.duration ? `00:${String(row.duration).padStart(2, '0')}` : null, size: '—', from: row.from || '商品获取', src: row.src || '', pageUrl: row.pageUrl || '', playUrl: row.playUrl || '', videoId: row.videoId || '', platform: row.platform || '' })),
-      images: mediaFiles(item, 'image').map(row => ({ name: row.name, size: '—', from: row.from || '商品获取', src: row.src || '', pageUrl: row.pageUrl || '', videoId: row.videoId || '', platform: row.platform || '' })),
-    });
-    toast(result.added
-      ? `已归入素材中心：新增 ${result.added} 项${result.duplicates ? `，${result.duplicates} 项重复已去重` : ''}`
-      : `该商品素材已全部在素材中心（${result.duplicates} 项重复，未产生副本）`);
-  };
-
-  /* 推送视频素材到视频工作台：商品资料 upsert + 未导入素材经采集服务落盘后入库；
-     manual=false（录入后自动同步）时即使素材为空也会推送商品资料，失败仅提示不阻塞 */
-  const pushToWorkbench = (item, manual) => {
-    if (!item || pushing.has(item.id)) return;
-    const videos = item.materialDetails?.video || [];
-    const images = item.materialDetails?.image || [];
-    const pending = [];
-    videos.forEach((v, i) => { if (!v.workbench && pushable(v)) pending.push({ kind: 'video', i, row: v }); });
-    images.forEach((v, i) => { if (!v.workbench && imgPushable(v)) pending.push({ kind: 'image', i, row: v }); });
-    const unpushable = videos.filter(v => !v.workbench && !pushable(v)).length
-      + images.filter(v => !v.workbench && !imgPushable(v)).length;
-    if (manual && (videos.length + images.length) && !pending.length) {
-      toast(unpushable ? `剩余 ${unpushable} 条为本地上传素材，没有可推送的来源地址` : '素材已全部导入过工作台');
+    const record = zone.record;
+    if (entry.failed) {
+      if (!zone.failed.includes(entry.channel)) zone.failed.push(entry.channel);
+      zone.errors[entry.channel] = entry.message || '该渠道未返回结果';
+      if (record && !record.failed.includes(entry.channel)) record.failed.push(entry.channel);
+      refreshCrawlView(crawl);
       return;
     }
-    pushing.add(item.id); paint();
-    fetch('./api/workbench-import', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        product: {
-          productId: String(item.kuaishouId || item.id), name: String(item.name || ''),
-          price: String(item.price ?? ''), specification: String(item.spec || ''),
-          sellingPoints: String(item.highlight || ''),
-        },
-        materials: pending.map(p => ({ key: p.i, kind: p.kind, name: p.row.name, platform: p.row.platform || '', playUrl: p.row.playUrl || '', playUrls: p.row.playUrls || [], pageUrl: p.row.pageUrl || '', src: p.row.src || '', local: p.row.local || '' })),
-      }),
-    }).then(r => r.json()).then(res => {
-      pushing.delete(item.id);
-      const target = find(item.id);
-      if (!target) return;
-      if (!res || !res.ok) {
-        paint();
-        toast(`导入工作台失败：${res?.message || '服务无响应'}；商品已保留，可到详情页重试`);
-        return;
+    if (crawl.taken.has(mediaKey(entry.row))) return;
+    const dup = zone.results.some(item => mediaKey(item) === mediaKey(entry.row)) ? 'seen' : false;
+    const row = { ...entry.row, channel: entry.channel, picked: false, dup };
+    zone.results.push(row);
+    record?.[zoneKey].push({ ...row, kind: zoneKey, channel: entry.channel, dup, picked: false });
+    if (!appendCandidate(crawl, zoneKey)) refreshCrawlView(crawl);
+  };
+  const finishZone = (host, crawl, zoneKey) => {
+    const zone = crawl.zones[zoneKey];
+    if (!zone.running) return;
+    zone.running = false;
+    zone.plan = [];
+    zone.cursor = 0;
+    if (zone.record) {
+      crawl.open.delete(zone.record);
+      settleRecord(zone.record);
+      zone.record = null;
+      const owner = ownerOf(crawl);
+      if (owner) {
+        owner.updated = today();
+        if (!crawlBusy(crawl)) owner.status = poolTotal(owner) ? 'ready' : 'pending';
+        persist();
       }
-      let ok = 0, fail = 0;
-      (res.imported || []).forEach(r => {
-        const arr = r.kind === 'image' ? (target.materialDetails?.image || []) : (target.materialDetails?.video || []);
-        const v = arr[r.key];
-        if (r.status === 'ready' && v) { v.workbench = true; if (r.local) v.local = r.local; ok += 1; }
-        else fail += 1;
-      });
-      const skipped = (res.skipped || []).length + unpushable;
-      const why = (res.skipped || [])[0]?.reason || (res.imported || []).find(r => r.status !== 'ready')?.error || '';
-      persist(); paint();
-      toast(`已${manual ? '推送' : '同步'}到视频工作台：素材入库 ${ok} 条` + (fail ? `，失败 ${fail} 条` : '') + (skipped ? `，跳过 ${skipped} 条` : '') + (why && (fail || skipped) ? `（${String(why).slice(0, 40)}）` : ''));
-    }).catch(err => {
-      pushing.delete(item.id); paint();
-      toast('导入工作台失败：' + (err?.message || '网络错误') + '；商品已保留，可到详情页重试');
+    }
+    refreshCrawlView(crawl);
+  };
+  const pumpZone = (host, crawl, zoneKey) => {
+    const zone = crawl.zones[zoneKey];
+    if (!crawlAlive(crawl) || zone.paused || !zone.running) return;
+    while (zone.queue.length) applyEntry(ownerOf(crawl) || host, crawl, zoneKey, zone.queue.shift());
+    if (!zone.pending) finishZone(host, crawl, zoneKey);
+    else refreshCrawlView(crawl);
+  };
+  const resultRow = (item, channel, kind) => ({
+    name: `${(item.title || '素材').slice(0,55)}${item.id ? '_' + item.id.slice(-6) : ''}${kind === 'image' ? ' 封面' : ''}`,
+    kind, channel, platform: item.platform || window.CollectApi.platformOf(channel), videoId: item.id || '',
+    src: item.cover || '', pageUrl: item.pageUrl || '', playUrl: kind === 'video' ? item.playUrl || '' : '',
+    playUrls: kind === 'video' ? item.playUrls || [] : [], duration: kind === 'video' && item.durationMs ? Math.round(item.durationMs / 1000) : null, size: '',
+  });
+  const startZone = (host, crawl, zoneKey, channels, record, append) => {
+    const zone = crawl.zones[zoneKey];
+    zone.requestId += 1;
+    const requestId = zone.requestId;
+    zone.queue = []; zone.pending = channels.length; zone.paused = false; zone.running = true;
+    if (!append) zone.errors = {};
+    if (record) { zone.record = record; crawl.open.add(record); }
+    channels.forEach(channel => { zone.attempts[channel] = (zone.attempts[channel] || 0) + 1; });
+    if (zoneKey === 'image' && host.collectedImages?.length) {
+      zone.pending = 0;
+      zone.queue = host.collectedImages.map(row => ({ channel: '商品图集', row: { ...row, kind: 'image', channel: '商品图集' } }));
+      pumpZone(host, crawl, zoneKey); return;
+    }
+    channels.forEach(async channel => {
+      let entries;
+      try {
+        const response = await window.CollectApi.search(channel, host.name.trim());
+        const items = (response.items || []).filter(item => zoneKey !== 'image' || item.cover);
+        entries = items.length ? items.map(item => ({ channel, row: resultRow(item, channel, zoneKey) })) : [{ channel, failed: true, message: '搜索没有返回候选，请调整商品名称后重试' }];
+      } catch (error) { entries = [{ channel, failed: true, message: error.message }]; }
+      if (!crawlAlive(crawl) || zone.requestId !== requestId) return;
+      zone.queue.push(...entries); zone.pending -= 1;
+      pumpZone(host, crawl, zoneKey);
     });
   };
-
+  /* 区头那一个按钮走完整个循环：开始爬取 → 暂停爬取 → 继续爬取 →（跑完）重新爬取 */
+  const tapZone = (host, zoneKey) => {
+    const crawl = crawlFor(host);
+    const zone = crawl?.zones[zoneKey];
+    if (!zone) return;
+    if (zone.running) {
+      zone.running = false;
+      zone.paused = true;
+      if (zone.record) zone.record.status = 'paused';
+      paintKeepingFocus();
+      toast(`已暂停爬取${zoneMeta(zoneKey).label}：已回来的 ${zone.results.length} 条候选还在，点「继续爬取」接着跑`);
+      return;
+    }
+    if (zone.paused) {
+      zone.paused = false;
+      zone.running = true;
+      if (zone.record) zone.record.status = 'running';
+      pumpZone(host, crawl, zoneKey);
+      paintKeepingFocus();
+      return;
+    }
+    if (!crawl.channels.length || !crawlBasis(host).name.trim()) { toast(!crawl.channels.length ? '请至少选择一个爬取渠道' : '请先填写商品名称'); return; }
+    const kept = poolTotal(host);
+    zone.results = [];
+    zone.failed = [];
+    crawl.taken = poolNames(host);
+    startZone(host, crawl, zoneKey, [...crawl.channels], openRecord(host, crawl.channels, [zoneKey]), false);
+    paintKeepingFocus();
+    if (kept) toast(`重新爬取：只刷新候选区，已归档的 ${kept} 个不动`);
+  };
+  /* 勾选即归入：一条候选进/出素材中心只认这两个动作；「全部归入」是同一动作的批量版 */
+  const takeRow = (host, pool, zoneKey, row) => {
+    if (!pool[zoneMeta(zoneKey).card].some(file => mediaKey(file) === mediaKey(row))) pool[zoneMeta(zoneKey).card].push({ ...row, kind: zoneKey, from: row.channel });
+    row.picked = true;
+    markPicked(host, new Set([row.name]));
+  };
+  const dropRow = (host, pool, zoneKey, row) => {
+    const card = zoneMeta(zoneKey).card;
+    const at = pool[card].findIndex(file => mediaKey(file) === mediaKey(row));
+    if (at >= 0) pool[card].splice(at, 1);
+    row.picked = false;
+    markPicked(host, new Set([row.name]), false);
+  };
+  /* 商品详情那侧专用：把勾选的候选归入素材中心（弹窗那侧勾了就算，不走这里） */
+  const commitPicked = host => {
+    const crawl = crawlFor(host);
+    const pool = ensureAssets(host);
+    const moved = { video: 0, image: 0 };
+    CRAWL_ZONES.forEach(zone => {
+      const card = zoneMeta(zone.key).card;
+      crawl.zones[zone.key].results.forEach(row => {
+        if (!row.picked || row.dup || pool[card].some(file => mediaKey(file) === mediaKey(row))) return;
+        takeRow(host, pool, zone.key, row);
+        moved[zone.key] += 1;
+      });
+    });
+    syncMaterials(host);
+    host.updated = today();
+    persist(); paint();
+    if (moved.video || moved.image) pushToWorkbench(host, false); else toast('勾选的候选已经归档');
+  };
+  const retryZone = (host, zoneKey) => {
+    const crawl = crawlFor(host);
+    const zone = crawl?.zones[zoneKey];
+    if (!zone || zone.running || zone.paused || !zone.failed.length) return;
+    const channels = [...zone.failed];
+    startZone(host, crawl, zoneKey, channels, openRecord(host, channels, [zoneKey]), true);
+    paintKeepingFocus();
+    toast(`正在重试 ${channels.join('、')} 的${zoneKey === 'video' ? '视频' : '图片'}候选…`);
+  };
+  const pushToWorkbench = async (item, manual) => {
+    if (!item || pushing.has(item.id)) return;
+    const rows = [];
+    for (const group of ['main','video','image']) (item.assets?.[group] || []).forEach((row, index) => {
+      if (!row.disabled && !row.workbench) rows.push({ row, key: `${group}:${index}`, kind: group === 'video' ? 'video' : 'image' });
+    });
+    if (manual && !rows.length) { toast('归档素材已同步，可到工作台素材库查看'); return; }
+    pushing.set(item.id, true); paint();
+    try {
+      const result = await window.CollectApi.importProduct({
+        product: { productId: String(item.kuaishouId || item.id), name: item.name || '', price: String(item.price ?? ''), specification: item.spec || '', sellingPoints: item.highlight || '' },
+        materials: rows.map(({ row, key, kind }) => ({ ...row, key, kind, assetId: row.workbenchAssetId || '' })),
+      });
+      let ready = 0;
+      for (const imported of result.imported || []) {
+        const original = rows.find(row => row.key === imported.key)?.row;
+        if (!original) continue;
+        if (imported.status === 'ready') { original.workbench = true; original.workbenchAssetId = imported.assetId; original.local = imported.local || original.local; delete original.workbenchError; ready += 1; }
+        else { original.workbench = false; original.workbenchError = imported.error || '入库未成功'; }
+      }
+      const failed = rows.length - ready;
+      const error = result.skipped?.[0]?.reason || result.imported?.find(row => row.status !== 'ready')?.error || '';
+      item.lastSync = { at: stamp(), ready, failed, error };
+      persist(); toast(`素材库同步：成功 ${ready} 项${failed ? `，未同步 ${failed} 项：${error}` : ''}`);
+    } catch (error) {
+      item.lastSync = { at: stamp(), ready: 0, failed: rows.length, error: error.message };
+      persist(); toast(`同步失败：${error.message}；商品与归档素材已保留，可重试`);
+    } finally { pushing.delete(item.id); paint(); }
+  };
+  const previewRow = async (row, kind, host) => {
+    const previewId = uid('preview');
+    state.preview = { ...row, kind, loading: true, previewId }; paint();
+    try {
+      const result = await window.CollectApi.download(row, kind);
+      row.local = result.path;
+      const owner = ownerOf(crawlFor(host)) || (isDraft(host) ? host : find(host.id));
+      const key = mediaKey(row);
+      for (const entry of (owner && poolFor(owner)[kind]) || []) if (mediaKey(entry) === key) entry.local = result.path;
+      if (!isDraft(owner)) persist();
+      if (state.preview?.previewId === previewId) state.preview = { ...row, kind, local: result.path, previewId };
+    } catch (error) { if (state.preview?.previewId === previewId) state.preview = { ...row, kind, error: error.message, previewId }; }
+    paint();
+  };
   const onClick = event => {
     syncDraftFromDom();
+    const draftButton = event.target.closest('button[data-lp-draft]');
+    if (draftButton && state.draft) { state.draft[draftButton.dataset.lpDraft] = draftButton.dataset.value; paintKeepingFocus(); return; }
     /* 只有点在遮罩本体上才关闭；弹窗内部点击不得冒泡成关闭 */
     const backdrop = event.target.closest('.ec-prod-backdrop');
     if (backdrop && event.target === backdrop) { dismissTop(); return; }
-
-    /* 渠道开关只带 data-lp-channel，必须在 [data-lp] 兜底之前拦截；原位切换不重绘 */
+    /* 点到输入框区域之外，收起 ID 建议列表 */
+    if (state.draft?.suggestField && !event.target.closest('.ec-prod-ksbox')) { state.draft.suggestField = null; document.querySelectorAll('.ec-prod-suggest').forEach(node => node.remove()); }
+    /* 渠道开关只带 data-lp-channel，必须在 [data-lp] 兜底之前拦截 */
     const channelBtn = event.target.closest('[data-lp-channel]');
     if (channelBtn) {
-      const crawl = state.draft?.crawl;
-      if (!crawl) return;
+      const host = crawlHost();
+      const crawl = crawlFor(host);
+      if (!host) return;
       const name = channelBtn.dataset.lpChannel;
-      const on = !crawl.channels.includes(name);
-      crawl.channels = on ? [...crawl.channels, name] : crawl.channels.filter(c => c !== name);
-      channelBtn.classList.toggle('active', on);
-      channelBtn.setAttribute('aria-pressed', String(on));
-      syncEntryActions();
-      return;
+      crawl.channels = crawl.channels.includes(name) ? crawl.channels.filter(c => c !== name) : [...crawl.channels, name];
+      return paint();
     }
-
-    /* 平台分段按钮：button 上的 data-lp-draft 不触发表单 input 事件，原位切换 */
-    const draftBtn = event.target.closest('button[data-lp-draft]');
-    if (draftBtn && state.draft && draftBtn.dataset.value !== undefined) {
-      state.draft[draftBtn.dataset.lpDraft] = draftBtn.dataset.value;
-      draftBtn.parentElement?.querySelectorAll('button').forEach(b => {
-        const on = b === draftBtn;
-        b.classList.toggle('active', on);
-        b.setAttribute('aria-pressed', String(on));
-      });
-      return;
-    }
-
     const trigger = event.target.closest('[data-lp]');
     if (!trigger) return;
     const action = trigger.dataset.lp;
     const id = trigger.dataset.id;
     const item = id ? find(id) : null;
-
+    const host = crawlHost();
+    if (action === 'ext-help') { toast('Chrome 扩展管理：开启开发者模式 → 加载已解压的扩展 → 选择 ecom-video-collect/extension，并登录快分销。'); return; }
+    if (action === 'push-workbench') { pushToWorkbench(item, true); return; }
+    if (action === 'open-workbench') { window.open(window.CollectApi.workbenchUrl + '/?page=library&productId=' + encodeURIComponent(item.kuaishouId || item.id), '_blank', 'noopener'); return; }
+    if (action === 'stored-preview') {
+      const kind = trigger.dataset.kind;
+      const row = crawledOf(item, kind).find(row => mediaKey(row) === trigger.dataset.mediaKey);
+      if (row) previewRow(row, kind, item);
+      return;
+    }
+    /* 详情的两 tab 切换 */
+    if (action === 'panel') {
+      state.detailPanel = trigger.dataset.panel;
+      return paint();
+    }
+    if (action === 'toggle-record') { state.recordOpen = trigger.dataset.record; return paint(); }
+    if (action === 'close-record') { state.recordOpen = null; return paint(); }
+    if (action === 'open-supplement') { ingestFiles('video', item); return; }
+    if (action === 'close-supplement') { state.supplementId = null; return paint(); }
+    if (action === 'remove-local') {
+      if (!item) return;
+      const kind = trigger.dataset.kind;
+      const at = Number(trigger.dataset.index);
+      if (item.assets?.[kind]?.[at]?.from !== '本地增补') return;
+      item.assets[kind].splice(at, 1);
+      syncMaterials(item);
+      item.updated = today();
+      persist(); paint();
+      toast('已移出这个本地增补素材');
+      return;
+    }
     if (action === 'pick') {
-      const row = state.draft?.crawl?.zones[trigger.dataset.zone]?.results[Number(trigger.dataset.index)];
+      const crawl = crawlFor(host);
+      const zoneKey = trigger.dataset.zone;
+      const row = crawl?.zones[zoneKey]?.results[Number(trigger.dataset.index)];
       if (!row || row.dup) return;
       row.picked = !row.picked;
-      /* 局部更新卡片态，不做整窗重绘 */
-      trigger.classList.toggle('is-picked', row.picked);
-      trigger.setAttribute('aria-pressed', String(Boolean(row.picked)));
-      const cap = trigger.querySelector('.ec-prod-cand-preview');
-      if (cap) cap.textContent = row.picked ? '已选 · 再点取消' : '点击勾选';
-      syncCrawlPicked();
-      return;
+      /* 弹窗里勾了就直接归档（确认即入库）；详情里勾选只是选中，要点「归入素材中心」才算 */
+      if (isDraft(host)) {
+        if (row.picked) takeRow(host, host.pool, zoneKey, row); else dropRow(host, host.pool, zoneKey, row);
+      } else {
+        markPicked(host, new Set([row.name]), row.picked);
+      }
+      return paint();
     }
+    if (action === 'commit-crawl') { commitPicked(host); return; }
     if (action === 'remove-pool') {
       const zoneKey = trigger.dataset.zone;
-      const pool = state.draft?.pool?.[zoneKey];
-      if (!pool) return;
-      pool.splice(Number(trigger.dataset.index), 1);
-      /* 局部更新：移除该 chip、刷新“已归入”与底栏计数，剩余 chip 重排索引 */
-      const poolEl = trigger.closest('.ec-prod-pool');
-      trigger.closest('.ec-prod-chip')?.remove();
-      if (poolEl) {
-        const label = poolEl.querySelector('.ec-prod-pool-label');
-        if (label) label.textContent = `已归入 ${pool.length}`;
-        poolEl.querySelectorAll('[data-lp="remove-pool"]').forEach((b, i) => { b.dataset.index = String(i); });
-        if (!pool.length) {
-          const hint = document.createElement('span');
-          hint.className = 'ec-prod-hint';
-          hint.textContent = '勾选候选后点「归入素材池」';
-          poolEl.appendChild(hint);
-        }
-      }
-      syncPoolTally();
-      return;
+      poolFor(host)[zoneKey].splice(Number(trigger.dataset.index), 1);
+      if (!isDraft(host)) { syncMaterials(host); host.updated = today(); persist(); }
+      return paint();
     }
-    if (action === 'run-crawl') { startCrawl(); return; }
-    if (action === 'retry-zone') { retryZone(trigger.dataset.zone); return; }
-    if (action === 'commit-crawl') { commitCrawl(); return; }
-
+    if (action === 'pick-history') {
+      const draft = state.draft;
+      if (draft.suggestField === 'name') draft.name = trigger.dataset.label; else draft.kuaishouId = trigger.dataset.ks;
+      draft.suggestField = null;
+      return paint();
+    }
+    if (action === 'run-zone') { tapZone(host, trigger.dataset.zone); return; }
+    if (action === 'retry-zone') { retryZone(host, trigger.dataset.zone); return; }
+    if (action === 'preview') {
+      const row = crawlFor(host)?.zones[trigger.dataset.zone]?.results[Number(trigger.dataset.index)];
+      if (!row) return;
+      previewRow(row, trigger.dataset.zone, host); return;
+    }
+    if (action === 'close-preview') { state.preview = null; return paint(); }
     if (action === 'reset-filters') { state.filters = blankFilters(); paint(); return; }
+    if (action === 'run-search') { paint(); toast(`匹配 ${filtered().length} / ${state.items.length} 个商品`); return; }
     if (action === 'open-entry') { state.draft = newDraft(); state.dialog = 'entry'; paint(); return; }
-    if (action === 'dismiss-entry') { state.dialog = null; state.draft = null; paint(); return; }
-    if (action === 'dismiss-confirm') { state.confirm = null; paint(); return; }
-    if (action === 'do-confirm') { const c = state.confirm; state.confirm = null; c?.run?.(); return paint(); }
-    if (action === 'open-detail') { state.detailId = id; paint(); return; }
-    if (action === 'close-detail') { state.detailId = null; paint(); return; }
-    if (action === 'ext-id') {
-      extPing().then(m => toast(m
-        ? `✓ 采集插件已连接（接入版 v${m.version || '1.1'}）`
-        : '未检测到采集插件：请安装「快手商品信息采集器-接入版」扩展后刷新本页'));
+    if (action === 'leave-entry') { state.leaveConfirm = { running: crawlBusy(crawlFor(state.draft)) }; return paint(); }
+    if (action === 'stay') { state.leaveConfirm = null; return paint(); }
+    if (action === 'leave-yes') {
+      const dropped = state.draft;
+      state.leaveConfirm = null; state.dialog = null; state.draft = null;
+      if (dropped) liveCrawls.delete(dropped.id);
+      paint(); toast('已放弃本次未提交的录入');
       return;
     }
-    if (action === 'ext-help') {
-      toast('安装：chrome://extensions 开启开发者模式 → 加载已解压 → 选择「快手商品信息采集器-接入版」目录');
+    if (action === 'dismiss-entry') {
+      const dropped = state.draft;
+      const had = dropped && (poolTotal(dropped) || dropped.crawls.length || crawlBusy(crawlFor(dropped)));
+      state.dialog = null; state.draft = null;
+      if (dropped) liveCrawls.delete(dropped.id); /* 取消 = 放弃这次爬取，定时器随之失效 */
+      paint();
+      if (had) toast('已取消：这次填的资料和爬到的素材都没有保留');
       return;
     }
-
+    if (action === 'open-detail') { state.detailId = id; state.detailPanel = 'info'; state.recordOpen = null; paint(); return; }
+    if (action === 'close-detail') { state.detailId = null; state.recordOpen = null; paint(); return; }
     if (action === 'collect') {
       const d = state.draft;
-      const ksId = d.kuaishouId.trim();
-      if (!ksId) { setCollectState(d, 'fail', '请先填写快手商品ID'); return; }
-      setCollecting(d, true);
-      setCollectState(d, 'ok', '正在通过浏览器插件打开快分销详情页读取，请勿关闭浏览器…');
-      extLookup(ksId).then(res => {
+      if (!d.kuaishouId.trim()) { toast('请先填写快手商品ID'); return; }
+      syncDraftFromDom(); d.collecting = true; paint();
+      window.CollectApi.collectProduct(d.kuaishouId.trim()).then(response => {
         if (state.draft !== d) return;
-        setCollecting(d, false);
-        if (!res) {
-          setCollectState(d, 'fail', '未检测到采集插件：请安装「快手商品信息采集器-接入版」扩展，并通过采集服务地址打开本页');
-          return;
-        }
-        if (!res.ok) {
-          setCollectState(d, 'fail', `采集失败：${res.error || '插件未返回结果'}（请确认浏览器已登录快分销达人账号）`);
-          return;
-        }
-        const record = res.record || {};
-        if (record.productName) { d.name = record.productName; setDraftValue('lpName', d.name); }
-        if (record.price?.min != null) { d.price = String(record.price.min); setDraftValue('lpPrice', d.price); }
-        if (record.commission?.percent != null) { d.comm = String(record.commission.percent); setDraftValue('lpComm', d.comm); }
-        if (record.specification) { d.spec = record.specification; setDraftValue('lpSpec', d.spec); }
-        d.cat = mapCategory(record, d.name);
-        setDraftValue('lpCatSel', d.cat);
-        d.platform = 'Kuaishou';
-        /* 平台分段按钮原位同步 */
-        document.querySelectorAll('button[data-lp-draft="platform"]').forEach(b => {
-          const on = b.dataset.value === 'Kuaishou';
-          b.classList.toggle('active', on);
-          b.setAttribute('aria-pressed', String(on));
-        });
-        d.collectRaw = record;
-        if (record.mainImageUrl) {
-          d.pool.main = [{ name: '采集主图.jpg', src: record.mainImageUrl, from: '采集', platform: 'kuaishou' }];
-          syncPoolTally();
-        }
-        /* 商品图集 → 图片分区候选，与视频一样人工勾选归入 */
-        const imgs = Array.isArray(record.imageUrls) ? record.imageUrls.filter(u => /^https:\/\//.test(u)).slice(0, 12) : [];
-        const taken = poolNames();
-        d.crawl.zones.image.results = imgs.map((url, i) => ({
-          name: `商品图 ${i + 1}`, src: url, channel: '采集', platform: 'kuaishou',
-          pageUrl: record.sourceUrl || '', videoId: '', playUrl: '', author: '', size: '详情图',
-          picked: false, dup: taken.has(`商品图 ${i + 1}`) ? 'pool' : false,
-        }));
-        zoneBodyOf('image')?.querySelector('.ec-prod-zone-grid')?.remove();
-        appendZoneRows('image', d.crawl.zones.image.results);
-        const missing = [];
-        if (!record.productName) missing.push('名称');
-        if (record.price?.min == null) missing.push('价格');
-        if (record.commission?.percent == null) missing.push('佣金');
-        const warns = (res.warnings || []).filter(Boolean).join('；');
-        setCollectState(d, missing.length ? 'warn' : 'ok',
-          (missing.length ? `已回填可读字段，但${missing.join('、')}未在详情页明确标注` : '✓ 商品资料已回填')
-          + (imgs.length ? `；${imgs.length} 张商品图已进入图片分区` : '；详情页未读取到商品图集')
-          + (warns ? `；${warns}` : '') + '；视频请在右列联网爬取');
-        syncEntryActions();
-      });
-      return;
-    }
-    if (action === 'recognize') {
-      const d = state.draft;
-      if (!d.name.trim()) { toast('请先填写商品名称'); return; }
-      const guessed = CATEGORIES.find(c => d.name.includes(c.slice(0, 2))) || (d.name.includes('头盔') || d.name.includes('充电') || d.name.includes('插排') ? '数码家电' : d.name.includes('袋') || d.name.includes('锅') ? '家居百货' : d.name.includes('鞋垫') || d.name.includes('护膝') ? '服饰鞋包' : '食品饮料');
-      d.cat = guessed;
-      setDraftValue('lpCatSel', guessed);
-      if (!d.highlight.trim()) {
-        d.highlight = `已按商品名称识别类目为「${guessed}」，并生成卖点草稿：${d.name.slice(0, 22)}，${d.spec || '规格见详情'}，${d.price ? `到手价 ${d.price} 元` : '价格以商品页为准'}，日常使用方便省心。`;
-        setDraftValue('lpHi', d.highlight);
-      }
-      syncEntryActions();
-      toast('已补全类目与卖点草稿');
-      return;
-    }
-    if (action === 'ai-highlight') {
-      const d = state.draft;
-      if (d.generating) return;
-      d.generating = true;
-      trigger.disabled = true;
-      later(() => {
-        if (state.draft !== d) return;
-        d.generating = false;
-        trigger.disabled = false;
-        d.highlight = `${d.name.slice(0, 20)}，${d.spec || '标准规格'}。${d.cat || '日常'}场景实测：用料厚实、做工规整，收纳与使用都不占地方；${d.price ? `到手价 ${d.price} 元，` : ''}同价位里性价比突出，老葛直播间的粉丝可以放心拍。`;
-        setDraftValue('lpHi', d.highlight);
-        syncEntryActions();
-      }, 1000);
+        const record = response.record || {};
+        if (record.productName) d.name = record.productName;
+        if (record.price?.min != null) d.price = String(record.price.min);
+        if (record.commission?.percent != null) d.comm = String(record.commission.percent);
+        if (!d.spec.trim() && record.specification) d.spec = record.specification;
+        if (!d.cat) d.cat = window.CollectApi.categoryOf(record);
+        d.collectSource = record.sourceUrl || '';
+        if (record.mainImageUrl) d.pool.main = [{ name: '商品主图', src: record.mainImageUrl, platform: 'kuaishou', kind: 'image', from: '商品详情' }];
+        d.collectedImages = [...new Set((record.imageUrls || []).filter(url => /^https?:\/\//.test(url)))].map((src,index) => ({ name: `商品图 ${index + 1}`, src, kind: 'image', platform: 'kuaishou', from: '商品详情', channel: '商品详情' }));
+        const crawl = crawlFor(d);
+        const recordOfImages = openRecord(d, ['商品详情'], ['image']);
+        for (const row of d.collectedImages) { takeRow(d, d.pool, 'image', row); recordOfImages.image.push({ ...row, picked: true }); }
+        settleRecord(recordOfImages);
+        crawl.zones.image.attempts['商品详情'] = (crawl.zones.image.attempts['商品详情'] || 0) + 1;
+        toast(`已采集商品资料，归档 ${d.collectedImages.length} 张详情图片；视频请单独爬取`);
+      }).catch(error => toast(error.message)).finally(() => { if (state.draft === d) { d.collecting = false; paintKeepingFocus(); } });
       return;
     }
     if (action === 'submit-entry') {
       const d = state.draft;
-      if (!entryValid(d)) return;
-      /* 已勾选但未点「归入素材池」的候选在提交时一并归入，避免勾选被静默丢弃 */
-      if (crawlPicked(d.crawl)) commitCrawl();
+      if (d.collecting) { toast('商品资料正在采集，请等待完成后确认'); return; }
+      const miss = missingField(d);
+      if (miss) { toast(`「${miss}」还没填`); return; }
       const existed = state.items.find(row => row.kuaishouId === d.kuaishouId.trim());
-      if (existed) { toast('该快手商品ID 已录入，已为你定位到详情'); state.dialog = null; state.draft = null; state.detailId = existed.id; return paint(); }
+      if (existed) { toast('该快手商品ID 已录入，已为你定位到详情'); state.dialog = null; state.draft = null; state.detailId = existed.id; state.detailPanel = 'info'; return paint(); }
       const materials = { main: d.pool.main.length, video: d.pool.video.length, image: d.pool.image.length };
-      /* 真实素材明细随商品一同入库：视频 ID / 平台 / 来源链接 / 封面 / 播放地址 / 文件位置 */
-      const materialDetails = {
-        main: d.pool.main.map(f => ({ name: f.name, src: f.src || '', from: f.from || '采集', platform: f.platform || '' })),
-        video: d.pool.video.map(f => ({ name: f.name, src: f.src || '', from: f.from || '', size: f.size || '', duration: f.duration ?? null, videoId: f.videoId || '', pageUrl: f.pageUrl || '', playUrl: f.playUrl || '', playUrls: f.playUrls || [], platform: f.platform || '', local: f.local || '' })),
-        image: d.pool.image.map(f => ({ name: f.name, src: f.src || '', from: f.from || '', size: f.size || '', videoId: f.videoId || '', pageUrl: f.pageUrl || '', platform: f.platform || '', local: f.local || '' })),
-      };
-      state.items.unshift({
+      const running = liveCrawls.get(d.id);
+      const created = {
         id: uid('p'), kuaishouId: d.kuaishouId.trim(), name: d.name.trim(), cat: d.cat, price: Number(d.price), spec: d.spec.trim(),
-        comm: Number(d.comm), cma: Number((Number(d.price) * Number(d.comm) / 100).toFixed(2)), gen: 0, platform: d.platform === 'TikTok' ? 'TikTok' : '快手',
-        status: materialTotal({ materials }) ? 'ready' : 'pending', updated: today(), highlight: d.highlight.trim(), negatives: d.negatives.trim(), team: d.team.trim(),
-        materials, materialDetails, collectSource: d.collectRaw?.sourceUrl || '',
-      });
+        comm: Number(d.comm), cma: Number((Number(d.price) * Number(d.comm) / 100).toFixed(2)), gen: 0, platform: PLATFORMS.includes(d.platform) ? d.platform : '快手',
+        /* 没爬完就确认 → 列表状态栏直接显示「爬取中」，跑完再自动落定 */
+        status: running && crawlBusy(running) ? 'crawling' : (materialTotal({ materials }) ? 'ready' : 'pending'),
+        updated: today(), highlight: d.highlight.trim(), negatives: d.negatives.trim(),
+        collectedImages: d.collectedImages || [], collectSource: d.collectSource || '', materials, assets: { main: [...d.pool.main], video: [...d.pool.video], image: [...d.pool.image] }, crawls: [...d.crawls],
+      };
+      state.items.unshift(created);
+      /* 没爬完的那一次过户给新商品：定时器继续跑，结果写进它的爬取记录 */
+      liveCrawls.delete(d.id);
+      if (running) liveCrawls.set(created.id, running);
       state.dialog = null; state.draft = null;
       persist(); paint();
-      toast(materialTotal(state.items[0]) ? '已入库，素材状态「素材就绪」，正在同步视频工作台…' : '已入库；素材池为空（未勾选归入候选），状态「待爬取」，可重新录入或在详情页补齐');
-      pushToWorkbench(state.items[0], false);
+      toast(running && crawlBusy(running)
+        ? `已入库；这次爬取还在跑，「联网爬取」tab 上的徽标停了就是跑完`
+        : materialTotal(created) ? '商品已保存，正在同步工作台素材库…' : '商品已保存；可在详情中继续爬取素材');
+      pushToWorkbench(created, false);
       return;
     }
-    if (action === 'sync') {
-      if (!item) return;
-      const ksId = (item.kuaishouId || '').trim();
-      if (!/^\d{8,30}$/.test(ksId)) { toast('该商品没有可用的快手商品ID，无法同步'); return; }
-      const prevStatus = item.status;
-      item.status = 'crawling'; paint();
-      extLookup(ksId).then(res => {
-        const target = find(item.id);
-        if (!target) return;
-        if (!res || !res.ok) {
-          target.status = prevStatus; persist(); paint();
-          toast(!res ? '未检测到采集插件，无法同步' : `同步失败：${res.error || '插件未返回结果'}`);
-          return;
-        }
-        const r = res.record || {};
-        if (r.productName) target.name = r.productName;
-        if (r.commission?.percent != null) target.comm = r.commission.percent;
-        if (r.price?.min != null) target.price = r.price.min;
-        target.cma = Number((Number(target.price) * Number(target.comm) / 100).toFixed(2));
-        if (r.specification) target.spec = r.specification;
-        target.cat = mapCategory(r, target.name);
-        if (r.mainImageUrl) {
-          const det = target.materialDetails || (target.materialDetails = { main: [], video: [], image: [] });
-          det.main = [{ name: '采集主图.jpg', src: r.mainImageUrl, from: '采集', platform: 'kuaishou' }];
-          target.materials.main = 1;
-        }
-        if (r.sourceUrl) target.collectSource = r.sourceUrl;
-        target.status = 'ready';
-        target.updated = today();
-        persist(); paint();
-        toast('已按 id 重爬价格 / 标题 / 主图并覆盖缓存，素材未覆盖');
-      });
-      return;
-    }
-    if (action === 'recrawl') {
-      if (!item || !item.name.trim()) return;
-      item.status = 'crawling'; paint();
-      const channels = ['kuaishou', 'douyin'];
-      const settled = [];
-      channels.forEach(platform => {
-        serviceSearch(platform, item.name.trim()).then(res => {
-          settled.push({ platform, res });
-          if (settled.length < channels.length) return;
-          const target = find(item.id);
-          if (!target) return;
-          const det = target.materialDetails || (target.materialDetails = { main: [], video: [], image: [] });
-          const seen = new Set(det.video.map(v => v.videoId).filter(Boolean));
-          let added = 0;
-          const failed = [];
-          settled.forEach(({ platform: pf, res }) => {
-            const channel = pf === 'douyin' ? '抖音' : '快手';
-            if (!res.ok) { failed.push(channel); return; }
-            (res.items || []).forEach(it => {
-              if (it.id && seen.has(it.id)) return;
-              if (it.id) seen.add(it.id);
-              det.video.push({
-                name: (it.title || `视频 ${it.id}`).slice(0, 60), src: it.cover || '', from: channel,
-                duration: it.durationMs ? Math.round(it.durationMs / 1000) : null,
-                videoId: it.id || '', pageUrl: it.pageUrl || '', playUrl: it.playUrl || '', playUrls: it.playUrls || [], platform: pf,
-              });
-              if (it.cover) {
-                det.image.push({
-                  name: `${(it.title || '素材').slice(0, 50)} 封面.jpg`, src: it.cover, from: channel,
-                  videoId: it.id || '', pageUrl: it.pageUrl || '', platform: pf,
-                });
-              }
-              added += 1;
-            });
-          });
-          target.materials.video = det.video.length;
-          target.materials.image = det.image.length;
-          target.status = (added || det.video.length) ? 'ready' : 'crawlFailed';
-          target.updated = today();
-          persist(); paint();
-          toast(added ? `重新爬取完成，新增 ${added} 条素材`
-            : failed.length ? `爬取未成功：${failed.join('、')} 渠道未返回候选`
-            : '没有新的素材');
-        });
-      });
-      return;
-    }
-    if (action === 'add-to-assets') { if (item) { addToAssets(item); pushToWorkbench(item, true); } return; }
-    if (action === 'push-workbench') { if (item) pushToWorkbench(item, true); return; }
-    if (action === 'media-preview') {
+    /* 禁用 / 恢复：落在具体那份素材上，计数与黑段缺料随之变 */
+    if (action === 'media-disable' || action === 'media-enable') {
       if (!item) return;
       const kind = trigger.dataset.kind;
-      const idx = Number(trigger.dataset.index);
-      const row = mediaFiles(item, kind)[idx];
-      if (!row) return;
-      /* 已下载落盘的素材直接播本地文件 */
-      if (row.local) { window.open(localUrl(row.local), '_blank'); return; }
-      if (kind === 'image') {
-        if (row.src) { window.open(mediaSrc(row), '_blank'); return; }
-        toast('该素材没有可预览的来源地址'); return;
-      }
-      if (row.playUrl && !/\.m3u8(\?|$)/i.test(row.playUrl)) { window.open(proxyOf(row.playUrl, row.platform), '_blank'); return; }
-      /* m3u8 等浏览器无法直链的地址：下载落盘（服务端拼段并转 mp4）后播本地文件 */
-      if (row.playUrl) {
-        toast('该素材为分段视频，正在下载用于预览…');
-        fetch('./api/download', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: row.playUrl, platform: row.platform || '', name: row.name, kind: 'video' }),
-        }).then(r => r.json()).then(res => {
-          if (res?.ok && res.path) {
-            const real = (item.materialDetails?.video || [])[idx];
-            if (real) { real.local = res.path; persist(); }
-            window.open(res.path, '_blank');
-          } else if (row.pageUrl) { window.open(row.pageUrl, '_blank'); }
-          else toast('预览失败：' + (res?.message || '下载失败'));
-        }).catch(err => { toast('预览下载失败：' + (err?.message || '网络错误')); });
-        return;
-      }
-      if (row.pageUrl) { window.open(row.pageUrl, '_blank'); return; }
-      toast('该素材没有可预览的来源地址');
+      const file = ensureAssets(item)[kind][Number(trigger.dataset.index)];
+      if (!file) return;
+      file.disabled = action === 'media-disable';
+      syncMaterials(item);
+      item.updated = today();
+      persist(); paint();
+      toast(file.disabled ? '已暂停后续同步；已入工作台的素材请在素材库管理' : '已恢复后续同步');
       return;
-    }
-    if (action === 'media-disable') {
-      if (!item) return;
-      const kind = trigger.dataset.kind;
-      state.confirm = {
-        title: '禁用该素材？', danger: true, okLabel: '禁用',
-        body: '禁用后不再参与生成装配。若因此导致黑段缺料，「素材就绪」会显示缺失清单。',
-        list: [{ k: '素材', v: `${kind === 'video' ? '视频' : '图片'}素材` }, { k: '商品', v: item.name.slice(0, 16) + '…' }],
-        run: () => {
-          const det = item.materialDetails?.[kind];
-          const idx = Number(trigger.dataset.index);
-          if (Array.isArray(det) && Number.isInteger(idx) && det[idx]) det.splice(idx, 1);
-          if (kind === 'video') item.materials.video = Array.isArray(det) ? det.length : Math.max(0, item.materials.video - 1);
-          else item.materials.image = Array.isArray(det) ? det.length : Math.max(0, item.materials.image - 1);
-          persist(); paint(); toast('素材已禁用，不参与生成装配');
-        },
-      };
-      return paint();
     }
   };
-
   /* 整行可点：键盘 Tab 聚焦后回车 / 空格进入详情（PRD §4.4-①） */
   const onKeyDown = event => {
     if (event.key === 'Escape') { dismissTop(); return; }
     if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (event.key === 'Enter' && event.target?.id === 'lpQ') { paint(); toast(`匹配 ${filtered().length} / ${state.items.length} 个商品`); return; }
     const row = event.target.closest?.('.ec-prod-rowlink');
     if (!row) return;
     event.preventDefault();
     state.detailId = row.dataset.id;
+    state.detailPanel = 'info';
+    state.recordOpen = null;
     paint();
   };
-
   const onInput = event => {
     const filterKey = event.target.dataset.lpFilter;
-    if (filterKey) { state.filters[filterKey] = event.target.value; return paintDebounced(); }
+    if (filterKey) { state.filters[filterKey] = event.target.value; if (!event.isComposing) paintDebounced(); return; }
     const draftKey = event.target.dataset.lpDraft;
     if (draftKey && state.draft) {
-      /* 弹窗表单输入不重绘：只写状态 + 同步按钮可用态与爬取提示 */
-      if (event.target.id === 'lpKsId' && state.draft.collectState) {
-        state.draft.collectState = null;
-        document.querySelector('.ec-prod-collect-state')?.remove();
-      }
+      if (event.target.id === 'lpKsId' || event.target.id === 'lpName') state.draft.suggestField = event.target.id === 'lpName' ? 'name' : 'kuaishouId';
       state.draft[draftKey] = event.target.value;
-      syncEntryActions();
+      draftDomValues.set(event.target, event.target.value);
+      syncDraftControls(event.target);
       return;
     }
   };
-
+  /* 聚焦快手商品ID 即展开建议（不需要单独的历史按钮） */
+  const syncDraftControls = input => {
+    const draft = state.draft;
+    if (!draft) return;
+    const crawl = crawlFor(draft);
+    const canRun = Boolean(draft.name.trim() && crawl.channels.length);
+    document.querySelectorAll("[data-lp=run-zone]").forEach(button => {
+      if (canRun) { button.removeAttribute("aria-disabled"); button.removeAttribute("title"); }
+      else { button.setAttribute("aria-disabled","true"); button.title = "请先填写商品名称并选择渠道"; }
+    });
+    const note = document.querySelector(".ec-prod-crawl-note");
+    if (note) { note.textContent = draft.name.trim() ? `依据 ${draft.name.trim().slice(0,14)} 检索同类素材` : "先填商品名称，爬取按名称 / 类目发起"; note.classList.toggle("is-warn",!draft.name.trim()); }
+    const box = input?.closest(".ec-prod-ksbox");
+    if (box && draft.suggestField) { box.querySelector(".ec-prod-suggest")?.remove(); box.insertAdjacentHTML("beforeend",historyList()); }
+  };
+  const onFocusIn = event => {
+    const field = { lpKsId: "kuaishouId", lpName: "name" }[event.target?.id];
+    if (!field || !state.draft) return;
+    state.draft.suggestField = field;
+    syncDraftControls(event.target);
+  };
   let debounce = null;
   const paintDebounced = () => {
     const focusKey = document.activeElement?.id || null;
@@ -1258,38 +1046,14 @@
       }
     }, 180);
   };
-
   const onChange = event => {
+    if (event.target.dataset?.lpDraft && state.draft) { onInput(event); return; }
     const filterKey = event.target.dataset?.lpFilter;
     if (filterKey) { state.filters[filterKey] = event.target.value; return paint(); }
-    /* 详情页「替换」：走本地上传，文件不出本机（PRD §4.4-②） */
-    const replace = event.target.dataset?.lpReplace;
-    if (replace) {
-      const item = find(event.target.dataset.id);
-      const file = event.target.files?.[0];
-      if (!item || !file) return;
-      const kind = replace;
-      if (kind === 'video') item.materials.video = Math.max(item.materials.video, Number(event.target.dataset.index) + 1);
-      else item.materials.image = Math.max(item.materials.image, Number(event.target.dataset.index) + 1);
-      item.updated = today();
-      persist(); paint();
-      toast(`已用本地文件替换：${file.name}`);
-      return;
-    }
-    const append = event.target.dataset?.lpAppend;
-    if (append) {
-      const item = find(event.target.dataset.id);
-      const files = [...(event.target.files || [])].slice(0, 5);
-      if (!item || !files.length) return;
-      if (append === 'video') item.materials.video += files.length;
-      else item.materials.image += files.length;
-      item.updated = today();
-      persist(); paint();
-      toast(`已上传补充 ${files.length} 个${append === 'video' ? '视频' : '图片'}素材`);
-      return;
-    }
+    /* 唯一的本地通道：详情页「增补素材」两块拖拽区 */
+    const appended = event.target.dataset?.lpAppend;
+    if (appended) ingestFiles(appended, find(event.target.closest('[data-drop]')?.dataset.id), event.target.files);
   };
-
   window.EcommerceVideoProducts = {
     setAccount: accountScope.setAccount,
     html,

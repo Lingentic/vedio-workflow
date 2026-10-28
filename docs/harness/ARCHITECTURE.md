@@ -18,6 +18,8 @@
 
 只有一个本地 Node 服务，没有独立“自动队列微服务”。浏览器刷新、切换模块不控制云任务或 FFmpeg 的进程生命周期。
 
+工作台与采集页的界面基于 `Lingentic/pm@21704c8` 对齐：工作台在 `demo/public/pm-ui.css` 维护适配样式，仍由 `app.ts` 读取真实服务端状态；采集页沿用上游商品获取布局，由 `web/collect-api.js` 接回现有扩展、搜索、下载及工作台导入接口。采集页「素材中心」导航打开真实工作台素材库；本地增补入口也跳转该商品的素材目录，不再使用原型浏览器素材库作为真实入库结果。
+
 仓库根的 [ecom-video-collect/](../../ecom-video-collect/) 是独立上游采集进程，与 demo 无共享代码：Chrome 扩展读取快分销详情与图集，Python 服务检索并下载快手／抖音视频，经 `POST /api/products` 与 `POST /api/products/:id/import`（`processed:true`）把商品和已下载的视频/图片素材推入素材库。demo 侧栏「商品获取」按钮在默认浏览器打开采集页（`http://127.0.0.1:8765/index.html`）；demo 对素材来源不做区分，该模块按需单独启动，不运行时不影响 demo。
 
 | 模块 | 责任与关键边界 |

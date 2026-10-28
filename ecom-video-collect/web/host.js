@@ -1,64 +1,37 @@
-/* 宿主薄壳：挂载「商品获取 / 素材中心」两个采集链路模块，提供 toast 与账户作用域。 */
+/* Collection uses its extension origin; material management uses the real workbench. */
 (() => {
   'use strict';
-  const app = document.getElementById('app');
+  const root = document.getElementById('app');
   const toastEl = document.getElementById('toast');
   const healthEl = document.getElementById('health');
-  const ACCOUNT = new URLSearchParams(location.search).get('account') || 'local';
-
-  let toastTimer = 0;
+  const params = new URLSearchParams(location.search);
+  window.CollectApi.setWorkbench(params.get('workbench'));
+  let toastTimer;
   const toast = message => {
-    if (!message) return;
-    toastEl.textContent = message;
-    toastEl.classList.add('is-show');
+    toastEl.textContent = message; toastEl.classList.add('is-show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl.classList.remove('is-show'), 3600);
+    toastTimer = setTimeout(() => toastEl.classList.remove('is-show'), 6500);
   };
-
-  const views = {
-    products: {
-      label: '商品获取',
-      html: () => window.EcommerceVideoProducts.html(),
-      mount: root => window.EcommerceVideoProducts.mount(root, { toast }),
-    },
-    assets: {
-      label: '素材中心',
-      html: () => window.EcommerceVideoAssets.html(),
-      mount: root => window.EcommerceVideoAssets.mount(root, { toast, goto: view => show(view) }),
-    },
-  };
-  let active = 'products';
-
-  const syncTabs = () => {
-    document.querySelectorAll('#collectTabs [data-view]').forEach(btn => {
-      const on = btn.dataset.view === active;
-      btn.classList.toggle('active', on);
-      btn.setAttribute('aria-pressed', String(on));
-    });
-  };
-
-  const show = view => {
-    if (!views[view]) return;
-    active = view;
-    app.innerHTML = views[view].html();
-    views[view].mount(app);
-    syncTabs();
-  };
-
-  document.getElementById('collectTabs').addEventListener('click', event => {
-    const btn = event.target.closest('[data-view]');
-    if (btn) show(btn.dataset.view);
+  const updateLinks = () => document.querySelectorAll('[data-workbench-page]').forEach(link => {
+    link.href = window.CollectApi.workbenchUrl + '/?page=' + encodeURIComponent(link.dataset.workbenchPage);
   });
-
-  window.EcommerceVideoProducts.setAccount(ACCOUNT);
-  window.EcommerceVideoAssets.setAccount(ACCOUNT);
-  show('products');
-
-  fetch('./api/health').then(r => r.json()).then(h => {
-    const ks = h?.platforms?.kuaishou?.cookie;
-    const dy = h?.platforms?.douyin?.cookie && h?.platforms?.douyin?.secrets;
-    healthEl.textContent = `快手凭证 ${ks ? '✓' : '✗'} · 抖音凭证 ${dy ? '✓' : '✗'}`;
-    healthEl.classList.toggle('is-warn', !(ks && dy));
-    healthEl.title = `ai-reverse: ${h?.aiReverse || '未配置'}`;
-  }).catch(() => { healthEl.textContent = '采集服务未响应'; healthEl.classList.add('is-warn'); });
+  updateLinks();
+  window.EcommerceVideoProducts.setAccount(params.get('account') || 'local');
+  root.innerHTML = window.EcommerceVideoProducts.html();
+  window.EcommerceVideoProducts.mount(root, { toast });
+  document.getElementById('refreshHealth').addEventListener('click', () => { void checkHealth(); });
+  async function checkHealth() {
+    try {
+      const response = await fetch('/api/health');
+      const health = await response.json();
+      if (!response.ok || !health.ok) throw new Error('采集服务未就绪');
+      window.CollectApi.setWorkbench(health.workbench); updateLinks();
+      const ks = health.platforms?.kuaishou?.cookie;
+      const dy = health.platforms?.douyin?.cookie && health.platforms?.douyin?.secrets;
+      healthEl.textContent = `快手凭证 ${ks ? '✓' : '待配置'} · 抖音凭证 ${dy ? '✓' : '待配置'}`;
+      healthEl.classList.toggle('is-warn', !(ks && dy));
+      healthEl.title = '采集服务已连接；平台搜索需要对应的登录凭证';
+    } catch { healthEl.textContent = '采集服务未响应'; healthEl.classList.add('is-warn'); }
+  }
+  void checkHealth();
 })();

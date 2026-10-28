@@ -1,33 +1,33 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>电商视频素材采集</title>
-<link rel="stylesheet" href="./vendor/client-design-tokens.css">
-<link rel="stylesheet" href="./vendor/ecommerce-video-tokens.css">
-<link rel="stylesheet" href="./vendor/ecommerce-video-controls.css">
-<link rel="stylesheet" href="./vendor/ecommerce-video-products.css">
-<link rel="stylesheet" href="./vendor/ecommerce-video-ledger.css">
-<link rel="stylesheet" href="./vendor/ecommerce-video-assets.css">
-<link rel="stylesheet" href="./host.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>商品获取 · 电商AI视频工作流</title>
+  <link rel="stylesheet" href="./vendor/client-design-tokens.css">
+  <link rel="stylesheet" href="./vendor/ecommerce-video-tokens.css">
+  <link rel="stylesheet" href="./vendor/ecommerce-video-controls.css">
+  <link rel="stylesheet" href="./vendor/ecommerce-video-products.css">
+  <link rel="stylesheet" href="./host.css">
 </head>
 <body>
-<header class="collect-top">
-  <strong>电商视频素材采集</strong>
-  <nav id="collectTabs" aria-label="视图切换">
-    <button type="button" data-view="products">商品获取</button>
-    <button type="button" data-view="assets">素材中心</button>
-  </nav>
-  <span id="health" class="health" title="采集服务自检"></span>
-</header>
-<div id="app"></div>
-<div id="toast" class="toast" role="status"></div>
-<script src="./vendor/ecommerce-video-account-scope.js"></script>
-<script src="./vendor/ecommerce-video-images.js"></script>
-<script src="./vendor/ecommerce-video-product-images.js"></script>
-<script src="./vendor/ecommerce-video-assets.js"></script>
-<script src="./vendor/ecommerce-video-products.js"></script>
-<script src="./host.js"></script>
+  <header class="collect-top">
+    <div class="collect-brand"><img src="./brand.png" alt="" width="34" height="34"><div><strong>电商AI视频工作流</strong><span>本地视频工作台</span></div></div>
+    <div class="collect-service"><span id="health" class="health">正在连接采集服务…</span><button id="refreshHealth" type="button" aria-label="刷新采集服务状态" title="刷新采集服务状态">↻</button></div>
+  </header>
+  <div class="collect-layout">
+    <aside class="collect-sidebar"><div class="collect-nav-title">工作流程</div><nav aria-label="电商视频工作流模块">
+      <a class="active" href="./index.html" aria-current="page" title="商品获取"><i>商</i><span><strong>商品获取</strong><small>商品资料录入与联网爬取</small></span></a>
+      <a data-workbench-page="production" href="http://127.0.0.1:4186/?page=production" title="视频制作"><i>制</i><span><strong>视频制作</strong><small>脚本编排与视频生成</small></span></a>
+      <a data-workbench-page="records" href="http://127.0.0.1:4186/?page=records" title="生成记录"><i>记</i><span><strong>生成记录</strong><small>制作进度与成片台账</small></span></a>
+      <a data-workbench-page="library" href="http://127.0.0.1:4186/?page=library" title="素材中心"><i>材</i><span><strong>素材中心</strong><small>素材管理与处理</small></span></a>
+    </nav><div class="collect-nav-footer"><span>● 本地采集工作区</span><small>采集依赖 Chrome 扩展<br>归档素材同步到工作台</small></div></aside>
+    <div id="app"></div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="./vendor/ecommerce-video-account-scope.js"></script>
+  <script src="./collect-api.js"></script>
+  <script src="./vendor/ecommerce-video-products.js"></script>
+  <script src="./host.js"></script>
 </body>
 </html>
