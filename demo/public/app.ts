@@ -101,8 +101,9 @@ async function mutate(url: string, method = 'POST', body?: unknown, success?: st
   catch (error) { showError(error); throw error; }
 }
 function navButton(id: Page, icon: string, label: string): string { return `<button class="${page === id || (id === 'production' && page === 'task') ? 'active' : ''}" data-page="${id}"><span class="nav-icon">${icon}</span><span>${label}</span></button>`; }
+const COLLECT_PAGE_URL = 'http://127.0.0.1:8765/index.html';
 function shell(content: string): string {
-  return `<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">片</div><div class="brand-name">电商视频工作台</div></div><nav class="nav">${navButton('library','▦','素材库')}${navButton('production','▤','视频制作')}${navButton('records','◷','生成记录')}</nav><div class="side-spacer"></div><button class="button folder-setting" data-action="change-root">数据目录</button><div class="local-note" title="${esc(state?.dataRoot ?? '')}">${esc(state?.dataRoot ?? '')}</div></aside><main class="main"><header class="topbar"><div class="crumb">${page === 'library' ? '素材库' : page === 'task' ? '视频制作 / 编辑任务' : page === 'records' ? '生成记录' : '视频制作'}</div><div class="top-actions"><span class="connection"><i class="dot"></i>本地服务已连接</span><button class="icon-button" data-action="refresh" title="刷新">↻</button></div></header><div class="page" data-ui-key="page:${page}:${page === 'task' ? esc(selectedTaskId) : ''}">${content}</div></main></div>`;
+  return `<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">片</div><div class="brand-name">电商视频工作台</div></div><nav class="nav">${navButton('library','▦','素材库')}<button data-action="open-collect" title="打开电商素材采集页：录入商品、联网爬取素材并导入素材库（需 ecom-video-collect 采集服务已启动）"><span class="nav-icon">⬇</span><span>商品获取</span></button>${navButton('production','▤','视频制作')}${navButton('records','◷','生成记录')}</nav><div class="side-spacer"></div><button class="button folder-setting" data-action="change-root">数据目录</button><div class="local-note" title="${esc(state?.dataRoot ?? '')}">${esc(state?.dataRoot ?? '')}</div></aside><main class="main"><header class="topbar"><div class="crumb">${page === 'library' ? '素材库' : page === 'task' ? '视频制作 / 编辑任务' : page === 'records' ? '生成记录' : '视频制作'}</div><div class="top-actions"><span class="connection"><i class="dot"></i>本地服务已连接</span><button class="icon-button" data-action="refresh" title="刷新">↻</button></div></header><div class="page" data-ui-key="page:${page}:${page === 'task' ? esc(selectedTaskId) : ''}">${content}</div></main></div>`;
 }
 // Compare with the last rendered template, not mutable live DOM: playback,
 // focus, expanded menus and scroll positions are browser-owned interaction state.
@@ -545,6 +546,7 @@ async function toggleBgmAudition(): Promise<void> {
 }
 async function handleAction(button: HTMLButtonElement): Promise<void> {
   const action = button.dataset.action; let task = selectedTask();
+  if (action === 'open-collect') { window.open(COLLECT_PAGE_URL, '_blank', 'noopener'); return; }
   if (action === 'audition-bgm') return toggleBgmAudition();
   if (task) { await flushTaskDraft(task.id); task = selectedTask(); }
   if (action === 'refresh' || action === 'task-refresh') return refresh();

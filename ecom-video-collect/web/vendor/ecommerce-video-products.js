@@ -807,6 +807,56 @@
       : `该商品素材已全部在素材中心（${result.duplicates} 项重复，未产生副本）`);
   };
 
+  /* 推送视频素材到视频工作台：商品资料 upsert + 未导入素材经采集服务落盘后入库；
+     manual=false（录入后自动同步）时即使素材为空也会推送商品资料，失败仅提示不阻塞 */
+  const pushToWorkbench = (item, manual) => {
+    if (!item || pushing.has(item.id)) return;
+    const videos = item.materialDetails?.video || [];
+    const pendingIdx = videos.map((v, i) => (!v.workbench && pushable(v) ? i : -1)).filter(i => i >= 0);
+    const unpushable = videos.filter(v => !v.workbench && !pushable(v)).length;
+    if (manual) {
+      if (!videos.length) { toast('该商品还没有视频素材，先爬取并确认添加'); return; }
+      if (!pendingIdx.length) {
+        toast(unpushable ? `剩余 ${unpushable} 条为本地上传素材，没有可推送的来源地址` : '视频素材已全部导入过工作台');
+        return;
+      }
+    }
+    pushing.add(item.id); paint();
+    fetch('./api/workbench-import', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        product: {
+          productId: String(item.kuaishouId || item.id), name: String(item.name || ''),
+          price: String(item.price ?? ''), specification: String(item.spec || ''),
+          sellingPoints: String(item.highlight || ''),
+        },
+        materials: pendingIdx.map(i => ({ key: i, name: videos[i].name, platform: videos[i].platform || '', playUrl: videos[i].playUrl || '', pageUrl: videos[i].pageUrl || '', local: videos[i].local || '' })),
+      }),
+    }).then(r => r.json()).then(res => {
+      pushing.delete(item.id);
+      const target = find(item.id);
+      if (!target) return;
+      if (!res || !res.ok) {
+        paint();
+        toast(manual ? `导入工作台失败：${res?.message || '服务无响应'}` : '商品已入库；视频工作台未连接，可到详情页手动导入');
+        return;
+      }
+      const tvideos = target.materialDetails?.video || [];
+      let ok = 0, fail = 0;
+      (res.imported || []).forEach(r => {
+        const v = tvideos[r.key];
+        if (r.status === 'ready' && v) { v.workbench = true; if (r.local) v.local = r.local; ok += 1; }
+        else fail += 1;
+      });
+      const skipped = (res.skipped || []).length + unpushable;
+      persist(); paint();
+      toast(`已${manual ? '推送' : '同步'}到视频工作台：素材入库 ${ok} 条` + (fail ? `，失败 ${fail} 条` : '') + (skipped ? `，跳过 ${skipped} 条` : ''));
+    }).catch(err => {
+      pushing.delete(item.id); paint();
+      toast(manual ? '导入工作台失败：' + (err?.message || '网络错误') : '商品已入库；视频工作台未连接，可到详情页手动导入');
+    });
+  };
+
   const onClick = event => {
     /* 只有点在遮罩本体上才关闭；弹窗内部点击不得冒泡成关闭 */
     const backdrop = event.target.closest('.ec-prod-backdrop');
@@ -1008,7 +1058,8 @@
       });
       state.dialog = null; state.draft = null;
       persist(); paint();
-      toast(materialTotal(state.items[0]) ? '已入库，素材状态「素材就绪」' : '已入库；未爬到素材，状态「待爬取」，可到详情页重新爬取');
+      toast(materialTotal(state.items[0]) ? '已入库，素材状态「素材就绪」，正在同步视频工作台…' : '已入库；未爬到素材，状态「待爬取」，可到详情页重新爬取');
+      pushToWorkbench(state.items[0], false);
       return;
     }
     if (action === 'sync') {
@@ -1093,45 +1144,7 @@
       return;
     }
     if (action === 'add-to-assets') { if (item) addToAssets(item); return; }
-    if (action === 'push-workbench') {
-      if (!item || pushing.has(item.id)) return;
-      const videos = item.materialDetails?.video || [];
-      if (!videos.length) { toast('该商品还没有视频素材，先爬取并确认添加'); return; }
-      const pendingIdx = videos.map((v, i) => (!v.workbench && pushable(v) ? i : -1)).filter(i => i >= 0);
-      const unpushable = videos.filter(v => !v.workbench && !pushable(v)).length;
-      if (!pendingIdx.length) {
-        toast(unpushable ? `剩余 ${unpushable} 条为本地上传素材，没有可推送的来源地址` : '视频素材已全部导入过工作台');
-        return;
-      }
-      pushing.add(item.id); paint();
-      fetch('./api/workbench-import', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          product: {
-            productId: String(item.kuaishouId || item.id), name: String(item.name || ''),
-            price: String(item.price ?? ''), specification: String(item.spec || ''),
-            sellingPoints: String(item.highlight || ''),
-          },
-          materials: pendingIdx.map(i => ({ key: i, name: videos[i].name, platform: videos[i].platform || '', playUrl: videos[i].playUrl || '', pageUrl: videos[i].pageUrl || '', local: videos[i].local || '' })),
-        }),
-      }).then(r => r.json()).then(res => {
-        pushing.delete(item.id);
-        const target = find(item.id);
-        if (!target) return;
-        if (!res || !res.ok) { paint(); toast(`导入工作台失败：${res?.message || '服务无响应'}`); return; }
-        const tvideos = target.materialDetails?.video || [];
-        let ok = 0, fail = 0;
-        (res.imported || []).forEach(r => {
-          const v = tvideos[r.key];
-          if (r.status === 'ready' && v) { v.workbench = true; if (r.local) v.local = r.local; ok += 1; }
-          else fail += 1;
-        });
-        const skipped = (res.skipped || []).length + unpushable;
-        persist(); paint();
-        toast(`已推送到视频工作台：入库 ${ok} 条` + (fail ? `，失败 ${fail} 条` : '') + (skipped ? `，跳过 ${skipped} 条` : ''));
-      }).catch(err => { pushing.delete(item.id); paint(); toast('导入工作台失败：' + (err?.message || '网络错误')); });
-      return;
-    }
+    if (action === 'push-workbench') { if (item) pushToWorkbench(item, true); return; }
     if (action === 'media-preview') {
       if (!item) return;
       const row = mediaFiles(item, trigger.dataset.kind)[Number(trigger.dataset.index)];
