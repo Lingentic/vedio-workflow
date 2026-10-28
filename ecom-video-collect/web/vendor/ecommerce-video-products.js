@@ -136,7 +136,7 @@
   const imgTag = key => { const src = imgOf(key); return src ? `<img src="${esc(src)}" alt="">` : ''; };
   const materialTotal = item => (item?.materials?.main || 0) + (item?.materials?.video || 0) + (item?.materials?.image || 0);
   /* 可推送工作台：有远程播放/来源地址，或已在采集服务落盘 */
-  const pushable = v => /^https?:/.test(v?.playUrl || '') || /^https?:/.test(v?.pageUrl || '') || /^media\//.test(String(v?.local || '').replace(/^\//, ''));
+  const pushable = v => /^https?:/.test(v?.playUrl || '') || (v?.playUrls || []).some(p => /^https?:/.test(p?.url || '')) || /^media\//.test(String(v?.local || '').replace(/^\//, ''));
   /* 图片素材可推送：有远程图源地址，或已落盘 */
   const imgPushable = v => /^https?:/.test(v?.src || '') || /^media\//.test(String(v?.local || '').replace(/^\//, ''));
   const localUrl = p => p ? (String(p).startsWith('/') ? p : '/' + p) : '';
@@ -451,7 +451,18 @@
     ${state.confirm ? confirmDialog() : ''}`;
   };
 
-  const html = () => `<main class="ec-video-products" aria-label="商品获取${state.detailId ? ' · 商品详情' : ''}">${body()}</main>`;
+  const syncDraftFromDom = () => {
+    if (state.dialog !== 'entry' || !state.draft) return;
+    const current = document.querySelector('.ec-video-products .ec-prod-backdrop');
+    if (!current) return;
+    current.querySelectorAll('[data-lp-draft]:not(button)').forEach(el => {
+      state.draft[el.dataset.lpDraft] = el.value;
+    });
+  };
+  const html = () => {
+    syncDraftFromDom();
+    return `<main class="ec-video-products" aria-label="商品获取${state.detailId ? ' · 商品详情' : ''}">${body()}</main>`;
+  };
 
   const bind = root => {
     root.addEventListener('click', onClick);
@@ -844,7 +855,7 @@
       if (!target) return;
       if (!res || !res.ok) {
         paint();
-        toast(manual ? `导入工作台失败：${res?.message || '服务无响应'}` : '商品已入库；视频工作台未连接，可到详情页手动导入');
+        toast(`导入工作台失败：${res?.message || '服务无响应'}；商品已保留，可到详情页重试`);
         return;
       }
       let ok = 0, fail = 0;
@@ -860,11 +871,12 @@
       toast(`已${manual ? '推送' : '同步'}到视频工作台：素材入库 ${ok} 条` + (fail ? `，失败 ${fail} 条` : '') + (skipped ? `，跳过 ${skipped} 条` : '') + (why && (fail || skipped) ? `（${String(why).slice(0, 40)}）` : ''));
     }).catch(err => {
       pushing.delete(item.id); paint();
-      toast(manual ? '导入工作台失败：' + (err?.message || '网络错误') : '商品已入库；视频工作台未连接，可到详情页手动导入');
+      toast('导入工作台失败：' + (err?.message || '网络错误') + '；商品已保留，可到详情页重试');
     });
   };
 
   const onClick = event => {
+    syncDraftFromDom();
     /* 只有点在遮罩本体上才关闭；弹窗内部点击不得冒泡成关闭 */
     const backdrop = event.target.closest('.ec-prod-backdrop');
     if (backdrop && event.target === backdrop) { dismissTop(); return; }
@@ -1152,7 +1164,7 @@
       });
       return;
     }
-    if (action === 'add-to-assets') { if (item) addToAssets(item); return; }
+    if (action === 'add-to-assets') { if (item) { addToAssets(item); pushToWorkbench(item, true); } return; }
     if (action === 'push-workbench') { if (item) pushToWorkbench(item, true); return; }
     if (action === 'media-preview') {
       if (!item) return;

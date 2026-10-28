@@ -462,20 +462,28 @@ def workbench_import(product, materials):
         local = str(m.get("local") or "").lstrip("/")
         target = None
         if local.startswith("media/"):
-            cand = os.path.normpath(os.path.join(ROOT, local))
-            if os.path.isfile(cand):
-                target = cand
+            cand = os.path.realpath(os.path.join(MEDIA, local[6:]))
+            if os.path.commonpath((os.path.realpath(MEDIA), cand)) == os.path.realpath(MEDIA) and os.path.isfile(cand):
+                try:
+                    if kind == "video":
+                        _require_video_stream(cand)
+                    else:
+                        with open(cand, "rb") as image:
+                            if not image.read(12).startswith(_IMG_SIG):
+                                raise RuntimeError("本地图片文件无效")
+                    target = cand
+                except Exception:
+                    local = ""
         if target is None:
-            # 候选地址：主地址 + playUrls 备选码流 + 页面/图源兜底，逐个尝试直到成功
+            # 只尝试真实媒体地址；pageUrl 是商品网页，src 对视频是封面图。
             cands = [m.get("src")] if kind == "image" else [m.get("playUrl")]
             cands += [x.get("url") for x in (m.get("playUrls") or []) if isinstance(x, dict)]
-            cands += [m.get("pageUrl"), m.get("src") if kind == "video" else None]
             urls = []
             for u in cands:
                 if isinstance(u, str) and u.startswith("http") and u not in urls:
                     urls.append(u)
             if not urls:
-                skipped.append({"key": key, "kind": kind, "name": name, "reason": "没有可下载的播放地址"})
+                skipped.append({"key": key, "kind": kind, "name": name, "reason": "没有可下载的视频地址" if kind == "video" else "没有可下载的图片地址"})
                 continue
             platform = m.get("platform") if m.get("platform") in ("kuaishou", "douyin") else _platform_of(urls[0])
             err = None
