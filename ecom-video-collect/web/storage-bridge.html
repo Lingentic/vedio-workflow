@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>采集记录迁移</title>
+<script>
+// Read the old origin's records once; leave its storage untouched.
+(() => {
+  const params = new URLSearchParams(location.search);
+  let target;
+  try { target = new URL(params.get('target')); } catch { return; }
+  if (parent === window || target.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(target.hostname)) return;
+  try { if (new URL(document.referrer).origin !== target.origin) return; } catch { return; }
+  let snapshot = null;
+  try { snapshot = localStorage.getItem('laogge-products-v2:account:local'); } catch { /* Storage may be disabled. */ }
+  parent.postMessage({ source: 'collect-storage-migration', nonce: params.get('nonce'), snapshot }, target.origin);
+})();
+</script>

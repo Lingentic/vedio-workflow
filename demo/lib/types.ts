@@ -6,7 +6,7 @@ export interface Asset {
   id: string; productId?: string; kind: 'product' | 'source' | 'host' | 'presenter' | 'bgm';
   title: string; status: 'ready' | 'pending' | 'failed' | 'partial' | 'deleted' | 'unavailable';
   relativePath?: string; posterPath?: string; sourcePath?: string; sourceHash?: string;
-  duration: number; width?: number; height?: number; hasAudio?: boolean; size?: number;
+  duration: number; width?: number; height?: number; hasAudio?: boolean; hasVideo?: boolean; size?: number;
   videoDuration?: number; videoStart?: number; videoFrames?: number;
   binding?: string; processed?: boolean; parentId?: string; error?: string;
   sourceRange?: { start: number; end: number };

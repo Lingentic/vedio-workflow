@@ -32,6 +32,7 @@
 | 预览失效、重生成与完成 | [workflow.ts](demo/lib/workflow.ts)：`previewInputs`、`previewChanges`、`render`、`complete`、`cleanup`；[app.ts](demo/public/app.ts)：`showRegenerationDialog` | `preview-rework.test.ts`；清理改动加 `workflow.test.ts` 完成用例 |
 | 数据位置、存储结构、迁移 | [paths.ts](demo/lib/paths.ts)、[store.ts](demo/lib/store.ts)、[types.ts](demo/lib/types.ts) | 先读数据专题；用临时目录验证，不在真实库试迁移 |
 | 服务启动／停止、同源与媒体 Range | [server.ts](demo/server.ts)：启动段、路由边界、`sendFile`、信号处理 | 环境诊断 + 隔离端口／数据目录的服务验证 |
+| 上游素材采集、工作台导入 | [ecom-video-collect/](ecom-video-collect/)：`server/collect_service.py` 搜索／下载／`workbench_import`；`web/` 采集页；`extension/` 商品详情提取 | 双服务联动冒烟 + Python/JS 语法；需外部 ai-reverse 凭证、Chrome 扩展与快分销登录态，非开箱即用 |
 
 ## 快速证据与命令
 

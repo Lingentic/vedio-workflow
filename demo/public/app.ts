@@ -1,4 +1,4 @@
-import { workbenchShell, productionFlow, architectureView, copyView, generationView, recordsView, libraryView, recordDetailsView, materialPickerView } from './prototype-views.js';
+import { workbenchShell, productionFlow, architectureView, copyView, generationView, generationCandidates, recordsView, libraryView, recordDetailsView, materialPickerView } from './prototype-views.js';
 import { bindSortableList } from './sortable.js';
 
 type Stage = 'copy' | 'voice' | 'visual' | 'preview';
@@ -18,10 +18,15 @@ export interface Task { id: string; name: string; productId: string; templateId:
 export interface AppState { configured: boolean; dataRoot: string; defaultDataRoot: string; modelReady: boolean; toolsReady: boolean; templates: Template[]; products: Product[]; assets: Asset[]; tasks: Task[]; bgms: Asset[]; seedAvailable: boolean; activeExecution: ({ taskId: string } & Execution) | null; libraryBusy?: boolean; libraryMessage?: string; }
 interface ApiError { error?: string; message?: string; }
 type Page = 'production' | 'library' | 'records' | 'task' | 'products' | 'publishing';
-interface PrototypeIsland { html(): string; mount(root: HTMLElement, options: {toast:(message:string)=>void;goto:(page:string)=>void}): void; setAccount(value:string): void; }
-declare global { interface Window { EcommerceVideoProducts: PrototypeIsland; EcommerceVideoPublishing: PrototypeIsland; } }
+interface PrototypeIsland { html(): string; mount(root: HTMLElement, options: {toast:(message:string)=>void;goto:(page:string,productId?:string)=>void}): void; setAccount(value:string): void; }
+declare global { interface Window { EcommerceVideoProducts: PrototypeIsland; EcommerceVideoPublishing: PrototypeIsland; CollectApi: {migrateLegacyStorage(): Promise<void>}; } }
 let workbenchTemplateId = '';
-let workbenchSetupStep: 'architecture' | 'copy' = 'architecture';
+let workbenchSetupStep: 'architecture' | 'copy' | 'generation' = 'architecture';
+let workbenchGenerationOpen = false;
+let prototypeSelectionTaskId = '';
+let prototypeMatchRound = 0;
+let prototypeClipId = '';
+const prototypeNarrations = new Map<string, {name: string; url: string}>();
 let libraryBoard: 'anchor' | 'product' = 'anchor';
 let libraryProductQuery = '';
 let libraryAssetQuery = '';
@@ -39,10 +44,15 @@ const UI_POINTER_KEY = 'video-workbench-ui-v1';
 let savedPointer: UiPointer | null = null;
 try { savedPointer = JSON.parse(localStorage.getItem(UI_POINTER_KEY) || 'null') as UiPointer | null; } catch { savedPointer = null; }
 let page: Page = savedPointer && ['task','library','records','products','publishing'].includes(savedPointer.page) ? savedPointer.page : 'production';
+const entryParams = new URLSearchParams(location.search);
+if (['products','collection','library'].includes(entryParams.get('page') || '')) {
+  page = entryParams.get('page') === 'collection' ? 'products' : entryParams.get('page') as Page;
+}
 let selectedTaskId = savedPointer?.taskId || '';
 let libraryTab = 'product';
 let libraryMediaType: 'all' | 'video' | 'source' | 'image' | 'sound' = 'all';
-let libraryProductId = 'all';
+let libraryProductId = entryParams.get('page') === 'library' ? entryParams.get('productId') || 'all' : 'all';
+if (page === 'library' && entryParams.get('page') === 'library') libraryBoard = 'product';
 let libraryPickerListeners: AbortController | undefined;
 let libraryPickerElement: HTMLElement | undefined;
 const boundElements = new WeakSet<HTMLElement>();
@@ -95,6 +105,9 @@ async function api<T>(url: string, method = 'GET', body?: unknown): Promise<T> {
 }
 async function refresh(keepPage = true): Promise<void> {
   state = await api<AppState>('/api/state');
+  for (const asset of state.assets) {
+    if (asset.url?.startsWith('/media/asset/') && asset.kind !== 'bgm' && !/\.(png|jpe?g|webp|avif|gif|bmp|tiff?)$/i.test(asset.title)) asset.url += '?browser=1';
+  }
   if (selectedTaskId && !state.tasks.some(task => task.id === selectedTaskId)) selectedTaskId = '';
   if (!keepPage && page === 'task' && !selectedTaskId) page = 'production';
   if (pendingTaskPatches.size === 0 && draftFlushes.size === 0) render();
@@ -164,6 +177,11 @@ function patchView(container: HTMLElement, markup: string): void {
   };
   children(container, template.content);
 }
+let collectionLoadError = '';
+try {
+  if (!window.EcommerceVideoProducts || !window.CollectApi) throw new Error('商品获取组件未加载，请重启工作台服务后刷新页面。');
+  await window.CollectApi.migrateLegacyStorage();
+} catch (error) { collectionLoadError = error instanceof Error ? error.message : String(error); }
 function render(): void {
   if (!state || !root || manualSortBusy) return;
   const completedRecord = page === 'task' && selectedTask()?.completed ? selectedTask() : undefined;
@@ -174,12 +192,17 @@ function render(): void {
   if (bgmAudition && (!auditionTask || auditionTask.stage !== 'visual' || auditionTask.id !== bgmAuditionTaskId || auditionTask.settings.bgmId !== bgmAuditionAssetId)) stopBgmAudition();
   rememberPointer();
   if (!state.configured) { patchView(root, renderSetup()); bind(); return; }
-  island?.setAccount('local-prototype-ui');
-  let content = island ? `<div class="workbench-island" data-ui-key="prototype:${page}">${island.html()}</div>` : page === 'library' ? renderLibrary() : page === 'records' ? renderRecords() : page === 'task' && selectedTask() ? renderTask(selectedTask()!) : renderProduction();
+  island?.setAccount(page === 'products' ? 'local' : 'local-prototype-ui');
+  let content = island ? `<div class="workbench-island" data-ui-key="prototype:${page}">${page === 'products' && collectionLoadError ? `<div class="notice">${esc(collectionLoadError)}</div>` : island.html()}</div>` : page === 'library' ? renderLibrary() : page === 'records' ? renderRecords() : page === 'task' && selectedTask() ? renderTask(selectedTask()!) : renderProduction();
   if (page === 'task' && !selectedTask()) page = 'production';
   patchView(root, shell(content));
   bind();
-  island?.mount(root, {toast:showToast,goto:target=>{void navigate((target==='materials'?'library':target) as Page).catch(showError);}});
+  if (!(page === 'products' && collectionLoadError)) island?.mount(root, {toast:showToast,goto:(target,productId)=>{
+    if (target === 'library' || target === 'materials') {
+      libraryBoard = 'product'; libraryProductId = productId || 'all';
+      void refresh().then(() => navigate('library')).catch(showError);
+    } else void navigate(target as Page).catch(showError);
+  }});
   updateBgmAuditionButton();
   if (completedRecord) showModal(recordDetailsView(completedRecord));
 }
@@ -244,11 +267,29 @@ function libraryAsset(asset: Asset): string {
 }
 
 function renderTask(task: Task): string {
-  const step=task.stage==='copy'?'copy':'generation';
+  const step=!workbenchGenerationOpen && task.stage==='copy'?'copy':'generation';
   return `<main class="ec-video-production" data-ui-key="task:${esc(task.id)}" aria-label="视频制作">${productionFlow(step,task.completed)}<div class="ec-video-production-content"><section class="ec-video-production-panel" id="ecommerceProductionStage" data-ui-key="stage:${step}:${task.completed}">${task.execution?.status==='running'?`<div class="ec-generation-task workbench-execution" data-ui-key="execution-progress"><strong>${esc(task.execution.message)}</strong><progress max="100" value="${task.execution.progress}" aria-label="生成进度"></progress><span>${Math.floor(task.execution.progress)}%</span></div>`:''}${task.error?`<div class="ec-generation-readiness workbench-error" role="alert">${esc(task.error)}</div>`:''}${task.completed?renderPreviewStage(task):renderStage(task)}</section></div></main>`;
 }
 function renderStage(task: Task): string {
-  return task.stage === 'copy' ? copyView(task, state!) : generationView(task, state!, workbenchNode, prototypeSelection);
+  if (!workbenchGenerationOpen && task.stage === 'copy') return copyView(task, state!);
+  preparePrototypeSelection(task);
+  return generationView(task, state!, workbenchNode, prototypeSelection, prototypeClipId, prototypeNarrations.get(workbenchNode));
+}
+function preparePrototypeSelection(task: Task, rematch = false): void {
+  const changed = prototypeSelectionTaskId !== task.id;
+  if (!changed && !rematch) return;
+  if (changed) {
+    for (const audio of prototypeNarrations.values()) URL.revokeObjectURL(audio.url);
+    prototypeNarrations.clear(); workbenchNode = ''; prototypeClipId = ''; prototypeMatchRound=0;
+  }
+  if (rematch) prototypeMatchRound++;
+  prototypeSelectionTaskId = task.id; prototypeSelection.clear();
+  task.nodes.forEach((node, index) => {
+    const assets = generationCandidates(task, state!, node, node.type === 'host_clip');
+    const start = assets.length ? (index + prototypeMatchRound) % assets.length : 0;
+    const ordered = [...assets.slice(start), ...assets.slice(0, start)];
+    prototypeSelection.set(node.id, ordered.slice(0, node.type === 'host_clip' ? 1 : 2).map(a => a.id));
+  });
 }
 function renderCopyPreview(task: Task, nodes = task.nodes): string {
   const loading = task.execution?.status === 'running' && task.execution.kind === 'copy';
@@ -387,9 +428,15 @@ function bind(): void {
   newElements<HTMLSelectElement>('[data-architecture-template]').forEach(select => select.addEventListener('change', () => { workbenchTemplateId = select.value; render(); }));
   newElements<HTMLSelectElement>('[data-create-product]').forEach(select => select.addEventListener('change', () => {
     if (!select.value) return; select.disabled = true;
-    void api<Task>('/api/tasks', 'POST', {productId:select.value,templateId:workbenchTemplateId}).then(async task=>{selectedTaskId=task.id;workbenchNode='';prototypeSelection.clear();page='task';await refresh();window.scrollTo(0,0);}).catch(error=>{select.disabled=false;showError(error);});
+    void api<Task>('/api/tasks', 'POST', {productId:select.value,templateId:workbenchTemplateId}).then(async task=>{selectedTaskId=task.id;workbenchGenerationOpen=false;workbenchNode='';prototypeSelection.clear();page='task';await refresh();window.scrollTo(0,0);}).catch(error=>{select.disabled=false;showError(error);});
   }));
   newElements<HTMLSelectElement>('[data-switch-product]').forEach(select => select.addEventListener('change', () => { const task=selectedTask(); if (!task) return; const productId=select.value; select.value=task.productId; showModal(switchModal(task, productId)); }));
+  newElements<HTMLInputElement>('[data-prototype-audio-input]').forEach(input=>input.addEventListener('change',()=>{
+    const file=input.files?.[0];if(!file)return;
+    if(!file.type.startsWith('audio/')&&!/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name)){showToast('请选择音频文件',true);return;}
+    const old=prototypeNarrations.get(workbenchNode);if(old)URL.revokeObjectURL(old.url);
+    prototypeNarrations.set(workbenchNode,{name:file.name,url:URL.createObjectURL(file)});render();
+  }));
   newElements<HTMLButtonElement>('[data-library-board]').forEach(button => button.addEventListener('click', () => { libraryBoard=button.dataset.libraryBoard as typeof libraryBoard; render(); }));
   newElements<HTMLButtonElement>('[data-library-folder]').forEach(button => button.addEventListener('click', () => { if(libraryBoard==='anchor')anchorFolder=button.dataset.libraryFolder!;else libraryProductId=button.dataset.libraryFolder!;render(); }));
   newElements<HTMLElement>('[data-black-edit]').forEach(editor => {
@@ -438,7 +485,7 @@ async function navigate(target: Page): Promise<void> {
 }
 async function openTask(id: string): Promise<void> {
   const current = selectedTask(); if (current) await flushTaskDraft(current.id);
-  selectedTaskId = id; page = 'task'; resetManualSelection(id); previewPrompts.delete(id); render();
+  selectedTaskId = id; page = 'task'; workbenchGenerationOpen=false; resetManualSelection(id); previewPrompts.delete(id); render();
 }
 function resetManualSelection(taskId: string): void {
   const task = state?.tasks.find(item => item.id === taskId);
@@ -457,6 +504,7 @@ async function goStage(target: Stage): Promise<void> {
   const valid: Record<Stage, boolean> = { copy: true, voice: task.copyConfirmed, visual: task.audioConfirmed, preview: !!task.plan?.valid };
   if (!valid[target]) { showToast(target === 'voice' ? '请先确认商品文案' : target === 'visual' ? '请先确认所有必需配音区间' : '请先建立有效的画面方案', true); return; }
   if (target === 'preview') previewPrompts.delete(task.id);
+  workbenchGenerationOpen=false;
   await mutate(`/api/tasks/${encodeURIComponent(task.id)}`, 'PATCH', { stage: target });
   root?.querySelector('.ec-video-production-content')?.scrollTo(0,0);
 }
@@ -565,16 +613,22 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   if (task) { await flushTaskDraft(task.id); task = selectedTask(); }
   if (action === 'refresh' || action === 'task-refresh') return refresh();
   if (action === 'home') { page = 'production'; selectedTaskId = ''; return render(); }
-  if (action === 'new-task') { selectedTaskId='';page='production';workbenchSetupStep='architecture';return render(); }
+  if (action === 'new-task') { selectedTaskId='';workbenchGenerationOpen=false;page='production';workbenchSetupStep='architecture';return render(); }
   if (action === 'workbench-stage') {
     if (state!.activeExecution) return showToast('配音正在生成，请稍候');
     const step=button.dataset.step;
-    if (step==='architecture') { workbenchTemplateId=task?.templateId || workbenchTemplateId;page='production';workbenchSetupStep='architecture';return render(); }
+    if (step==='architecture') { workbenchGenerationOpen=false;workbenchTemplateId=task?.templateId || workbenchTemplateId;page='production';workbenchSetupStep='architecture';return render(); }
     if (step==='copy') { if(task) { if(page==='production' && workbenchTemplateId && workbenchTemplateId!==task.templateId)return showModal(switchModal(task,task.productId,workbenchTemplateId));page='task';return goStage('copy'); } workbenchSetupStep='copy';return render(); }
-    if (!task?.copyConfirmed) return showToast('请先确认文案并生成配音');
-    return goStage(task.audioConfirmed?'visual':'voice');
+    if (task && (page==='task'||task.templateId===workbenchTemplateId)) {page='task';workbenchGenerationOpen=true;render();root?.querySelector('.ec-video-production-content')?.scrollTo(0,0);return;}
+    workbenchSetupStep='generation';return render();
   }
-  if (action === 'select-shot') { workbenchNode=button.dataset.id!;return render(); }
+  if (action === 'select-shot') { workbenchNode=button.dataset.id!;prototypeClipId='';return render(); }
+  if (action === 'prototype-rematch' && task) {preparePrototypeSelection(task,true);render();return showToast('已更新演示选材，未提交编排或合成');}
+  if (action === 'prototype-auto' && task) {const node=task.nodes.find(n=>n.id===workbenchNode);if(node)prototypeSelection.set(node.id,generationCandidates(task,state!,node).slice(0,2).map(a=>a.id));prototypeClipId='';return render();}
+  if (action === 'prototype-clip') {prototypeClipId=button.dataset.id!;return render();}
+  if (action === 'prototype-play') {const videos=[...root!.querySelectorAll<HTMLVideoElement>('.ec-generation-player video')];if(videos.every(v=>v.paused))await Promise.all(videos.map(v=>v.play()));else videos.forEach(v=>v.pause());return;}
+  if (action === 'prototype-narration') {root?.querySelector<HTMLInputElement>('[data-prototype-audio-input]')?.click();return;}
+  if (action === 'prototype-narration-clear') {const audio=prototypeNarrations.get(workbenchNode);if(audio)URL.revokeObjectURL(audio.url);prototypeNarrations.delete(workbenchNode);return render();}
   if (action === 'prototype-remove') { const key=workbenchNode || task?.nodes[0]?.id;const ids=prototypeSelection.get(key!)||[];ids.splice(Number(button.dataset.index),1);prototypeSelection.set(key!,ids);return render(); }
   if (action === 'prototype-add') { const key=workbenchNode || task?.nodes[0]?.id;if(key)prototypeSelection.set(key,[...(prototypeSelection.get(key)||[]),button.dataset.id!]);closeModal();return render(); }
   if (action === 'prototype-materials' && task) {
@@ -604,7 +658,7 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   }
   if (action === 'retry-asset') { await mutate(`/api/assets/${encodeURIComponent(button.dataset.id || '')}/retry`, 'POST', {}, '已完成重试'); return; }
   if (action === 'delete-asset') { if (!await askConfirmation('移除商品素材', '确认从素材库移除此商品片段？正在合成使用的素材不能删除。', '移除')) return; await mutate(`/api/assets/${encodeURIComponent(button.dataset.id || '')}`, 'DELETE', undefined, '素材记录已更新'); return; }
-  if (action === 'record-open') { closeModal(); selectedTaskId = button.dataset.id || ''; workbenchNode='';prototypeSelection.clear();page = 'task'; resetManualSelection(selectedTaskId); previewPrompts.delete(selectedTaskId); const record = selectedTask(); if (record?.completed) record.stage = 'preview'; render(); return; }
+  if (action === 'record-open') { closeModal(); selectedTaskId = button.dataset.id || ''; workbenchGenerationOpen=false;workbenchNode='';prototypeSelectionTaskId='';prototypeSelection.clear();page = 'task'; resetManualSelection(selectedTaskId); previewPrompts.delete(selectedTaskId); const record = selectedTask(); if (record?.completed) record.stage = 'preview'; render(); return; }
   if (action === 'record-export') { const result = await api<{ paths: string[] }>('/api/dialog', 'POST', { kind: 'folder' }); if (!result.paths[0]) return; await mutate(`/api/tasks/${encodeURIComponent(button.dataset.id || '')}/export`, 'POST', { directory: result.paths[0] }, '成片副本已导出'); return; }
   if (action === 'switch-task' && task) return showModal(switchModal(task, button.dataset.productId, button.dataset.templateId));
   if (!task) return;
