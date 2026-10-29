@@ -501,3 +501,15 @@ select.ec-prod-control { appearance: none; padding-right: 28px; background-image
 .ec-prod-leave-body { padding: var(--prod-space-5); }
 .ec-prod-leave-body > p { margin: 0; color: var(--prod-ink); font-size: 13.5px; line-height: 1.8; }
 .ec-prod-leave-body > p + p { margin-top: 8px; }
+
+.ec-prod-online-controls { display:flex; align-items:center; gap:8px; width:100%; min-width:0; font-size:12px; }
+.ec-prod-online-controls input { flex:1; min-width:40px; accent-color:#784bea; }
+.ec-prod-online-controls span { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.ec-prod-online-controls button { border:1px solid #e3e0ea; border-radius:6px; padding:5px 7px; background:#fff; color:#514760; white-space:nowrap; cursor:pointer; }
+.ec-prod-online-stage { --online-height:min(68dvh,calc(100dvh - 210px)); position:relative; flex-shrink:0; width:min(100%,calc(var(--online-height) * var(--online-aspect))); height:var(--online-height); min-height:80px; overflow:hidden; border-radius:10px; background:#24212d; }
+.ec-prod-online-stage > video,.ec-prod-online-stage > canvas { position:absolute; inset:0; width:100%; height:100%; display:block; object-fit:contain; }
+.ec-prod-online-stage > canvas { display:none; pointer-events:none; }
+.ec-prod-online-stage.is-holding > canvas { display:block; z-index:1; }
+.ec-prod-stream-status { display:block; min-height:16px; line-height:16px; font-size:11px; color:var(--prod-muted); }
+.ec-prod-lightbox:fullscreen { width:100vw; max-height:100dvh; border-radius:0; }
+@media(max-width:560px) { .ec-prod-online-controls { flex-wrap:wrap; } .ec-prod-online-controls input { min-width:45%; } }

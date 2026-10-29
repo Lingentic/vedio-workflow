@@ -9,7 +9,7 @@ export async function forwardCollection(request: http.IncomingMessage, response:
   const media = url.pathname.startsWith('/collect-media/');
   const targetPath = media ? url.pathname.replace('/collect-media/', '/media/') : url.pathname.replace('/api/collect/', '/api/');
   const allowed = media ? ['GET', 'HEAD'].includes(method) :
-    (method === 'GET' && ['/api/health', '/api/search', '/api/proxy'].includes(targetPath)) ||
+    (method === 'GET' && ['/api/health', '/api/search', '/api/proxy', '/api/stream'].includes(targetPath)) ||
     (method === 'POST' && ['/api/download', '/api/preview', '/api/workbench-import'].includes(targetPath));
   if (!allowed) throw new AppError('采集接口不存在', 404);
   if (Number(request.headers['content-length'] || 0) > 2 * 1024 * 1024) throw new AppError('请求内容过大', 413);

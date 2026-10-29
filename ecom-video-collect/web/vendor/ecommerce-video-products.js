@@ -223,10 +223,14 @@
     </div>`;
   };
   /* 放大查看：点候选卡的图/封面进来 */
+  const clock = seconds => `${Math.floor((Number(seconds) || 0) / 60)}:${String(Math.floor((Number(seconds) || 0) % 60)).padStart(2, '0')}`;
+  const onlineControls = p => `<div class="ec-prod-online-controls"><button type="button" data-lp="stream-play">${p.streamPaused ? '播放' : '暂停'}</button><input type="range" data-stream-seek aria-label="在线播放进度" min="0" max="${Math.max(0, (p.duration || 0) - .5)}" step="0.1" value="${p.streamOffset || 0}" ${p.duration ? '' : 'disabled'}><span data-stream-clock>${clock(p.streamOffset)} / ${clock(p.duration)}</span><button type="button" data-lp="stream-mute">${p.streamMuted === false ? '静音' : '开启声音'}</button><button type="button" data-lp="stream-fullscreen">全屏</button></div>`;
+  const previewVideoTag = p => `<video ${p.streamUrl ? '' : 'controls'} ${p.streamPaused ? '' : 'autoplay'} ${p.streamMuted === false ? '' : 'muted'} playsinline preload="metadata" src="${esc(p.streamUrl || window.CollectApi.mediaUrl(p.previewLocal || p.local))}" poster="${esc(p.streamFrozen ? '' : mediaSrc(p))}"></video>`;
   const lightbox = () => {
     const p = state.preview;
     if (!p) return '';
-    return `<div class="ec-prod-backdrop" data-ui-key="preview" role="presentation"><div class="ec-prod-lightbox" role="dialog" aria-modal="true" aria-label="素材预览"><button type="button" data-lp="close-preview" aria-label="关闭">×</button>${p.loading ? `<div class="ec-prod-preview-loading"><span class="ec-prod-spinner"></span>${esc(p.stage || '正在准备可播放的预览…')}</div>` : p.error ? `<div class="ec-prod-preview-error">${esc(p.error)}</div>` : p.kind === 'video' && p.local ? `<video controls autoplay muted playsinline preload="metadata" src="${esc(window.CollectApi.mediaUrl(p.previewLocal || p.local))}" poster="${esc(mediaSrc(p))}"></video>` : p.local || p.src ? `<img src="${esc(p.local ? window.CollectApi.mediaUrl(p.local) : mediaSrc(p))}" alt="${esc(p.name)}">` : '<div class="ec-prod-lightbox-empty">这条素材没有可用的预览地址</div>'}<p><b>${esc(p.name)}</b><span>${p.kind === 'video' ? '视频预览' : '图片'} · ${esc(p.channel || p.from || '')}</span></p></div></div>`;
+    const online = p.streamUrl ? `<div class="ec-prod-online-stage${p.streamFrozen && !p.streamReady ? ' is-holding' : ''}" data-ui-key="online-stage:${esc(p.previewId)}" style="--online-aspect:${p.streamAspect || 9 / 16}">${previewVideoTag(p)}<canvas class="ec-prod-held-frame" aria-hidden="true" data-ui-key="held-frame"></canvas></div>${onlineControls(p)}<small class="ec-prod-stream-status" data-stream-status style="visibility:${p.streamReady ? 'hidden' : 'visible'}">${p.streamFrozen ? '正在定位视频流…' : '正在连接视频流…关闭预览即停止接收'}</small>` : '';
+    return `<div class="ec-prod-backdrop" data-ui-key="preview" role="presentation"><div class="ec-prod-lightbox" role="dialog" aria-modal="true" aria-label="素材预览"><button type="button" data-lp="close-preview" aria-label="关闭">×</button>${p.loading ? `<div class="ec-prod-preview-loading"><span class="ec-prod-spinner"></span>${esc(p.stage || '正在准备可播放的预览…')}</div>` : p.error ? `<div class="ec-prod-preview-error">${esc(p.error)}</div>` : p.kind === 'video' && (p.local || p.streamUrl) ? p.streamUrl ? online : previewVideoTag(p) : p.local || p.src ? `<img src="${esc(p.local ? window.CollectApi.mediaUrl(p.local) : mediaSrc(p))}" alt="${esc(p.name)}">` : '<div class="ec-prod-lightbox-empty">这条素材没有可用的预览地址</div>'}<p><b>${esc(p.name)}</b><span>${p.streamUrl ? '在线播放 · 可拖动进度' : p.kind === 'video' ? '视频预览' : '图片'} · ${esc(p.channel || p.from || '')}</span></p></div></div>`;
   };
   /* ---------- 爬取记录（只出现在「联网爬取」tab；带时间，详情只列已归入的素材） ---------- */
   const RECORD_STATUS = {
@@ -499,6 +503,9 @@
     root.addEventListener('dragleave', onDragLeave);
     root.addEventListener('drop', onDrop);
     root.addEventListener('error', onPreviewMediaError, true);
+    root.addEventListener('loadeddata', onPreviewReady, true);
+    root.addEventListener('timeupdate', onStreamTime, true);
+    root.addEventListener('ended', onStreamEnded, true);
   };
   /* 由 app.js 在渲染整块外壳后调用；只接管 .ec-video-products 子树，不碰左侧导航 */
   const mount = (root, options = {}) => {
@@ -509,12 +516,18 @@
     return true;
   };
   // Reconcile existing nodes: keep scroll containers, input focus, images and players alive.
+  const stopMedia = node => {
+    const media = node instanceof Element ? [...node.querySelectorAll('video,audio'), ...(node.matches('video,audio') ? [node] : [])] : [];
+    media.forEach(player => { player.pause(); player.removeAttribute('src'); player.load(); });
+  };
   const patchNode = (live, next) => {
     if (live.nodeType !== next.nodeType || live.nodeName !== next.nodeName) {
-      live.replaceWith(next.cloneNode(true)); return;
+      stopMedia(live); live.replaceWith(next.cloneNode(true)); return;
     }
     if (live.nodeType === Node.TEXT_NODE) { if (live.nodeValue !== next.nodeValue) live.nodeValue = next.nodeValue; return; }
     if (!(live instanceof Element)) return;
+    // Canvas pixels and backing dimensions are managed by freezeStreamFrame, not HTML.
+    if (live instanceof HTMLCanvasElement) return;
     for (const attr of [...live.attributes]) if (!next.hasAttribute(attr.name) && attr.name !== 'data-events-bound') live.removeAttribute(attr.name);
     for (const attr of next.attributes) if (live.getAttribute(attr.name) !== attr.value) live.setAttribute(attr.name, attr.value);
     if (live instanceof HTMLTextAreaElement) {
@@ -531,7 +544,7 @@
       else { if (current !== cursor) live.insertBefore(current, cursor); patchNode(current, desired); }
       cursor = current.nextSibling;
     }
-    while (cursor) { const old = cursor; cursor = cursor.nextSibling; old.remove(); }
+    while (cursor) { const old = cursor; cursor = cursor.nextSibling; stopMedia(old); old.remove(); }
     if ((live instanceof HTMLInputElement || live instanceof HTMLSelectElement) && document.activeElement !== live && live.type !== 'file') live.value = next.value;
   };
   const paint = () => {
@@ -829,25 +842,106 @@
   };
   const previewRow = async (row, kind, host) => {
     const previewId = uid('preview');
-    state.preview = { ...row, kind, loading: true, stage: kind === 'video' ? '正在下载视频，下载完成后自动播放…' : '正在下载图片…', previewId }; paint();
+    const hasLocal = /^\/?media\//.test(row.local || '');
+    if (!hasLocal) {
+      if (kind === 'image') {
+        state.preview = { ...row, kind, previewId }; paint(); return;
+      }
+      const urls = [...new Set([row.playUrl, ...(row.playUrls || []).map(entry => entry?.url)].filter(url => /^https?:\/\//.test(url || '')))]
+        .sort((a, b) => Number(!a.includes('.mp4')) - Number(!b.includes('.mp4'))).slice(0, 3);
+      state.preview = urls.length ? { ...row, kind, previewId, streamUrls: urls, streamIndex: 0,
+        streamUrl: window.CollectApi.onlineUrl(urls[0], row.platform || row.channel || row.from, 0, previewId) }
+        : { ...row, kind, previewId, error: '这条记录没有视频地址，请重新爬取' };
+      paint(); return;
+    }
+    state.preview = { ...row, kind, loading: true, stage: kind === 'video' ? '正在读取本地视频…' : '正在读取本地图片…', previewId }; paint();
     try {
-      const result = await window.CollectApi.download(row, kind);
+      const result = { path: '/' + row.local.replace(/^\//, '') };
       row.local = result.path;
       const owner = ownerOf(crawlFor(host)) || (isDraft(host) ? host : find(host.id));
       const key = mediaKey(row);
       for (const entry of (owner && poolFor(owner)[kind]) || []) if (mediaKey(entry) === key) entry.local = result.path;
       for (const record of owner?.crawls || []) for (const entry of record[kind] || []) if (mediaKey(entry) === key) entry.local = result.path;
       if (!isDraft(owner)) persist();
-      if (state.preview?.previewId === previewId) { state.preview.stage = '下载完成，正在检查播放格式…'; paint(); }
+      if (state.preview?.previewId === previewId) { state.preview.stage = '正在检查本地播放格式…'; paint(); }
       const preview = kind === 'video' ? await window.CollectApi.previewVideo(result.path) : result;
       if (state.preview?.previewId === previewId) state.preview = { ...row, kind, local: result.path, previewLocal: preview.path, previewId };
     } catch (error) { if (state.preview?.previewId === previewId) state.preview = { ...row, kind, error: error.message, previewId }; }
     paint();
   };
+  const freezeStreamFrame = () => {
+    const stage = document.querySelector('.ec-prod-online-stage');
+    const video = stage?.querySelector('video');
+    const canvas = stage?.querySelector('canvas');
+    if (!video || !canvas) return false;
+    if (video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+      const scale = Math.min(1, 720 / Math.max(video.videoWidth, video.videoHeight));
+      const width = Math.max(1, Math.round(video.videoWidth * scale));
+      const height = Math.max(1, Math.round(video.videoHeight * scale));
+      try {
+        const context = canvas.getContext('2d');
+        if (!context) return canvas.dataset.hasFrame === '1';
+        canvas.width = width; canvas.height = height;
+        context.drawImage(video, 0, 0, width, height);
+        canvas.dataset.hasFrame = '1';
+      } catch { /* Keep the previous held frame during a rapid second seek. */ }
+    }
+    return canvas.dataset.hasFrame === '1';
+  };
+  const seekStream = value => {
+    const p = state.preview;
+    if (!p?.streamUrl) return;
+    const start = Math.max(0, Math.min(Number(value) || 0, Math.max(0, (p.duration || 0) - .5)));
+    state.preview = { ...p, streamOffset: start, seeking: false, streamReady: false, streamFrozen: freezeStreamFrame(),
+      streamUrl: window.CollectApi.onlineUrl(p.streamUrls[p.streamIndex], p.platform || p.channel || p.from, start, p.previewId) };
+    paint();
+  };
+  const onStreamEnded = event => {
+    if (!event.target?.matches?.('.ec-prod-lightbox video') || !state.preview?.streamUrl) return;
+    state.preview.streamPaused = true;
+    const button = document.querySelector('[data-lp="stream-play"]');
+    if (button) button.textContent = '播放';
+  };
+  const onStreamTime = event => {
+    if (!event.target?.matches?.('.ec-prod-lightbox video') || !state.preview?.streamUrl || state.preview.seeking) return;
+    const p = state.preview;
+    const time = Math.min(p.duration || Infinity, (p.streamOffset || 0) + event.target.currentTime);
+    const slider = document.querySelector('[data-stream-seek]');
+    if (slider) slider.value = String(time);
+    const label = document.querySelector('[data-stream-clock]');
+    if (label) label.textContent = `${clock(time)} / ${clock(p.duration)}`;
+  };
+  const onPreviewReady = event => {
+    const video = event.target;
+    if (!video?.matches?.('.ec-prod-lightbox video') || !state.preview?.streamUrl) return;
+    const source = video.getAttribute('src');
+    const reveal = () => {
+      const p = state.preview;
+      if (!video.isConnected || !p?.streamUrl || p.streamUrl !== source || video.getAttribute('src') !== source) return;
+      p.streamReady = true; p.streamFrozen = false;
+      if (video.videoWidth && video.videoHeight) p.streamAspect = video.videoWidth / video.videoHeight;
+      const stage = video.closest('.ec-prod-online-stage');
+      stage?.style.setProperty('--online-aspect', String(p.streamAspect || 9 / 16));
+      stage?.classList.remove('is-holding');
+      if (p.streamPaused) video.pause();
+      const status = document.querySelector('[data-stream-status]');
+      if (status) status.style.visibility = 'hidden';
+    };
+    if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(reveal);
+    else requestAnimationFrame(reveal);
+  };
   const onPreviewMediaError = async event => {
     if (!event.target?.matches?.('.ec-prod-lightbox video')) return;
     const current = state.preview;
     if (!current || current.kind !== 'video' || current.loading) return;
+    if (current.streamUrl) {
+      const index = current.streamIndex + 1;
+      if (index < current.streamUrls.length) {
+        state.preview = { ...current, streamIndex: index, streamReady: false, streamFrozen: freezeStreamFrame(),
+          streamUrl: window.CollectApi.onlineUrl(current.streamUrls[index], current.platform || current.channel || current.from, current.streamOffset || 0, current.previewId) };
+      } else state.preview = { ...current, error: '在线播放失败：候选地址可能已过期，请重新爬取或选择其他视频' };
+      paint(); return;
+    }
     if (current.retried) {
       state.preview = { ...current, error: '视频已下载，但浏览器仍无法播放。请尝试重新爬取这条视频。' };
       paint(); return;
@@ -888,6 +982,14 @@
     const id = trigger.dataset.id;
     const item = id ? find(id) : null;
     const host = crawlHost();
+    if (action === 'stream-play' || action === 'stream-mute' || action === 'stream-fullscreen') {
+      const video = document.querySelector('.ec-prod-lightbox video');
+      if (!video) return;
+      if (action === 'stream-play') { if (video.paused) { state.preview.streamPaused = false; if (video.ended) seekStream(0); else video.play().catch(() => {}); trigger.textContent = '暂停'; } else { state.preview.streamPaused = true; video.pause(); trigger.textContent = '播放'; } }
+      if (action === 'stream-mute') { video.muted = !video.muted; state.preview.streamMuted = video.muted; trigger.textContent = video.muted ? '开启声音' : '静音'; }
+      if (action === 'stream-fullscreen') video.closest('.ec-prod-lightbox')?.requestFullscreen?.().catch(() => {});
+      return;
+    }
     if (action === 'ext-help') { toast('Chrome 扩展管理：开启开发者模式 → 加载已解压的扩展 → 选择 ecom-video-collect/extension，并登录快分销。'); return; }
     if (action === 'push-workbench') { pushToWorkbench(item, true); return; }
     if (action === 'open-workbench') { openWorkbench(item); return; }
@@ -1069,6 +1171,12 @@
     paint();
   };
   const onInput = event => {
+    if (event.target.matches?.('[data-stream-seek]') && state.preview) {
+      state.preview.seeking = true;
+      const label = document.querySelector('[data-stream-clock]');
+      if (label) label.textContent = `${clock(event.target.value)} / ${clock(state.preview.duration)}`;
+      return;
+    }
     const filterKey = event.target.dataset.lpFilter;
     if (filterKey) { state.filters[filterKey] = event.target.value; if (!event.isComposing) paintDebounced(); return; }
     const draftKey = event.target.dataset.lpDraft;
@@ -1114,6 +1222,7 @@
     }, 180);
   };
   const onChange = event => {
+    if (event.target.matches?.('[data-stream-seek]')) { seekStream(event.target.value); return; }
     if (event.target.dataset?.lpDraft && state.draft) { onInput(event); return; }
     const filterKey = event.target.dataset?.lpFilter;
     if (filterKey) { state.filters[filterKey] = event.target.value; return paint(); }
