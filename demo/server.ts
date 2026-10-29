@@ -83,7 +83,7 @@ const server = http.createServer(async (request, response) => {
     }
     if (parts[0] === 'api') {
       const data = ['POST','PATCH','PUT'].includes(method) ? await body(request) : {};
-      if (parts[1] === 'runtime' && method === 'GET') return json(response, { app: 'vedio-workflow', interfaceVersion: 'embedded-collection-v3' });
+      if (parts[1] === 'runtime' && method === 'GET') return json(response, { app: 'vedio-workflow', interfaceVersion: 'library-browser-preview-v4' });
       if (parts[1] === 'state' && method === 'GET') {
         return json(response, { configured: true, dataRoot: store.root, defaultDataRoot: defaultRoot, modelReady: models.ready(), toolsReady: true, templates,
           products: store.products(), assets: store.assets().map(asset => library.publicAsset(asset)), tasks: store.tasks().map(task => workflow.publicTask(task)),
@@ -165,7 +165,10 @@ const server = http.createServer(async (request, response) => {
       if (!asset || asset.status === 'deleted') throw new AppError('素材不存在或已删除', 404);
       const relative = parts[0] === 'poster' ? asset.posterPath : asset.relativePath;
       if (!relative || !fs.existsSync(store.path(relative))) throw new AppError('素材文件暂不可用', 404);
-      return await sendFile(request, response, store.path(relative));
+      const source = store.path(relative);
+      const file = parts[0] === 'media' && url.searchParams.get('browser') === '1'
+        ? await media.browserPreview(source, store.path(path.join('缓存', '素材预览'))) : source;
+      return await sendFile(request, response, file);
     }
     if (parts[0] === 'media' && parts[1] === 'task') {
       const task = workflow.get(parts[2]), kind = parts[3];

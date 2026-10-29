@@ -4,7 +4,7 @@
 
 所有 JSON 接口成功返回直接的数据对象；失败返回 `{error,message}`，HTTP 状态为 400/404/409/500 等。付费模型不会自动重试。异步操作返回 202 和当前 task，前端每秒刷新当前任务；生成记录保持同一 task ID。
 
-- `GET /api/runtime` → `{app:"vedio-workflow",interfaceVersion:"embedded-collection-v3"}`；启动脚本据此识别支持视频预览与统一侧边栏的服务，避免复用旧进程。
+- `GET /api/runtime` → `{app:"vedio-workflow",interfaceVersion:"library-browser-preview-v4"}`；启动脚本据此识别支持视频预览与统一侧边栏的服务，避免复用旧进程。
 - `GET /api/state` → `{configured,dataRoot,defaultDataRoot,modelReady,toolsReady,templates,products,assets,tasks,bgms,seedAvailable,activeExecution}`。
 - `POST /api/setup` `{dataRoot?}` → 初始保存目录，省略则取运行电脑实际 Videos 已知文件夹/电商视频工作台Demo。已经配置后只能在没有任务执行时修改；已有数据不自动搬迁。
 - `POST /api/dialog` `{kind:"folder"|"videos"}` → `{paths:[]}`；取消返回空列表。
@@ -15,7 +15,7 @@
 - `POST /api/products/:id/import` `{paths:[绝对路径],processed:true|false}` → 按文件入库。原始视频进入本地切分；已处理片段直接校验入库。png/jpg/webp 等图片文件跳过视频探测与场景切分，按图片素材入库。
 - `POST /api/assets/:id/retry` → 仅补失败的文件/输出。
 - `DELETE /api/assets/:id` → 删除托管商品片段，保留删除记录；正在合成的输入拒绝删除。
-- `GET /media/asset/:id`、`GET /poster/:id` → 素材/缩略图，支持 Range。
+- `GET /media/asset/:id`、`GET /poster/:id` → 素材/缩略图，支持 Range。视频预览使用 `GET /media/asset/:id?browser=1`：兼容的 H.264/yuv420p/AAC MP4 复用原件，其他编码转换到数据根目录 `缓存/素材预览`，按来源路径、大小和修改时间缓存，并合并同时发生的相同请求；原文件与合成路径不变。
 - `POST /api/tasks` `{productId,templateId}` → 创建草稿和单一生成记录，默认 stage=copy。
 - `GET /api/tasks/:id` → 完整任务，含 `nodes`、连续 AI `intervals`、`plan`、`settings`、`preview`、`execution`、确认状态、错误和快照。
 - `PATCH /api/tasks/:id` `{variable?,example?,black?,settings?,stage?}` → 自动保存编辑稿。`black` 为 `{nodeId:text}`。`settings` 为 `{subtitles,bgmId,bgmVolume}`；音量为 0~0.5，默认不选 BGM。已确认声音对应的文案实际变化需先由 UI 确认重配。

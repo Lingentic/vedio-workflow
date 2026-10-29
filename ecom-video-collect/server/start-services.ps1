@@ -38,7 +38,7 @@ function Test-Ready($url, $kind) {
         if ($kind -eq 'workbench') {
             if ($null -eq $result.products -or $null -eq $result.assets) { return $false }
             $runtime = Invoke-RestMethod -Uri "$workbenchUrl/api/runtime" -TimeoutSec 2 -UseBasicParsing
-            return ($runtime.interfaceVersion -eq 'embedded-collection-v3')
+            return ($runtime.interfaceVersion -eq 'library-browser-preview-v4')
         }
         return ($result.ok -eq $true -and $null -ne $result.platforms -and $null -ne $result.mediaDir -and $result.interfaceVersion -eq 'collection-search-preview-v3')
     } catch { return $false }

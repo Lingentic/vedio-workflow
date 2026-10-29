@@ -643,7 +643,7 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     const asset = readyProductAssets(task.productId).find(item => item.id === button.dataset.id);
     const player = document.querySelector<HTMLVideoElement>('[data-picker-player]');
     if (!asset?.url || !player) return;
-    player.hidden = false; player.src = asset.url; player.load();
+    player.hidden = false; player.src = browserAssetUrl(asset.url); player.load();
     document.querySelector('[data-picker-preview-title]')!.textContent = asset.title;
     return;
   }
@@ -719,11 +719,16 @@ function materialPickerModal(task: Task): string {
   const assets = readyProductAssets(task.productId);
   return `<div class="modal material-picker"><button class="modal-close" data-close-modal aria-label="关闭素材选择">×</button><h2>引入商品素材</h2><p class="modal-intro">${esc(task.productSnapshot.name)} · ${assets.length} 个可用视频片段</p><input class="input" data-picker-search aria-label="搜索商品素材" placeholder="按文件名搜索素材"><p class="section-hint" data-picker-preview-title>点击“预览”查看原片</p><video data-picker-player controls autoplay muted playsinline hidden></video><div class="asset-grid picker-grid">${assets.map(asset => `<article class="asset-card" data-material-name="${esc(asset.title.toLocaleLowerCase())}">${asset.posterUrl ? `<img src="${esc(asset.posterUrl)}" loading="lazy" alt="">` : ''}<div class="asset-caption"><strong title="${esc(asset.title)}">${esc(asset.title)}</strong><div class="asset-meta">${duration(asset.duration)}</div><div class="row"><button class="button small" data-action="picker-preview" data-id="${esc(asset.id)}">预览</button><button class="button small primary" data-action="add-picker-asset" data-id="${esc(asset.id)}">＋ 加入${manualSelection.includes(asset.id) ? ` · 已选 ${manualSelection.filter(id => id === asset.id).length}` : ''}</button></div></div></article>`).join('')}</div><div class="modal-footer"><span class="section-hint" data-picker-count>当前已选 ${manualSelection.length} 段，关闭后保存方案生效</span><button class="button primary" data-close-modal>完成选择</button></div></div>`;
 }
+function browserAssetUrl(url: string): string {
+  return url.startsWith('/media/asset/') ? url + (url.includes('?') ? '&' : '?') + 'browser=1' : url;
+}
 function showVideoPreview(title: string, url: string, start = 0, seconds?: number, description = ''): void {
-  showModal(`<div class="modal asset-video-modal"><button class="modal-close" data-close-modal aria-label="关闭预览">×</button><h2>${esc(title)}</h2><video controls autoplay muted playsinline src="${esc(url)}"></video><p class="section-hint">${esc(description)}</p></div>`);
+  url = browserAssetUrl(url);
+  showModal(`<div class="modal asset-video-modal"><button class="modal-close" data-close-modal aria-label="关闭预览">×</button><h2>${esc(title)}</h2><p class="section-hint" data-video-status>正在准备本地预览，首次转换可能需要一些时间…</p><video controls autoplay muted playsinline src="${esc(url)}"></video><p class="section-hint">${esc(description)}</p></div>`);
   const video = document.querySelector<HTMLVideoElement>('.asset-video-modal video')!;
+  video.addEventListener('error', () => { const status = document.querySelector('[data-video-status]'); if (status) status.textContent = '预览准备失败，请检查媒体文件和 FFmpeg 后重试'; });
   const end = seconds === undefined ? undefined : start + seconds;
-  video.addEventListener('loadedmetadata', () => { video.currentTime = start; }, { once: true });
+  video.addEventListener('loadedmetadata', () => { video.currentTime = start; document.querySelector('[data-video-status]')?.remove(); }, { once: true });
   video.addEventListener('play', () => { if (end !== undefined && (video.currentTime < start || video.currentTime >= end)) video.currentTime = start; });
   if (end !== undefined) video.addEventListener('timeupdate', () => { if (video.currentTime >= end) { video.pause(); if (video.currentTime > end + .04) video.currentTime = end; } });
 }
