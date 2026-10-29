@@ -225,10 +225,12 @@
   /* 放大查看：点候选卡的图/封面进来 */
   const clock = seconds => `${Math.floor((Number(seconds) || 0) / 60)}:${String(Math.floor((Number(seconds) || 0) % 60)).padStart(2, '0')}`;
   const onlineControls = p => `<div class="ec-prod-online-controls"><button type="button" data-lp="stream-play">${p.streamPaused ? '播放' : '暂停'}</button><input type="range" data-stream-seek aria-label="在线播放进度" min="0" max="${Math.max(0, (p.duration || 0) - .5)}" step="0.1" value="${p.streamOffset || 0}" ${p.duration ? '' : 'disabled'}><span data-stream-clock>${clock(p.streamOffset)} / ${clock(p.duration)}</span><button type="button" data-lp="stream-mute">${p.streamMuted === false ? '静音' : '开启声音'}</button><button type="button" data-lp="stream-fullscreen">全屏</button></div>`;
+  const previewVideoTag = p => `<video ${p.streamUrl ? '' : 'controls'} ${p.streamPaused ? '' : 'autoplay'} ${p.streamMuted === false ? '' : 'muted'} playsinline preload="metadata" src="${esc(p.streamUrl || window.CollectApi.mediaUrl(p.previewLocal || p.local))}" poster="${esc(p.streamFrozen ? '' : mediaSrc(p))}"></video>`;
   const lightbox = () => {
     const p = state.preview;
     if (!p) return '';
-    return `<div class="ec-prod-backdrop" data-ui-key="preview" role="presentation"><div class="ec-prod-lightbox" role="dialog" aria-modal="true" aria-label="素材预览"><button type="button" data-lp="close-preview" aria-label="关闭">×</button>${p.loading ? `<div class="ec-prod-preview-loading"><span class="ec-prod-spinner"></span>${esc(p.stage || '正在准备可播放的预览…')}</div>` : p.error ? `<div class="ec-prod-preview-error">${esc(p.error)}</div>` : p.kind === 'video' && (p.local || p.streamUrl) ? `<video ${p.streamUrl ? '' : 'controls'} ${p.streamPaused ? '' : 'autoplay'} ${p.streamMuted === false ? '' : 'muted'} playsinline preload="metadata" src="${esc(p.streamUrl || window.CollectApi.mediaUrl(p.previewLocal || p.local))}" poster="${esc(mediaSrc(p))}"></video>${p.streamUrl ? onlineControls(p) : ''}${p.streamUrl && !p.streamReady ? '<small data-stream-status>正在连接视频流…关闭预览即停止接收</small>' : ''}` : p.local || p.src ? `<img src="${esc(p.local ? window.CollectApi.mediaUrl(p.local) : mediaSrc(p))}" alt="${esc(p.name)}">` : '<div class="ec-prod-lightbox-empty">这条素材没有可用的预览地址</div>'}<p><b>${esc(p.name)}</b><span>${p.streamUrl ? '在线播放 · 可拖动进度' : p.kind === 'video' ? '视频预览' : '图片'} · ${esc(p.channel || p.from || '')}</span></p></div></div>`;
+    const online = p.streamUrl ? `<div class="ec-prod-online-stage${p.streamFrozen && !p.streamReady ? ' is-holding' : ''}" data-ui-key="online-stage:${esc(p.previewId)}" style="--online-aspect:${p.streamAspect || 9 / 16}">${previewVideoTag(p)}<canvas class="ec-prod-held-frame" aria-hidden="true" data-ui-key="held-frame"></canvas></div>${onlineControls(p)}<small class="ec-prod-stream-status" data-stream-status style="visibility:${p.streamReady ? 'hidden' : 'visible'}">${p.streamFrozen ? '正在定位视频流…' : '正在连接视频流…关闭预览即停止接收'}</small>` : '';
+    return `<div class="ec-prod-backdrop" data-ui-key="preview" role="presentation"><div class="ec-prod-lightbox" role="dialog" aria-modal="true" aria-label="素材预览"><button type="button" data-lp="close-preview" aria-label="关闭">×</button>${p.loading ? `<div class="ec-prod-preview-loading"><span class="ec-prod-spinner"></span>${esc(p.stage || '正在准备可播放的预览…')}</div>` : p.error ? `<div class="ec-prod-preview-error">${esc(p.error)}</div>` : p.kind === 'video' && (p.local || p.streamUrl) ? p.streamUrl ? online : previewVideoTag(p) : p.local || p.src ? `<img src="${esc(p.local ? window.CollectApi.mediaUrl(p.local) : mediaSrc(p))}" alt="${esc(p.name)}">` : '<div class="ec-prod-lightbox-empty">这条素材没有可用的预览地址</div>'}<p><b>${esc(p.name)}</b><span>${p.streamUrl ? '在线播放 · 可拖动进度' : p.kind === 'video' ? '视频预览' : '图片'} · ${esc(p.channel || p.from || '')}</span></p></div></div>`;
   };
   /* ---------- 爬取记录（只出现在「联网爬取」tab；带时间，详情只列已归入的素材） ---------- */
   const RECORD_STATUS = {
@@ -524,6 +526,8 @@
     }
     if (live.nodeType === Node.TEXT_NODE) { if (live.nodeValue !== next.nodeValue) live.nodeValue = next.nodeValue; return; }
     if (!(live instanceof Element)) return;
+    // Canvas pixels and backing dimensions are managed by freezeStreamFrame, not HTML.
+    if (live instanceof HTMLCanvasElement) return;
     for (const attr of [...live.attributes]) if (!next.hasAttribute(attr.name) && attr.name !== 'data-events-bound') live.removeAttribute(attr.name);
     for (const attr of next.attributes) if (live.getAttribute(attr.name) !== attr.value) live.setAttribute(attr.name, attr.value);
     if (live instanceof HTMLTextAreaElement) {
@@ -865,11 +869,30 @@
     } catch (error) { if (state.preview?.previewId === previewId) state.preview = { ...row, kind, error: error.message, previewId }; }
     paint();
   };
+  const freezeStreamFrame = () => {
+    const stage = document.querySelector('.ec-prod-online-stage');
+    const video = stage?.querySelector('video');
+    const canvas = stage?.querySelector('canvas');
+    if (!video || !canvas) return false;
+    if (video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+      const scale = Math.min(1, 720 / Math.max(video.videoWidth, video.videoHeight));
+      const width = Math.max(1, Math.round(video.videoWidth * scale));
+      const height = Math.max(1, Math.round(video.videoHeight * scale));
+      try {
+        const context = canvas.getContext('2d');
+        if (!context) return canvas.dataset.hasFrame === '1';
+        canvas.width = width; canvas.height = height;
+        context.drawImage(video, 0, 0, width, height);
+        canvas.dataset.hasFrame = '1';
+      } catch { /* Keep the previous held frame during a rapid second seek. */ }
+    }
+    return canvas.dataset.hasFrame === '1';
+  };
   const seekStream = value => {
     const p = state.preview;
     if (!p?.streamUrl) return;
     const start = Math.max(0, Math.min(Number(value) || 0, Math.max(0, (p.duration || 0) - .5)));
-    state.preview = { ...p, streamOffset: start, seeking: false, streamReady: false,
+    state.preview = { ...p, streamOffset: start, seeking: false, streamReady: false, streamFrozen: freezeStreamFrame(),
       streamUrl: window.CollectApi.onlineUrl(p.streamUrls[p.streamIndex], p.platform || p.channel || p.from, start, p.previewId) };
     paint();
   };
@@ -889,10 +912,23 @@
     if (label) label.textContent = `${clock(time)} / ${clock(p.duration)}`;
   };
   const onPreviewReady = event => {
-    if (!event.target?.matches?.('.ec-prod-lightbox video') || !state.preview?.streamUrl) return;
-    state.preview.streamReady = true;
-    if (state.preview.streamPaused) event.target.pause();
-    document.querySelector('[data-stream-status]')?.remove();
+    const video = event.target;
+    if (!video?.matches?.('.ec-prod-lightbox video') || !state.preview?.streamUrl) return;
+    const source = video.getAttribute('src');
+    const reveal = () => {
+      const p = state.preview;
+      if (!video.isConnected || !p?.streamUrl || p.streamUrl !== source || video.getAttribute('src') !== source) return;
+      p.streamReady = true; p.streamFrozen = false;
+      if (video.videoWidth && video.videoHeight) p.streamAspect = video.videoWidth / video.videoHeight;
+      const stage = video.closest('.ec-prod-online-stage');
+      stage?.style.setProperty('--online-aspect', String(p.streamAspect || 9 / 16));
+      stage?.classList.remove('is-holding');
+      if (p.streamPaused) video.pause();
+      const status = document.querySelector('[data-stream-status]');
+      if (status) status.style.visibility = 'hidden';
+    };
+    if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(reveal);
+    else requestAnimationFrame(reveal);
   };
   const onPreviewMediaError = async event => {
     if (!event.target?.matches?.('.ec-prod-lightbox video')) return;
@@ -901,7 +937,7 @@
     if (current.streamUrl) {
       const index = current.streamIndex + 1;
       if (index < current.streamUrls.length) {
-        state.preview = { ...current, streamIndex: index, streamReady: false,
+        state.preview = { ...current, streamIndex: index, streamReady: false, streamFrozen: freezeStreamFrame(),
           streamUrl: window.CollectApi.onlineUrl(current.streamUrls[index], current.platform || current.channel || current.from, current.streamOffset || 0, current.previewId) };
       } else state.preview = { ...current, error: '在线播放失败：候选地址可能已过期，请重新爬取或选择其他视频' };
       paint(); return;
