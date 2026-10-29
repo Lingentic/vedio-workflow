@@ -103,7 +103,9 @@
   ];
   window.CollectApi = {
     platformOf, proxy, thumbnail, collectProduct, download, setWorkbench, mediaUrl, embedded, migrateLegacyStorage,
+    onlineEnabled: new URLSearchParams(location.search).get('preview') === 'online',
     get workbenchUrl() { return workbenchUrl; },
+    onlineUrl: (url, platform, start = 0, session = '') => `${apiPath('/api/stream')}?platform=${platformOf(platform)}&url=${encodeURIComponent(url)}&start=${encodeURIComponent(start)}&session=${encodeURIComponent(session)}`,
     previewVideo: (path, force = false) => post('/api/preview', { path, force }),
     search: (channel, keyword, signal) => request(`/api/search?platform=${platformOf(channel)}&keyword=${encodeURIComponent(keyword)}&pages=1`, { signal }),
     importProduct: payload => post('/api/workbench-import', payload),

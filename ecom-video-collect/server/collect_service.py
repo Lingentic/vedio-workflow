@@ -33,6 +33,7 @@ ai-reverse 运行目录按以下顺序解析（取第一个非空值）:
 """
 import json
 import mimetypes
+import math
 import os
 import re
 import shutil
@@ -366,6 +367,9 @@ def _require_video_stream(path):
         raise RuntimeError("返回的是纯音频流，无视频画面")
 
 
+_STREAM_SLOTS = threading.BoundedSemaphore(2)
+_STREAM_SESSIONS = {}
+_STREAM_SESSION_LOCK = threading.Lock()
 _PREVIEW_LOCK = threading.Lock()
 
 
@@ -632,7 +636,7 @@ class Handler(BaseHTTPRequestHandler):
                 },
                 "mediaDir": MEDIA,
                 "workbench": WORKBENCH,
-                "interfaceVersion": "collection-search-preview-v3",
+                "interfaceVersion": "online-preview-v4",
             })
         if path == "/api/search":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
@@ -647,6 +651,18 @@ class Handler(BaseHTTPRequestHandler):
             if err:
                 return self._json({"ok": False, **err})
             return self._json({"ok": True, "items": items})
+        if path == "/api/stream":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            url = (q.get("url") or [""])[0]
+            platform = (q.get("platform") or [""])[0] or _platform_of(url)
+            try:
+                start = float((q.get("start") or ["0"])[0])
+                if not math.isfinite(start) or not 0 <= start <= 86400:
+                    raise ValueError()
+            except ValueError:
+                return self._json({"ok": False, "message": "播放时间无效"}, 400)
+            session = (q.get("session") or [""])[0][:100]
+            return self._stream_video(url, platform, start, session)
         if path == "/api/proxy":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             url = (q.get("url") or [""])[0]
@@ -675,6 +691,85 @@ class Handler(BaseHTTPRequestHandler):
                 pass
             return
         return self._static(path)
+
+    def _stream_video(self, url, platform, start=0, session=""):
+        """Transcode from CDN to fragmented MP4 on stdout; never create a media file."""
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
+            return self._json({"ok": False, "message": "视频地址无效"}, 400)
+        ffmpeg = _ffmpeg()
+        if not ffmpeg:
+            return self._json({"ok": False, "message": "在线播放需要 FFmpeg，请使用启动脚本"}, 503)
+        if session:
+            with _STREAM_SESSION_LOCK:
+                previous = _STREAM_SESSIONS.get(session)
+                if previous and previous.poll() is None:
+                    previous.kill()
+        if not _STREAM_SLOTS.acquire(timeout=2):
+            return self._json({"ok": False, "message": "在线播放忙，请关闭其他预览后重试"}, 429)
+        process = None
+        timer = None
+        sent = False
+        try:
+            referer = "https://www.douyin.com/" if platform == "douyin" else "https://www.kuaishou.com/"
+            headers = f"User-Agent: {UA}\r\nReferer: {referer}\r\n"
+            cookie = _cookie_header(platform)
+            if cookie:
+                headers += "Cookie: " + cookie + "\r\n"
+            process = subprocess.Popen([ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error",
+                "-protocol_whitelist", "http,https,tcp,tls,crypto", "-rw_timeout", "15000000",
+                "-headers", headers, "-re", *(["-ss", str(start)] if start else []), "-i", url, "-map", "0:v:0", "-map", "0:a:0?",
+                "-vf", r"scale=-2:trunc(min(720\,ih)/2)*2", "-c:v", "libx264", "-preset", "ultrafast",
+                "-tune", "zerolatency", "-crf", "26", "-pix_fmt", "yuv420p", "-g", "30",
+                "-c:a", "aac", "-b:a", "96k", "-threads", "2",
+                "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-frag_duration", "500000",
+                "-f", "mp4", "pipe:1"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if session:
+                with _STREAM_SESSION_LOCK:
+                    _STREAM_SESSIONS[session] = process
+            timer = threading.Timer(600, process.kill)
+            timer.daemon = True
+            timer.start()
+            first = process.stdout.read1(1 << 16)
+            if not first:
+                return self._json({"ok": False, "message": "视频流无法读取，请尝试其他码率地址"}, 502)
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Accept-Ranges", "none")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            sent = True
+            self.close_connection = True
+            self.wfile.write(first)
+            self.wfile.flush()
+            while True:
+                chunk = process.stdout.read1(1 << 16)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            pass
+        except Exception:
+            if not sent:
+                self._json({"ok": False, "message": "在线播放失败，请检查视频地址或重试"}, 502)
+        finally:
+            if timer:
+                timer.cancel()
+            try:
+                if process:
+                    if process.poll() is None:
+                        process.kill()
+                    process.wait(timeout=5)
+                    process.stdout.close()
+            finally:
+                if session:
+                    with _STREAM_SESSION_LOCK:
+                        if _STREAM_SESSIONS.get(session) is process:
+                            _STREAM_SESSIONS.pop(session, None)
+                _STREAM_SLOTS.release()
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path

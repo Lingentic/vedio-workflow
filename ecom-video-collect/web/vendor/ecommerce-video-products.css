@@ -501,3 +501,11 @@ select.ec-prod-control { appearance: none; padding-right: 28px; background-image
 .ec-prod-leave-body { padding: var(--prod-space-5); }
 .ec-prod-leave-body > p { margin: 0; color: var(--prod-ink); font-size: 13.5px; line-height: 1.8; }
 .ec-prod-leave-body > p + p { margin-top: 8px; }
+
+.ec-prod-online-controls { display:flex; align-items:center; gap:8px; width:100%; min-width:0; font-size:12px; }
+.ec-prod-online-controls input { flex:1; min-width:40px; accent-color:#784bea; }
+.ec-prod-online-controls span { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.ec-prod-online-controls button { border:1px solid #e3e0ea; border-radius:6px; padding:5px 7px; background:#fff; color:#514760; white-space:nowrap; cursor:pointer; }
+.ec-prod-lightbox:has(.ec-prod-online-controls) > video { max-height:min(68dvh,calc(100dvh - 210px)); }
+.ec-prod-lightbox:fullscreen { width:100vw; max-height:100dvh; border-radius:0; }
+@media(max-width:560px) { .ec-prod-online-controls { flex-wrap:wrap; } .ec-prod-online-controls input { min-width:45%; } }
