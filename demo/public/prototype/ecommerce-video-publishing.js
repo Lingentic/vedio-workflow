@@ -26,7 +26,7 @@
   };
   const PRECHECK_ITEMS = [
     { key: 'words', label: '违禁词扫描', hard: true, desc: '标题 / 口播文案命中平台违禁词库即拦截' },
-    { key: 'visual', label: '画面合规', hard: true, desc: '红段原片复用、无第三方水印与二维码' },
+    { key: 'visual', label: '画面合规', hard: true, desc: '红段原片复用、画面无违规贴片与二维码' },
     { key: 'ratio', label: '时长比例', hard: false, desc: '成片时长与 13 段装配时长偏差 ≤10%' },
     { key: 'dup', label: '同素材重复度', hard: false, desc: '同商品多号发布需错开素材顺序与封面帧' },
     { key: 'weight', label: '账号权重匹配', hard: true, desc: '账号环境异常或登录态失效时不入队' },
@@ -41,17 +41,17 @@
   ];
 
   const seedTasks = () => [
-    { id: 'P0001', recordId: 'T202610220912', accountId: 'acc-01', status: 'published', progress: 100, actual: '2026-10-22 09:31', planned: '立即发布', created: '2026-10-22 09:28', subtitle: '开', watermark: { text: 'tt', tone: 'purple' }, product: { name: '家用立体收纳压缩袋抽两用棉季衣服棉被真空防尘袋', price: 9.99, productId: 'p-58096', platformId: 'KS-38908', cat: '家居百货' }, duration: '01:24', title: '换季收纳就靠它，抽压两用薄薄一摞 #老葛严选', attempts: 0, resubmits: 0, raw: '{"code":200,"message":"publish success","data":{"video_id":"3.1415e18","audit":"pass"}}', precheck: { words: 'pass', visual: 'pass', ratio: 'pass', dup: 'pass', weight: 'pass' } },
-    { id: 'P0002', recordId: 'T202610211508', accountId: 'acc-03', status: 'reviewing', progress: 100, actual: '2026-10-22 09:20', planned: '立即发布', created: '2026-10-22 09:18', subtitle: '关', watermark: { text: '老葛', tone: 'info' }, product: { name: '家用立体收纳压缩袋抽两用棉季衣服棉被真空防尘袋', price: 9.99, productId: 'p-58096', platformId: 'KS-38908', cat: '家居百货' }, duration: '01:23', title: '衣柜腾出大半空间，防尘防潮来年没霉味', attempts: 1, resubmits: 0, raw: '{"code":200,"message":"submitted","data":{"audit":"pending","reason":"内容审核中，预计 2 小时"}}', precheck: { words: 'pass', visual: 'pass', ratio: 'warn', dup: 'warn', weight: 'pass' } },
-    { id: 'P0003', recordId: 'T202610211620', accountId: 'acc-01', status: 'failed', progress: 42, actual: null, planned: '立即发布', created: '2026-10-21 16:40', subtitle: '开', watermark: { text: '老葛', tone: 'info' }, product: { name: '【到手5斤】原味生核腰果皮核桃话梅味休闲零食', price: 15.9, productId: 'p-36090', platformId: 'KS-36090', cat: '食品饮料' }, duration: '01:22', title: '咸甜回甘追剧零嘴，到手5斤一次吃个够', attempts: 1, resubmits: 0, reason: '当前暂停发布，请重新登录', raw: '{"code":40001,"message":"当前暂停发布，请重新登录","data":null}', precheck: { words: 'pass', visual: 'pass', ratio: 'pass', dup: 'pass', weight: 'pass' } },
-    { id: 'P0004', recordId: 'T202610211322', accountId: 'acc-02', status: 'queued', progress: 0, actual: null, planned: '2026-10-22 18:30', created: '2026-10-22 09:05', subtitle: '开', watermark: { text: 'tt', tone: 'purple' }, product: { name: '加厚锁腰孩子肩背服饰高弹力秋冬季衣保暖护腰披肩A20', price: 7.99, productId: 'p-58005', platformId: 'KS-58005', cat: '家居百货' }, duration: '01:20', title: '高弹针织不勒肩，孩子写作业披着不凉背', attempts: 0, resubmits: 0, timed: true, plannedAt: '2026-10-22T18:30', raw: null, precheck: { words: 'pass', visual: 'pass', ratio: 'pass', dup: 'pass', weight: 'pass' } },
-    { id: 'P0005', recordId: 'T202610220845', accountId: 'acc-04', status: 'precheck', progress: 0, actual: null, planned: '立即发布', created: '2026-10-22 09:40', subtitle: '开', watermark: { text: '无', tone: 'neutral' }, product: { name: '加厚锁腰孩子肩背服饰高弹力秋冬季衣保暖护腰披肩A20', price: 7.99, productId: 'p-58005', platformId: 'KS-58005', cat: '家居百货' }, duration: '01:21', title: '秋冬打底外披都行，绝对不勒肩', attempts: 0, resubmits: 0, reason: '硬性项未过：违禁词「绝对」命中；账号权重匹配失败（登录态失效）', raw: null, precheck: { words: 'fail', visual: 'pass', ratio: 'pass', dup: 'pass', weight: 'fail' } },
-    { id: 'P0006', recordId: 'T202610201145', accountId: 'acc-02', status: 'missed', progress: 0, actual: null, planned: '2026-10-21 07:30', created: '2026-10-20 22:10', subtitle: '关', watermark: { text: 'tt', tone: 'purple' }, product: { name: '【特惠49.9】黑土玉米胚芽油5升 非转基因物理压榨', price: 49.9, productId: 'p-34349', platformId: 'KS-34349', cat: '食品饮料' }, duration: '01:19', title: '黑土地玉米胚芽物理压榨，5升装吃一季', attempts: 0, resubmits: 0, timed: true, plannedAt: '2026-10-21T07:30', reason: '定时到点时客户端进程已退出，任务错失；重启后可立即补发', raw: null, precheck: { words: 'pass', visual: 'pass', ratio: 'pass', dup: 'pass', weight: 'pass' } },
-    { id: 'P0007', recordId: 'T202610221003', accountId: 'acc-01', status: 'queued', progress: 0, actual: null, planned: '立即发布', created: '2026-10-22 10:12', subtitle: '开', watermark: { text: 'tt', tone: 'purple' }, product: { name: '【到手5斤】原切牛肋排2500g*1碗 顺丰+云仓发货JY', price: 99.9, productId: 'p-34337', platformId: 'KS-34337', cat: '食品饮料' }, duration: '01:26', title: '原切不拼接肥瘦相间，顺丰冷链到手5斤', attempts: 0, resubmits: 0, raw: null, precheck: { words: 'pass', visual: 'pass', ratio: 'pass', dup: 'pass', weight: 'pass' } },
+    { id: 'P0001', recordId: 'T202610220912', accountId: 'acc-01', status: 'published', progress: 100, actual: '2026-10-22 09:31', planned: '立即发布', created: '2026-10-22 09:28', product: { name: '家用立体收纳压缩袋抽两用棉季衣服棉被真空防尘袋', price: 9.99, productId: 'p-58096', platformId: 'KS-38908', cat: '家居百货' }, duration: '01:24', title: '换季收纳就靠它，抽压两用薄薄一摞 #老葛严选', attempts: 0, resubmits: 0, raw: '{"code":200,"message":"publish success","data":{"video_id":"3.1415e18","audit":"pass"}}', precheck: { words: 'pass', visual: 'pass', ratio: 'pass', dup: 'pass', weight: 'pass' } },
+    { id: 'P0002', recordId: 'T202610211508', accountId: 'acc-03', status: 'reviewing', progress: 100, actual: '2026-10-22 09:20', planned: '立即发布', created: '2026-10-22 09:18', product: { name: '家用立体收纳压缩袋抽两用棉季衣服棉被真空防尘袋', price: 9.99, productId: 'p-58096', platformId: 'KS-38908', cat: '家居百货' }, duration: '01:23', title: '衣柜腾出大半空间，防尘防潮来年没霉味', attempts: 1, resubmits: 0, raw: '{"code":200,"message":"submitted","data":{"audit":"pending","reason":"内容审核中，预计 2 小时"}}', precheck: { words: 'pass', visual: 'pass', ratio: 'warn', dup: 'warn', weight: 'pass' } },
+    { id: 'P0003', recordId: 'T202610211620', accountId: 'acc-01', status: 'failed', progress: 42, actual: null, planned: '立即发布', created: '2026-10-21 16:40', product: { name: '【到手5斤】原味生核腰果皮核桃话梅味休闲零食', price: 15.9, productId: 'p-36090', platformId: 'KS-36090', cat: '食品饮料' }, duration: '01:22', title: '咸甜回甘追剧零嘴，到手5斤一次吃个够', attempts: 1, resubmits: 0, reason: '当前暂停发布，请重新登录', raw: '{"code":40001,"message":"当前暂停发布，请重新登录","data":null}', precheck: { words: 'pass', visual: 'pass', ratio: 'pass', dup: 'pass', weight: 'pass' } },
+    { id: 'P0004', recordId: 'T202610211322', accountId: 'acc-02', status: 'queued', progress: 0, actual: null, planned: '2026-10-22 18:30', created: '2026-10-22 09:05', product: { name: '加厚锁腰孩子肩背服饰高弹力秋冬季衣保暖护腰披肩A20', price: 7.99, productId: 'p-58005', platformId: 'KS-58005', cat: '家居百货' }, duration: '01:20', title: '高弹针织不勒肩，孩子写作业披着不凉背', attempts: 0, resubmits: 0, timed: true, plannedAt: '2026-10-22T18:30', raw: null, precheck: { words: 'pass', visual: 'pass', ratio: 'pass', dup: 'pass', weight: 'pass' } },
+    { id: 'P0005', recordId: 'T202610220845', accountId: 'acc-04', status: 'precheck', progress: 0, actual: null, planned: '立即发布', created: '2026-10-22 09:40', product: { name: '加厚锁腰孩子肩背服饰高弹力秋冬季衣保暖护腰披肩A20', price: 7.99, productId: 'p-58005', platformId: 'KS-58005', cat: '家居百货' }, duration: '01:21', title: '秋冬打底外披都行，绝对不勒肩', attempts: 0, resubmits: 0, reason: '硬性项未过：违禁词「绝对」命中；账号权重匹配失败（登录态失效）', raw: null, precheck: { words: 'fail', visual: 'pass', ratio: 'pass', dup: 'pass', weight: 'fail' } },
+    { id: 'P0006', recordId: 'T202610201145', accountId: 'acc-02', status: 'missed', progress: 0, actual: null, planned: '2026-10-21 07:30', created: '2026-10-20 22:10', product: { name: '【特惠49.9】黑土玉米胚芽油5升 非转基因物理压榨', price: 49.9, productId: 'p-34349', platformId: 'KS-34349', cat: '食品饮料' }, duration: '01:19', title: '黑土地玉米胚芽物理压榨，5升装吃一季', attempts: 0, resubmits: 0, timed: true, plannedAt: '2026-10-21T07:30', reason: '定时到点时客户端进程已退出，任务错失；重启后可立即补发', raw: null, precheck: { words: 'pass', visual: 'pass', ratio: 'pass', dup: 'pass', weight: 'pass' } },
+    { id: 'P0007', recordId: 'T202610221003', accountId: 'acc-01', status: 'queued', progress: 0, actual: null, planned: '立即发布', created: '2026-10-22 10:12', product: { name: '【到手5斤】原切牛肋排2500g*1碗 顺丰+云仓发货JY', price: 99.9, productId: 'p-34337', platformId: 'KS-34337', cat: '食品饮料' }, duration: '01:26', title: '原切不拼接肥瘦相间，顺丰冷链到手5斤', attempts: 0, resubmits: 0, raw: null, precheck: { words: 'pass', visual: 'pass', ratio: 'pass', dup: 'pass', weight: 'pass' } },
   ];
 
   /* ---------- 状态 ---------- */
-  const blankFilters = () => ({ account: '', from: '', to: '', watermark: '', status: '', q: '' });
+  const blankFilters = () => ({ account: '', from: '', to: '', status: '', q: '' });
   const blank = () => ({ accounts: seedAccounts(), tasks: seedTasks(), filters: blankFilters(), applied: blankFilters(), selected: [], dialog: null, confirm: null, menu: null, offline: false, checking: false, adding: null, report: null, timedDraft: null });
 
   let state = blank();
@@ -88,7 +88,6 @@
     return state.tasks.filter(task => {
       if (f.account && task.accountId !== f.account) return false;
       if (f.status && task.status !== f.status) return false;
-      if (f.watermark && task.watermark.text !== f.watermark) return false;
       if (f.q && !`${task.id} ${task.recordId} ${task.product.name} ${task.title}`.toLowerCase().includes(f.q.trim().toLowerCase())) return false;
       const stamp = (task.actual || task.created).slice(0, 10);
       if (f.from && stamp < f.from) return false;
@@ -102,7 +101,6 @@
     const meta = STATUS[status] || { label: status, tone: 'neutral' };
     return `<span class="ec-led-badge ec-led-badge--${meta.tone}">${meta.label}${extra || ''}</span>`;
   };
-  const watermarkBadge = wm => `<span class="ec-led-mark ec-led-badge--${wm.tone}">${esc(wm.text)}</span>`;
   const statusTone = status => STATUS[status]?.tone || 'neutral';
 
   const accountTag = acc => acc.status === 'danger'
@@ -147,9 +145,8 @@
       <div class="ec-led-field ec-led-field--search"><label for="pubQ">搜索</label><input id="pubQ" class="ec-led-control" data-pub-filter="q" value="${esc(f.q)}" placeholder="ID / 任务ID / 商品名称 / 发布标题" autocomplete="off"></div>
       <div class="ec-led-field"><label for="pubAcc">发布账号</label><select id="pubAcc" class="ec-led-control" data-pub-filter="account">${option('', '全部账号', f.account)}${state.accounts.map(acc => option(acc.id, `${acc.name}（${acc.platform}）`, f.account)).join('')}</select></div>
       <div class="ec-led-field"><label for="pubSt">任务状态</label><select id="pubSt" class="ec-led-control" data-pub-filter="status">${option('', '全部状态', f.status)}${Object.entries(STATUS).map(([k, v]) => option(k, v.label, f.status)).join('')}</select></div>
-      <div class="ec-led-field"><label for="pubWm">水印</label><select id="pubWm" class="ec-led-control" data-pub-filter="watermark">${option('', '全部水印', f.watermark)}${['tt', '老葛', '无'].map(w => option(w, w, f.watermark)).join('')}</select></div>
       <div class="ec-led-field ec-led-field--range"><label for="pubFrom">发布时间</label><div class="ec-led-range"><input id="pubFrom" class="ec-led-control" type="date" data-pub-filter="from" value="${esc(f.from)}"><span>–</span><input class="ec-led-control" type="date" data-pub-filter="to" value="${esc(f.to)}" aria-label="发布时间结束"></div></div>
-      <div class="ec-led-filter-actions"><button type="button" class="ec-led-btn" data-pub="reset-filters">⟳ 重置</button><button type="button" class="ec-led-btn ec-led-btn--primary" data-pub="search">🔍 搜索</button></div>
+      <div class="ec-led-filter-actions"><button type="button" class="ec-led-btn ec-led-btn--text" data-pub="reset-filters">重置</button><button type="button" class="ec-led-btn ec-led-btn--primary" data-pub="search">搜索</button></div>
     </div></div></div>`;
   };
 
@@ -182,7 +179,7 @@
 
   const table = rows => `<div class="ec-led-table-wrap"><table class="ec-led-table"><thead><tr>
       <th class="is-check"><input type="checkbox" data-pub="toggle-all" aria-label="全选可重提任务" ${rows.length && rows.every(task => state.selected.includes(task.id)) ? 'checked' : ''}></th>
-      <th>ID</th><th>任务ID</th><th>发布账号</th><th>发布信息</th><th>发布进度</th><th class="is-num">实际发布时间</th><th>商品信息</th><th>字幕</th><th>水印</th><th class="is-num">计划发布时间</th><th class="is-num">创建时间</th><th class="is-right">操作</th>
+      <th>ID</th><th>任务ID</th><th>发布账号</th><th>发布信息</th><th>发布进度</th><th class="is-num">实际发布时间</th><th>商品信息</th><th class="is-num">计划发布时间</th><th class="is-num">创建时间</th><th class="is-right">操作</th>
     </tr></thead><tbody>${rows.map(task => {
       const acc = account(task.accountId);
       return `<tr class="${state.selected.includes(task.id) ? 'is-selected' : ''}">
@@ -194,15 +191,13 @@
       <td>${progressCell(task)}</td>
       <td class="is-num">${task.actual ? esc(task.actual) : '<span class="ec-led-hint">—</span>'}</td>
       <td>${productCell(task)}</td>
-      <td>${esc(task.subtitle)}</td>
-      <td>${watermarkBadge(task.watermark)}</td>
       <td class="is-num">${esc(task.planned)}</td>
       <td class="is-num">${esc(task.created)}</td>
       <td><div class="ec-led-ops">${rowOps(task).map(op => `<button type="button" class="ec-led-btn ec-led-btn--sm${op.kind === 'primary' ? ' ec-led-btn--primary' : ''}${op.kind === 'danger' ? ' ec-led-btn--danger' : ''}" data-pub="${op.lp}" data-id="${op.id || task.id}">${op.label}</button>`).join('')}${state.menu === task.id ? menuPopup(task) : ''}</div></td>
     </tr>`;
     }).join('')}</tbody></table></div>`;
 
-  const emptyState = () => `<div class="ec-led-empty"><i>发</i><h3>暂无发布任务</h3><p>从「生成记录」勾选「已完成 + 已提交」的成片点「批量发布」，任务会在这里执行过审预检后入队；也可以在此新建定时发布任务。</p><div><button type="button" class="ec-led-btn ec-led-btn--primary" data-pub="goto-records">去生成记录挑成片</button><button type="button" class="ec-led-btn" data-pub="new-timed">＋ 新建定时任务</button></div></div>`;
+  const emptyState = () => `<div class="ec-led-empty"><i>发</i><h3>暂无发布任务</h3><p>从「生成记录」勾选「已完成」的成片点「批量提交发布」，任务会在这里执行过审预检后入队；也可以在此新建定时发布任务。</p><div><button type="button" class="ec-led-btn ec-led-btn--primary" data-pub="goto-records">去生成记录挑成片</button><button type="button" class="ec-led-btn" data-pub="new-timed">＋ 新建定时任务</button></div></div>`;
 
   /* ---------- 弹窗 ---------- */
   const precheckReport = () => {
@@ -238,7 +233,7 @@
             <div class="ec-led-info-row"><dt>发布标题</dt><dd>${esc(task.title)}</dd></div>
             <div class="ec-led-info-row"><dt>任务ID / 记录</dt><dd class="is-num">${esc(task.id)} ← 生成记录 ${esc(task.recordId)}</dd></div>
             <div class="ec-led-info-row"><dt>商品</dt><dd>${esc(task.product.name)}（<span class="is-num">${money(task.product.price)}</span> · ${esc(task.product.platformId)}）</dd></div>
-            <div class="ec-led-info-row"><dt>水印 / 字幕</dt><dd>${watermarkBadge(task.watermark)} 字幕${esc(task.subtitle)} · 成片时长 <span class="is-num">${esc(task.duration)}</span></dd></div>
+            <div class="ec-led-info-row"><dt>成片时长</dt><dd class="is-num">${esc(task.duration)}</dd></div>
             <div class="ec-led-info-row"><dt>计划 / 实际</dt><dd class="is-num">${esc(task.planned)}${task.actual ? ` → ${esc(task.actual)}` : ' → 未发布'}</dd></div>
             <div class="ec-led-info-row"><dt>重提次数</dt><dd class="is-num">${task.resubmits} 次（尝试 ${task.attempts} 次，连续失败 ≥${MAX_RETRY} 次自动出队）</dd></div>
           </dl>
@@ -287,10 +282,10 @@
     </div></div>`;
   };
 
-  /* 新建定时任务：账号 / 成片 / 排期（PRD §7.3-B「定时发布」行） */
+  /* 新建定时任务：账号 / 成片 / 排期。可提交的成片＝已完成且还没提交过的 */
   const publishableRecords = () => {
     const rows = window.EcommerceVideoRecords?.rows?.() || [];
-    const ready = rows.filter(row => row.taskStatus === 'done' && row.submitStatus === 'submitted');
+    const ready = rows.filter(row => row.taskStatus === 'done');
     if (ready.length) return ready.map(row => ({ id: row.id, label: `${row.id} · ${row.name.slice(0, 16)}…`, row }));
     return state.tasks.filter(task => task.recordId).map(task => ({ id: task.recordId, label: `${task.recordId} · ${task.product.name.slice(0, 16)}…`, row: null, task }));
   };
@@ -308,7 +303,7 @@
         <div class="ec-led-field"><label for="pubTimedWhen">排期</label><input id="pubTimedWhen" class="ec-led-control" type="datetime-local" data-pub="pick-when" value="${esc(draft.when)}"></div>
         <div class="ec-led-field"><label>并发约束</label><p class="ec-led-hint" style="line-height:1.7">同账号并发 ${ACCOUNT_CONCURRENCY} · 全局并发 ${GLOBAL_CONCURRENCY}；到点后自动进入常规队列排队，不占用人工操作。</p></div>
       </div>
-      ${chosen ? `<div class="ec-led-env" style="margin-top:14px"><div><span>成片</span><b>${esc(chosen.label)}</b></div><div><span>商品</span><b>${esc(chosen.row ? `${chosen.row.name}（${money(chosen.row.price)}）` : chosen.task.product.name)}</b></div><div><span>水印 / 字幕</span><b>${esc(chosen.row ? chosen.row.watermark.text : chosen.task.watermark.text)} · 字幕${esc(chosen.row ? chosen.row.subtitle : chosen.task.subtitle)}</b></div></div>` : ''}
+      ${chosen ? `<div class="ec-led-env" style="margin-top:14px"><div><span>成片</span><b>${esc(chosen.label)}</b></div><div><span>商品</span><b>${esc(chosen.row ? `${chosen.row.name}（${money(chosen.row.price)}）` : chosen.task.product.name)}</b></div><div><span>成片时长</span><b>${esc(chosen.row ? chosen.row.duration : chosen.task.duration)}</b></div></div>` : ''}
       ${draft.when && !whenValid ? '<p class="ec-led-hint" style="margin-top:12px;color:var(--led-danger)">排期需晚于当前时间</p>' : ''}
       </div>
       <footer><span class="is-spacer"></span><button type="button" class="ec-led-btn" data-pub="dismiss">取消</button><button type="button" class="ec-led-btn ec-led-btn--primary" data-pub="create-timed" ${draft.accountId && draft.recordId && whenValid ? '' : 'disabled'}>创建定时任务</button></footer>
@@ -660,7 +655,7 @@
     const planned = `${stamp.getFullYear()}-${pad(stamp.getMonth() + 1)}-${pad(stamp.getDate())} ${pad(stamp.getHours())}:${pad(stamp.getMinutes())}`;
     state.tasks.unshift({
       id, recordId: source.id, accountId: acc.id, status: 'queued', progress: 0, actual: null, planned, plannedAt: draft.when,
-      created: now(), subtitle: base.subtitle, watermark: base.watermark, product, duration: base.duration,
+      created: now(), product, duration: base.duration,
       title: `${product.name.slice(0, 18)} #老葛严选`, attempts: 0, resubmits: 0, timed: true, raw: null,
       precheck: runPrecheck({ ...product, title: '' }, acc).checks,
     });
@@ -704,7 +699,7 @@
       const id = nextTaskId();
       const task = {
         id, recordId: record.recordId, accountId: acc.id, status: result.hardFailed ? 'precheck' : 'queued', progress: 0,
-        actual: null, planned: '立即发布', created: now(), subtitle: record.subtitle, watermark: record.watermark,
+        actual: null, planned: '立即发布', created: now(),
         product: { name: record.name, price: record.price, productId: record.productId, platformId: record.platformId, cat: record.cat },
         duration: record.duration, title: payload.title, attempts: 0, resubmits: 0, timed: false,
         reason: result.hardFailed ? `硬性项未过：${result.notes.filter(note => note.includes('硬性')).join('；')}` : (result.softWarn ? result.notes.join('；') : null),
@@ -728,6 +723,14 @@
     setOffline: value => { state.offline = Boolean(value); if (document.querySelector('.ec-video-publishing')) paint(); },
     tasks: () => state.tasks,
     accounts: () => state.accounts,
+    /* 从生成记录「查看发布任务」跳进来：按生成记录ID筛，只看这一条的发布台账 */
+    focusRecord: recordId => {
+      if (!recordId) return false;
+      state.filters = { ...blankFilters(), q: recordId };
+      state.applied = { ...state.filters };
+      if (document.querySelector('.ec-video-publishing')) paint();
+      return state.tasks.some(task => task.recordId === recordId);
+    },
     reset: () => { clearTimers(); ticker = null; state = blank(); persist(); },
     statusLabel: status => STATUS[status]?.label || status,
   };

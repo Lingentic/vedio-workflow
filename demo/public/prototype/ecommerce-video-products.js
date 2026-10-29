@@ -247,8 +247,8 @@
       ...pool.image.map((file, at) => ({ ...file, kind: 'image', at })),
     ];
     return `<div class="ec-prod-pool">
-      <span class="ec-prod-pool-label">${draft ? '已归档' : '已归入'} ${files.length}</span>
-      ${files.length ? files.map(file => `<span class="ec-prod-chip">${file.src ? `<img src="${esc(file.src)}" alt="">` : `<i>${file.kind === 'video' ? '▶' : '图'}</i>`}<em>${file.kind === 'video' ? '视频' : '图片'}</em><span title="${esc(file.name)}">${esc(file.from ? `${file.from} · ${file.name}` : file.name)}</span>${locked ? '' : `<button type="button" data-lp="remove-pool" data-zone="${file.kind}" data-index="${file.at}" aria-label="移出 ${esc(file.name)}">×</button>`}</span>`).join('') : `<span class="ec-prod-hint">${draft ? '勾选左上角复选框即归档' : '勾选候选后点下面的「归入素材中心」'}</span>`}
+      <span class="ec-prod-pool-label">${draft ? '已勾选' : '已归入'} ${files.length}</span>
+      ${files.length ? files.map(file => `<span class="ec-prod-chip">${file.src ? `<img src="${esc(file.src)}" alt="">` : `<i>${file.kind === 'video' ? '▶' : '图'}</i>`}<em>${file.kind === 'video' ? '视频' : '图片'}</em><span title="${esc(file.name)}">${esc(file.from ? `${file.from} · ${file.name}` : file.name)}</span>${locked ? '' : `<button type="button" data-lp="remove-pool" data-zone="${file.kind}" data-index="${file.at}" aria-label="${draft ? '取消勾选' : '移出'} ${esc(file.name)}">×</button>`}</span>`).join('') : `<span class="ec-prod-hint">${draft ? '勾选左上角复选框先攒着，点「确认」才归档' : '勾选候选后点下面的「归入素材中心」'}</span>`}
     </div>`;
   };
   const crawlZone = (host, crawl, zone, locked) => {
@@ -291,7 +291,7 @@
       </div>
       ${CRAWL_ZONES.map(zone => crawlZone(host, crawl, zone, locked)).join('')}
       ${archiveStrip(pool, locked, draft)}
-      <div class="ec-prod-crawl-actions"><small>${locked ? '下面是在库素材，来自记录导入、暂无逐条留痕。' : draft ? '勾了就算归档；点「确认」随商品一起入库。重新爬取只刷新候选区，<b>已归档的不会丢</b>。' : '重新爬取只刷新候选区，<b>已归入的不会丢</b>。'}</small>${!draft && picked ? `<button type="button" class="ec-prod-btn ec-prod-btn--sm ec-prod-btn--primary" data-lp="commit-crawl">↓ 归入素材中心 (${picked})</button>` : ''}</div>
+      <div class="ec-prod-crawl-actions"><small>${locked ? '下面是在库素材，来自记录导入、暂无逐条留痕。' : draft ? '勾选＝先攒在下面这条「已勾选」里，点「确认」才真正归档进素材中心。重新爬取只刷新候选区，<b>已勾选的不会丢</b>。' : '重新爬取只刷新候选区，<b>已归入的不会丢</b>。'}</small>${!draft && picked ? `<button type="button" class="ec-prod-btn ec-prod-btn--sm ec-prod-btn--primary" data-lp="commit-crawl">↓ 归入素材中心 (${picked})</button>` : ''}</div>
     </div>`;
   };
   /* 放大查看：点候选卡的图/封面进来 */
@@ -434,10 +434,10 @@
   const entryDialog = () => {
     const d = state.draft;
     return `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-dialog" role="dialog" aria-modal="true" aria-labelledby="lpEntryTitle">
-      <header><div><h2 id="lpEntryTitle">录入商品</h2><p>第一步点「采集」：拉回资料并顺带爬到同类商品图片；第二步点「↓ 爬取视频」单独爬视频。点「确认」即入库，没爬完也接着爬。</p></div><button type="button" data-lp="leave-entry" aria-label="关闭">×</button></header>
+      <header><div><h2 id="lpEntryTitle">录入商品</h2><p>第一步点「采集」：拉回资料并爬回同类商品图片；第二步点各区按钮爬视频 / 图片。勾选的才进「已勾选」，点「确认」才归档入库，没爬完也接着爬。</p></div><button type="button" data-lp="leave-entry" aria-label="关闭">×</button></header>
       <div class="ec-prod-dialog-body"><div class="ec-prod-form-grid">${entryForm()}${crawlTab(d)}</div></div>
       <footer>
-        <div class="ec-prod-tally"><span>▶ 视频: <b>${d.pool.video.length}</b></span><span>⛰ 图片: <b>${d.pool.image.length + d.pool.main.length}</b></span></div>
+        <div class="ec-prod-tally"><span>▶ 视频: <b>${d.pool.video.length}</b></span><span>⛰ 图片: <b>${d.pool.image.length}</b></span></div>
         <span class="is-spacer"></span>
         <button type="button" class="ec-prod-btn" data-lp="leave-entry">取消</button>
         <button type="button" class="ec-prod-btn ec-prod-btn--primary" data-lp="submit-entry">✓ 确认</button>
@@ -447,34 +447,29 @@
   /* ---------- 商品详情子页（PRD §4.4-②） ---------- */
   const mediaFiles = (item, kind) => {
     const stored = item.assets?.[kind];
-    if (stored?.length) return stored.map(file => ({ name: file.name, duration: file.duration ? Math.round(Number(file.duration)) : null, size: file.size, src: file.src || imgOf(file.name), from: file.from, disabled: Boolean(file.disabled) }));
+    if (stored?.length) return stored.map(file => ({ name: file.name, duration: file.duration ? Math.round(Number(file.duration)) : null, size: file.size, src: file.src || imgOf(file.name), from: file.from }));
     return Array.from({ length: kind === 'video' ? item.materials.video : item.materials.image }, (_, i) => ({
       name: `${kind === 'video' ? '视频素材' : '图片素材'} ${i + 1}`, duration: kind === 'video' ? 10 : null,
       src: imgOf(`${item.id}-${kind}-${i}`),
     }));
   };
-  /* 基本信息里的素材墙 = 爬到的全部（含没归入的）＋ 详情页增补进来的本地素材；归入过的才谈得上禁用 */
+  /* 基本信息里的素材墙 = 爬到的全部（含没归入的）＋ 详情页增补进来的本地素材 */
   const crawledOf = (item, kind) => {
     const stored = item.assets?.[kind] || [];
-    const indexOf = new Map(stored.map((file, at) => [file.name, at]));
+    const pooled = new Set(stored.map(file => file.name));
     const seen = new Map();
     (item.crawls || []).forEach(record => (record[kind] || []).forEach(row => { if (!seen.has(row.name)) seen.set(row.name, row); }));
     (liveCrawls.get(item.id)?.zones?.[kind]?.results || []).forEach(row => { if (!seen.has(row.name)) seen.set(row.name, row); });
     stored.forEach(file => { if (!seen.has(file.name)) seen.set(file.name, file); });
-    const rows = [...seen.values()].map(row => {
-      const at = indexOf.get(row.name);
-      return {
-        name: row.name, src: row.src || imgOf(row.name), duration: row.duration || null, origin: row.channel || row.from || '联网爬取',
-        inPool: at !== undefined || Boolean(row.picked), assetIndex: at ?? -1, disabled: at !== undefined && Boolean(stored[at].disabled),
-      };
-    });
-    return rows.length ? rows : mediaFiles(item, kind).map((file, at) => ({ ...file, origin: file.from || '联网爬取', inPool: true, assetIndex: at, disabled: Boolean(file.disabled) }));
+    const rows = [...seen.values()].map(row => ({
+      name: row.name, src: row.src || imgOf(row.name), duration: row.duration || null,
+      origin: row.channel || row.from || '联网爬取', inPool: pooled.has(row.name) || Boolean(row.picked),
+    }));
+    return rows.length ? rows : mediaFiles(item, kind).map(file => ({ ...file, origin: file.from || '联网爬取', inPool: true }));
   };
-  /* 素材墙上的单张卡：禁用是真实开关（灰显、可恢复、计入黑段缺料） */
-  const mediaCard = (item, kind, row) => `<article class="ec-prod-media${row.disabled ? ' is-off' : ''}">
-      <div class="ec-prod-media-frame">${row.src ? `<img src="${esc(row.src)}" alt="">` : ''}<span class="ec-prod-tag">${!row.inPool ? '未归入' : row.disabled ? '已禁用' : kind === 'video' ? '常规' : '图片'}</span>${kind === 'video' ? '<span class="ec-prod-play">▶</span>' : ''}${row.duration ? `<span class="ec-prod-dur is-num">00:${String(row.duration).padStart(2, '0')}</span>` : ''}</div>
-      <div class="ec-prod-media-body"><strong>${esc(row.name)}</strong><small>来源 ${esc(row.origin)} · ${!row.inPool ? '未归入，只在候选区' : row.disabled ? '已禁用，不参与生成装配' : '已归入素材中心'}</small></div>
-      ${row.assetIndex >= 0 ? `<div class="ec-prod-media-ops"><button type="button"${row.disabled ? '' : ' class="is-danger"'} data-lp="${row.disabled ? 'media-enable' : 'media-disable'}" data-id="${item.id}" data-kind="${kind}" data-index="${row.assetIndex}">${row.disabled ? '↩ 恢复' : '禁用'}</button></div>` : ''}
+  const mediaCard = (kind, row) => `<article class="ec-prod-media">
+      <div class="ec-prod-media-frame">${row.src ? `<img src="${esc(row.src)}" alt="">` : ''}<span class="ec-prod-tag">${!row.inPool ? '未归入' : kind === 'video' ? '常规' : '图片'}</span>${kind === 'video' ? '<span class="ec-prod-play">▶</span>' : ''}${row.duration ? `<span class="ec-prod-dur is-num">00:${String(row.duration).padStart(2, '0')}</span>` : ''}</div>
+      <div class="ec-prod-media-body"><strong>${esc(row.name)}</strong><small>来源 ${esc(row.origin)} · ${row.inPool ? '已归入素材中心' : '未归入，只在候选区'}</small></div>
     </article>`;
   /* 增补本地素材：列表行右侧蓝链进来的二级窗口，与联网爬取彻底分开 */
   const supplementView = () => {
@@ -522,7 +517,7 @@
         const list = crawledOf(item, kind);
         return `<section class="ec-prod-media-group">
         <header><i>${kind === 'video' ? '▶' : '⛰'}</i><b>${kind === 'video' ? '视频素材' : '图片素材'} <span>(${list.length})</span></b><small class="ec-prod-hint">联网爬到的都在这 · 已归入 ${list.filter(row => row.inPool).length}</small></header>
-        ${list.length ? `<div class="ec-prod-media-grid${kind === 'video' ? ' ec-prod-media-grid--video' : ''}">${list.map(row => mediaCard(item, kind, row)).join('')}</div>` : `<div class="ec-prod-hint" style="padding:18px 0">还没有${kind === 'video' ? '视频' : '图片'}素材${kind === 'video' ? '，黑段将回退默认组合' : ''}；到「联网爬取」tab 再爬一次补齐。</div>`}
+        ${list.length ? `<div class="ec-prod-media-grid${kind === 'video' ? ' ec-prod-media-grid--video' : ''}">${list.map(row => mediaCard(kind, row)).join('')}</div>` : `<div class="ec-prod-hint" style="padding:18px 0">还没有${kind === 'video' ? '视频' : '图片'}素材${kind === 'video' ? '，黑段将回退默认组合' : ''}；到「联网爬取」tab 再爬一次补齐。</div>`}
       </section>`;
       }).join('')}`;
   /* 离开录入前的确认：文案照产品要求，确认后就关页面 + 提示保存成功 */
@@ -649,7 +644,7 @@
     return item.assets;
   };
   const syncMaterials = item => {
-    const usable = key => item.assets[key].filter(file => !file.disabled).length;
+    const usable = key => item.assets[key].length;
     item.materials = { ...item.materials, video: usable('video'), image: usable('image') };
   };
   const crawlBasis = host => ({ name: host?.name || '', cat: host?.cat || '' });
@@ -807,9 +802,9 @@
     crawl.taken = poolNames(host);
     startZone(host, crawl, zoneKey, [...crawl.channels], openRecord(host, crawl.channels, [zoneKey]), false);
     paintKeepingFocus();
-    if (kept) toast(`重新爬取：只刷新候选区，已归档的 ${kept} 个不动`);
+    if (kept) toast(`重新爬取：只刷新候选区，${isDraft(host) ? '已勾选' : '已归档'}的 ${kept} 个不动`);
   };
-  /* 勾选即归入：一条候选进/出素材中心只认这两个动作；「全部归入」是同一动作的批量版 */
+  /* 勾选＝把候选放进下面这条篮子（弹窗＝已勾选，详情＝待归入）；取消勾选是同一个动作的反向 */
   const takeRow = (host, pool, zoneKey, row) => {
     pool[zoneMeta(zoneKey).card].push({ name: row.name, src: row.src || imgOf(row.name), from: row.channel, size: row.size, duration: row.duration });
     row.picked = true;
@@ -898,7 +893,7 @@
       const row = crawl?.zones[zoneKey]?.results[Number(trigger.dataset.index)];
       if (!row || row.dup) return;
       row.picked = !row.picked;
-      /* 弹窗里勾了就直接归档（确认即入库）；详情里勾选只是选中，要点「归入素材中心」才算 */
+      /* 弹窗里勾选＝攒进「已勾选」，点确认才归档入库；详情里勾选只是选中，要点「归入素材中心」才算 */
       if (isDraft(host)) {
         if (row.picked) takeRow(host, host.pool, zoneKey, row); else dropRow(host, host.pool, zoneKey, row);
       } else {
@@ -965,17 +960,16 @@
         Object.assign(d, { collecting: false }, filled);
         const main = DEMO_MAIN[ks] || { name: '采集主图.jpg', src: imgOf(`collect-${ks}`) };
         d.pool.main = [{ ...main, from: '采集' }];
-        /* 第一步：采集的同时把同类商品图片一并爬回来，直接进素材中心；视频要另点「爬取视频」 */
+        /* 第一步：采集顺带把同类商品图片爬回候选区；进「已勾选」要他亲手勾，入库要他亲手点确认 */
         const shots = imageBank(d.platform, ks);
-        d.pool.image = shots.map(row => ({ name: row.name, src: row.src || imgOf(row.name), from: row.channel, size: row.size, duration: null }));
-        d.crawls.push({
-          id: uid('cr'), at: stamp(), channel: `采集 · ${d.platform}`, status: 'done', pending: 0, failed: [], video: [],
-          image: shots.map(row => ({ name: row.name, kind: 'image', channel: row.channel, src: row.src || imgOf(row.name), size: row.size, duration: null, dup: false, picked: true })),
-        });
-        /* 图片已经随采集爬过一轮 → 图片区按钮立刻变「重新爬取图片」 */
         const live = crawlFor(d);
         live.channels.forEach(ch => { live.zones.image.attempts[ch] = (live.zones.image.attempts[ch] || 0) + 1; });
-        toast(`已采集：资料回填，同类图片 ${shots.length} 张已入素材中心`);
+        live.zones.image.results = shots.map(row => ({ name: row.name, channel: row.channel, src: row.src || imgOf(row.name), size: row.size, duration: null, picked: false, dup: false }));
+        d.crawls.push({
+          id: uid('cr'), at: stamp(), channel: `采集 · ${d.platform}`, status: 'done', pending: 0, failed: [], video: [],
+          image: shots.map(row => ({ name: row.name, kind: 'image', channel: row.channel, src: row.src || imgOf(row.name), size: row.size, duration: null, dup: false, picked: false })),
+        });
+        toast(`已采集：资料回填，同类图片 ${shots.length} 张已进候选区，勾选后点「确认」才归档`);
         paint();
       }, 1100);
       return;
@@ -1005,19 +999,6 @@
       toast(running
         ? `已入库；这次爬取还在跑，「联网爬取」tab 上的徽标停了就是跑完`
         : materialTotal(created) ? '已入库，素材状态「素材就绪」' : '已入库；未爬到素材，状态「待爬取」，可在详情「联网爬取」再爬');
-      return;
-    }
-    /* 禁用 / 恢复：落在具体那份素材上，计数与黑段缺料随之变 */
-    if (action === 'media-disable' || action === 'media-enable') {
-      if (!item) return;
-      const kind = trigger.dataset.kind;
-      const file = ensureAssets(item)[kind][Number(trigger.dataset.index)];
-      if (!file) return;
-      file.disabled = action === 'media-disable';
-      syncMaterials(item);
-      item.updated = today();
-      persist(); paint();
-      toast(file.disabled ? '已禁用，生成装配会跳过它' : '已恢复，重新参与生成装配');
       return;
     }
   };

@@ -122,6 +122,30 @@ textarea.ec-led-control { min-height: 74px; padding: 9px 11px; resize: vertical;
 .ec-led-range > span { color: var(--led-muted); font-size: 12px; }
 .ec-led-filter-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--led-space-2); grid-column: 1 / -1; }
 
+/* ---------- 生成记录：筛选左右两栏并列（压扁，别抢列表的高度） ---------- */
+.ec-led-card--filters > .ec-led-card-body { padding: 12px var(--led-space-4); }
+.ec-led-filters--two { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px var(--led-space-5); }
+.ec-led-filter-col { display: grid; gap: 10px; min-width: 0; }
+.ec-led-filter-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ec-led-filters--two .ec-led-field { gap: 4px; }
+.ec-led-filters--two .ec-led-field > label { font-size: 11.5px; }
+.ec-led-filters--two .ec-led-control, .ec-led-filters--two .ec-led-btn { min-height: 30px; font-size: 12px; }
+.ec-led-dirty { margin-right: auto; color: var(--led-orange); font-size: 11.5px; }
+.ec-led-btn--text { min-height: 30px; padding: 0 6px; border-color: transparent; background: none; color: var(--led-ink-soft); }
+.ec-led-btn--text:hover:not(:disabled) { border-color: transparent; color: var(--led-purple); background: none; }
+
+/* ---------- 生成记录详情：可折叠分区，标题行只给一个下箭头 ---------- */
+.ec-led-sec { border: 1px solid var(--led-line); border-radius: var(--led-radius-sm); background: var(--led-surface); overflow: hidden; }
+.ec-led-sec + .ec-led-sec { margin-top: 12px; }
+.ec-led-sec-head { width: 100%; min-height: 46px; display: flex; align-items: center; gap: 9px; padding: 0 14px; border: 0; background: none; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+.ec-led-sec-head:hover { background: #faf9fc; }
+.ec-led-sec-head > b { margin-right: auto; font-size: 13px; font-weight: 650; }
+.ec-led-sec-head > small { display: inline-flex; align-items: center; gap: 6px; color: var(--led-muted); font-size: 11.5px; font-weight: 400; }
+.ec-led-caret { width: 7px; height: 7px; flex: 0 0 auto; margin-left: 10px; border-right: 1.7px solid var(--led-ink-faint); border-bottom: 1.7px solid var(--led-ink-faint); transform: rotate(45deg) translate(-2px, -2px); transition: transform var(--client-dur-enter) var(--client-ease-out); }
+.ec-led-sec.is-open .ec-led-caret { transform: rotate(-135deg) translate(-2px, -2px); }
+.ec-led-sec-body { padding: 14px; border-top: 1px solid var(--led-line); }
+.ec-led-sec-body .ec-led-info-row + .ec-led-info-row { border-top: 1px solid #f2f0f6; }
+
 /* 按钮的配色、状态和尺寸由 ecommerce-video-controls.css 统一维护。 */
 .ec-led-ops { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; position: relative; }
 /* 行内「更多」菜单 */
@@ -154,10 +178,14 @@ textarea.ec-led-control { min-height: 74px; padding: 9px 11px; resize: vertical;
 .ec-led-table tbody tr { transition: background var(--client-dur-enter) var(--client-ease-out); }
 .ec-led-table tbody tr:hover { background: #faf9fd; }
 .ec-led-table tbody tr.is-selected { background: #f7f4ff; }
+.ec-led-table tbody tr.ec-led-rowlink { cursor: pointer; }
+.ec-led-table tbody tr.ec-led-rowlink:focus-visible { outline: 2px solid var(--led-purple); outline-offset: -2px; }
 .ec-led-table tbody tr:last-child td { border-bottom: 0; }
 .ec-led-table td.is-num, .ec-led-table th.is-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ec-led-table th.is-right, .ec-led-table td.is-right { text-align: right; }
 .ec-led-table .is-check { width: 40px; padding-inline: 12px 6px; }
+/* 任务ID 是系统生成的、不可改，压成弱化的小字，视觉重心让给商品 */
+.ec-led-table .ec-led-cell-id { color: var(--led-muted); font-size: 11px; font-weight: 500; letter-spacing: .2px; }
 .ec-led-table input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--led-purple); cursor: pointer; }
 .ec-led-table input[type="checkbox"]:disabled { cursor: not-allowed; }
 .ec-led-cell-product { display: flex; align-items: center; gap: 9px; min-width: 0; }
@@ -165,10 +193,11 @@ textarea.ec-led-control { min-height: 74px; padding: 9px 11px; resize: vertical;
 .ec-led-cell-product strong { display: block; max-width: 260px; overflow: hidden; font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .ec-led-cell-product small { display: block; margin-top: 2px; color: var(--led-muted); font-size: 11px; }
 
-/* 合并列后的次级信息行：水印/字幕并进商品信息，提交状态并进任务状态 */
-.ec-led-cell-meta { display: flex; align-items: center; gap: 6px; margin-top: 5px; padding-left: 2px; }
-.ec-led-cell-meta > small { color: var(--led-muted); font-size: 10.5px; font-variant-numeric: tabular-nums; }
-.ec-led-cell-status { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+/* 状态一律同一种颜色，只靠那颗点区分；生成中的点会呼吸 */
+.ec-led-state { display: inline-flex; align-items: center; gap: 6px; color: var(--led-ink-soft); font-size: 12px; white-space: nowrap; }
+.ec-led-state::before { content: ""; width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: #b3adbf; }
+.ec-led-state.is-live::before { animation: ec-led-breathe 1.4s ease-in-out infinite; }
+.ec-led-dim { color: var(--led-ink-faint); }
 .ec-led-thumb { width: 40px; height: 40px; flex: 0 0 auto; position: relative; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--led-line); border-radius: 8px; color: var(--led-ink-faint); background: #f3f2f7; font-size: 11px; font-weight: 600; }
 .ec-led-thumb > img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
 .ec-led-price { color: var(--led-danger); font-weight: 650; }
@@ -179,6 +208,7 @@ textarea.ec-led-control { min-height: 74px; padding: 9px 11px; resize: vertical;
 .ec-led-log-bar > i { display: block; height: 100%; border-radius: inherit; background: var(--led-purple); transition: width var(--client-dur-enter) var(--client-ease-out); }
 .ec-led-log-bar.is-fail > i { background: var(--led-danger); }
 .ec-led-log-bar.is-ok > i { background: var(--led-ok); }
+.ec-led-log-bar.is-idle > i { background: #cdc8da; }
 
 /* ---------- 空态 ---------- */
 .ec-led-empty { display: grid; justify-items: center; align-content: center; min-height: 300px; padding: 40px 24px; border: 1px dashed #dcd8e8; border-radius: var(--led-radius); background: var(--led-surface); text-align: center; }
@@ -228,16 +258,11 @@ textarea.ec-led-control { min-height: 74px; padding: 9px 11px; resize: vertical;
 /* ---------- 装配明细 / 时间线（生成记录详情） ---------- */
 .ec-led-segments { display: grid; gap: 8px; }
 .ec-led-seg { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; gap: 11px; align-items: start; padding: 10px 12px; border: 1px solid var(--led-line); border-radius: var(--led-radius-sm); background: var(--led-surface); }
-.ec-led-seg > .ec-led-seg-tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 650; }
-.ec-led-seg--red > .ec-led-seg-tag { color: var(--led-red); background: var(--led-red-soft); }
-.ec-led-seg--orange > .ec-led-seg-tag { color: var(--led-orange); background: var(--led-orange-soft); }
-.ec-led-seg--grey > .ec-led-seg-tag { color: var(--led-grey); background: var(--led-grey-soft); }
+.ec-led-seg > .ec-led-seg-tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 6px; color: var(--led-ink-soft); background: #f2f0f7; font-size: 11px; font-weight: 650; }
 .ec-led-seg p { margin-top: 5px; color: var(--led-ink-soft); font-size: 12px; line-height: 1.75; }
 .ec-led-seg > .is-tail { color: var(--led-muted); font-size: 11px; white-space: nowrap; }
 .ec-led-timeline { display: flex; align-items: center; gap: 3px; margin-top: 12px; }
 .ec-led-timeline > i { height: 8px; border-radius: 3px; background: var(--led-grey-soft); }
-.ec-led-timeline > i.is-red { background: var(--led-red); }
-.ec-led-timeline > i.is-orange { background: var(--led-orange); }
 
 /* ---------- 详情信息表 ---------- */
 .ec-led-info { display: grid; gap: 0; margin: 0; }
@@ -255,8 +280,9 @@ textarea.ec-led-control { min-height: 74px; padding: 9px 11px; resize: vertical;
 .ec-video-records .ec-led-table tr.is-located > td { background: #f4efff; }
 .ec-video-records .ec-led-table tr.is-located > td:first-child { box-shadow: inset 3px 0 var(--led-purple); }
 .ec-video-records .ec-led-table tr.is-located:focus { outline: 2px solid #ae93eb; outline-offset: -2px; }
-.ec-record-result-preview video { display: block; width: 100%; max-height: min(62dvh, 600px); margin: 0 auto 12px; border-radius: 8px; object-fit: contain; background: #1d1924; }
+.ec-record-result-preview video { display: block; width: 100%; max-height: min(44dvh, 420px); margin: 0 auto 12px; border-radius: 8px; object-fit: contain; background: #1d1924; }
 .ec-record-result-preview .ec-record-media-unavailable { margin: 0 0 12px; padding: 14px; border: 1px solid #e5d9f4; border-radius: 8px; color: var(--led-ink-soft); background: #f8f5fc; line-height: 1.8; }
+.ec-led-film-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 @keyframes ec-led-in { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: none; } }
 .ec-led-dialog > header { flex: 0 0 auto; display: flex; align-items: flex-start; justify-content: space-between; gap: var(--led-space-3); padding: 16px var(--led-space-5); border-bottom: 1px solid var(--led-line); }
 .ec-led-dialog > header > div { min-width: 0; }
@@ -285,6 +311,9 @@ textarea.ec-led-control { min-height: 74px; padding: 9px 11px; resize: vertical;
 @media (max-width: 1240px) {
   .ec-led-scroll { padding: var(--led-space-4); }
   .ec-led-field--search { grid-column: span 1; }
+}
+@media (max-width: 900px) {
+  .ec-led-filters--two, .ec-led-filter-pair { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 1050px) {
   .ec-led-cols { grid-template-columns: minmax(0, 1fr); }

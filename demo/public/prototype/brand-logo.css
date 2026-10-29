@@ -1,0 +1,47 @@
+/* Use the supplied transparent logo at its original aspect ratio and colors. */
+.zup-brand-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  user-select: none;
+}
+.product-logo--titlebar { width: 32px; height: 32px; }
+.product-logo--auth { width: 40px; height: 40px; }
+.product-logo--zhangyu {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  height: 32px;
+  overflow: visible;
+  background: transparent;
+}
+.zh-titlebar-brand { display: block; width: 32px; height: 32px; flex: 0 0 auto; }
+.zh-titlebar-name { color: #171921; font-size: 18px; line-height: 1; font-weight: 650; white-space: nowrap; }
+.tcm-gpt-brand > .agent-brand-mark,
+.video-remake-brand > .agent-brand-mark { display: block; width: 36px; height: 36px; flex: 0 0 36px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.agent-sidebar-brand { display: flex; align-items: center; gap: 8px; padding: 4px 12px 8px; }
+.agent-sidebar-brand > .zup-brand-image { width: 36px; height: 36px; flex: 0 0 36px; }
+.agent-sidebar-brand > strong { font-size: 15px; font-weight: 650; }
+.launcher-brand .product-logo--launcher { width: 32px; height: 32px; filter: none; }
+.product-logo--workspace, .product-logo--module { width: 24px; height: 24px; }
+.prototype-theme-preview-mark { width: 40px; height: 40px; }
+.user-entry-logo { width: 30px; height: 30px; flex-basis: 30px; }
+.app-enterprise-core > i { display: grid; place-items: center; width: 34px; height: 34px; }
+.login-account-option--personal > i,
+.points-wallet-mark,
+.membership-current-mark,
+.membership-modal-logo,
+:is(.portal-page, .compare-page, .legal-index-page) .mark {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.login-account-option--personal .zup-brand-image { width: 44px; height: 44px; }
+.points-wallet-mark .zup-brand-image { width: 44px; height: 44px; }
+.membership-current-mark .zup-brand-image { width: 40px; height: 40px; }
+.membership-modal-logo .zup-brand-image { width: 38px; height: 38px; }
+
+.tcm-gpt-ai.agent-brand-mark, .tcm-gpt-welcome > .agent-brand-mark { background: transparent; border-radius: 0; padding: 0; box-shadow: none; }
