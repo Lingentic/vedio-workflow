@@ -83,6 +83,21 @@ export async function renderTask(task: Task, library: Library, media: Media, sig
   await media.ff(['-n', '-f', 'concat', '-safe', '0', '-i', 'voice-list.txt', '-c:a', 'copy', 'narration.wav'], { signal, cwd: work });
   const args = ['-n', '-i', picture, '-i', 'narration.wav'];
   const filters: string[] = [];
+  const channel = () => (120 + randomInt(136)).toString(16).padStart(2, '0');
+  await media.ff(['-y', '-f', 'lavfi', '-i', `color=c=0x${channel()}${channel()}${channel()}:s=512x512:d=0.1,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*clip(1-hypot(X-256,Y-256)/256,0,1)'`, '-frames:v', '1', 'mark-blob.png'], { signal, cwd: work });
+  const color = () => `0x${randomInt(0x1000000).toString(16).padStart(6, '0')}`;
+  args.push('-f', 'lavfi', '-t', number(plan.duration), '-i', `gradients=s=1080x1920:nb_colors=3:c0=${color()}:c1=${color()}:c2=${color()}:seed=${randomInt(4294967295)}:speed=0.015`);
+  args.push('-loop', '1', '-t', number(plan.duration), '-i', 'mark-blob.png');
+  filters.push(
+    `[2:v]fps=30,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1[bg]`,
+    `[3:v]split=4[g1][g2][g3][g4]`,
+    `[g1]scale=w='max(16,trunc(512*(0.01+3.99*t/${number(plan.duration)})/2)*2)':h=-2:eval=frame,format=rgba,colorchannelmixer=aa=${(0.3 + Math.random() * 0.15).toFixed(2)}[grow]`,
+  );
+  const dots = [1, 2, 3].map(() => ({ size: 40 + randomInt(33), hue: [randomInt(120), randomInt(120), randomInt(120)].map(v => (100 + v) / 255), alpha: (0.2 + Math.random() * 0.2).toFixed(2), x: 40 + randomInt(960), y: 60 + randomInt(1700) }));
+  dots.forEach((dot, i) => filters.push(`[g${i + 2}]scale=${dot.size}:-2,format=rgba,colorchannelmixer=rr=${dot.hue[0].toFixed(2)}:gg=${dot.hue[1].toFixed(2)}:bb=${dot.hue[2].toFixed(2)}:aa=${dot.alpha}[t${i}]`));
+  filters.push(`[0:v][bg]blend=all_mode=normal:all_opacity=${(0.82 + Math.random() * 0.08).toFixed(2)}[base]`);
+  filters.push(`[base][grow]overlay=(W-w)/2:(H-h)/2[b1]`);
+  dots.forEach((dot, i) => filters.push(`[b${i + 1}][t${i}]overlay=${dot.x}:${dot.y}[b${i + 2}]`));
   const zoom = 1.02 + Math.random() * 0.025;
   const wide = Math.round(1080 * zoom) & ~1, tall = Math.round(1920 * zoom) & ~1;
   const offsetX = randomInt(wide - 1080 + 1) & ~1, offsetY = randomInt(tall - 1920 + 1) & ~1;
@@ -100,10 +115,10 @@ export async function renderTask(task: Task, library: Library, media: Media, sig
     const escaped = fonts.replaceAll('\\', '/').replaceAll(':', '\\:').replaceAll("'", "\\'");
     video += `,ass=filename=captions.ass:fontsdir='${escaped}'`;
   }
-  filters.push(`[0:v]${video},format=yuv420p[v]`);
+  filters.push(`[b4]${video},format=yuv420p[v]`);
   if (task.settings.bgmId) {
     args.push('-stream_loop', '-1', '-i', source(task.settings.bgmId));
-    filters.push(`[2:a]volume=${task.settings.bgmVolume}[music];[1:a][music]amix=inputs=2:duration=first:normalize=0[a]`);
+    filters.push(`[4:a]volume=${task.settings.bgmVolume}[music];[1:a][music]amix=inputs=2:duration=first:normalize=0[a]`);
   }
   args.push('-filter_complex_threads', '2', '-filter_complex', filters.join(';'));
   args.push('-map', '[v]', '-map', task.settings.bgmId ? '[a]' : '1:a:0', ...codec, '-c:a', 'aac', '-b:a', '192k', '-t', number(plan.duration), '-movflags', '+faststart', '-progress', 'pipe:1', path.join(out, 'result.mp4'));
