@@ -1,7 +1,7 @@
 {
   "model": "qwen-audio-3.1-tts-plus",
   "input": {
-    "voice": "qwen-audio-3.1-tts-plus-xs1023-0e26230e68ee4ce4a1982ebbedd2b1f1",
+    "voice": "qwen-audio-3.1-tts-plus-testv-5b06297c2bcf4892b0c2e759019a3d34",
     "format": "wav",
     "sample_rate": 24000,
     "rate": 1.1,
