@@ -6,6 +6,7 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+import urllib.parse
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -74,12 +75,13 @@ class PreviewTests(unittest.TestCase):
     def test_media_byte_ranges_and_head(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(service, "MEDIA", directory):
             data = b"0123456789" * 200
-            Path(directory, "preview.mp4").write_bytes(data)
+            filename = "测试 #标签100%.mp4"
+            Path(directory, filename).write_bytes(data)
             server = service.ThreadingHTTPServer(("127.0.0.1", 0), service.Handler)
             worker = threading.Thread(target=server.serve_forever, daemon=True)
             worker.start()
             try:
-                url = f"http://127.0.0.1:{server.server_port}/media/preview.mp4"
+                url = f"http://127.0.0.1:{server.server_port}/media/" + urllib.parse.quote(filename)
                 with urllib.request.urlopen(urllib.request.Request(url, headers={"Range": "bytes=10-19"})) as response:
                     self.assertEqual(response.status, 206)
                     self.assertEqual(response.headers["Content-Range"], f"bytes 10-19/{len(data)}")

@@ -83,7 +83,7 @@ try:
 except ImportError:  # pragma: no cover
     creq = None
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 _clients = {"kuaishou": None, "douyin": None}
 _cookie_mtime = {"kuaishou": None, "douyin": None}
 
@@ -116,7 +116,7 @@ def get_client(platform):
     """按平台返回常驻客户端；cookie 文件更新后自动重建。"""
     with _lock:
         cur_mtime = _mtime(KS_COOKIE if platform == "kuaishou" else DY_COOKIE)
-        if _clients[platform] is not None and _cookie_mtime[platform] == cur_mtime:
+        if _clients.get(platform) is not None and _cookie_mtime[platform] == cur_mtime:
             return _clients[platform]
         old = _clients.pop(platform, None)
         if old is not None:
@@ -130,6 +130,20 @@ def get_client(platform):
         else:
             from dy_abogus import DouyinPure
             client = DouyinPure().__enter__()
+            class SearchSigner:
+                def sign_search(self, keyword, offset, count):
+                    import dy_abogus
+                    result = subprocess.run(["node", dy_abogus.SIGNER, "search", keyword, str(offset), str(count)],
+                                            cwd=os.path.dirname(dy_abogus.SIGNER), capture_output=True,
+                                            text=True, encoding="utf-8", timeout=20)
+                    url = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+                    if result.returncode or not url.startswith("https://www.douyin.com/"):
+                        raise RuntimeError("抖音搜索签名失败，请检查签名服务")
+                    return url
+                def close(self):
+                    pass
+            client.signer.close()
+            client.signer = SearchSigner()
         _clients[platform] = client
         _cookie_mtime[platform] = cur_mtime
         return client
@@ -193,11 +207,11 @@ def norm_ks(feed):
 
 
 def norm_dy(item):
-    aw = item.get("aweme_info") or {}
+    aw = item.get("aweme_info") or item.get("aweme") or (item if item.get("aweme_id") else {})
     if not aw:
         return None
     from dy_abogus import DouyinPure
-    links = DouyinPure.video_links(item)
+    links = DouyinPure.video_links({"aweme_info": aw})
     stats = aw.get("statistics") or {}
     vid = aw.get("video") or {}
     vids = [{"quality": q, "url": u}
@@ -252,10 +266,10 @@ def do_search(platform, keyword, pages):
                 items = [n for n in (norm_dy(x) for x in data) if n]
                 if not items and raws:
                     last = raws[-1] or {}
-                    if not last.get("data") and (last.get("status_code") not in (0, None) or last.get("http")):
+                    if not last.get("data") and (last.get("status_code") not in (0, None) or last.get("http") or last.get("err")):
                         drop_client(platform)
                         return None, {"code": "api_error", "raw": {"http": last.get("http"), "status": last.get("status_code"), "msg": last.get("status_msg")},
-                                      "message": "抖音接口未返回数据：凭证失效或触发风控，需更新 cookie/secrets"}
+                                      "message": "抖音搜索接口请求失败：请检查网络及采集服务使用的登录凭证（浏览器登录态与采集凭证独立）"}
         except Exception as e:
             drop_client(platform)
             return None, {"code": "api_error", "message": str(e)[:300]}
@@ -297,7 +311,7 @@ def open_remote(url, platform):
     cookie = _cookie_header(platform)
     if cookie:
         headers["Cookie"] = cookie
-    return creq.get(url, headers=headers, impersonate="chrome131", timeout=60, stream=True)
+    return creq.get(url, headers=headers, impersonate="chrome131", timeout=20, stream=True)
 
 
 def safe_name(name, ext):
@@ -618,7 +632,7 @@ class Handler(BaseHTTPRequestHandler):
                 },
                 "mediaDir": MEDIA,
                 "workbench": WORKBENCH,
-                "interfaceVersion": "browser-preview-v2",
+                "interfaceVersion": "collection-search-preview-v3",
             })
         if path == "/api/search":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)

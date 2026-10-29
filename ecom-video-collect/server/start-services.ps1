@@ -40,7 +40,7 @@ function Test-Ready($url, $kind) {
             $runtime = Invoke-RestMethod -Uri "$workbenchUrl/api/runtime" -TimeoutSec 2 -UseBasicParsing
             return ($runtime.interfaceVersion -eq 'embedded-collection-v3')
         }
-        return ($result.ok -eq $true -and $null -ne $result.platforms -and $null -ne $result.mediaDir -and $result.interfaceVersion -eq 'browser-preview-v2')
+        return ($result.ok -eq $true -and $null -ne $result.platforms -and $null -ne $result.mediaDir -and $result.interfaceVersion -eq 'collection-search-preview-v3')
     } catch { return $false }
 }
 

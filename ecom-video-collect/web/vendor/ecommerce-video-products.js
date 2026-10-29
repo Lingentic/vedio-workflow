@@ -158,7 +158,7 @@
   /* ---------- 联网爬取面板：两个候选区（视频 / 图片）＋ 一个合并的归档区 ---------- */
   const dupText = dup => dup === 'seen' ? '与其他渠道重复' : '';
   /* 候选卡：左上角复选框＝唯一的勾选开关，点图/封面＝放大；不做单条删除、不做归入按钮 */
-  const candidateTile = (row, index, zone) => `<article class="ec-prod-cand${row.picked ? ' is-picked' : ''}${row.dup ? ' is-dup' : ''}">
+  const candidateTile = (row, index, zone) => `<article data-ui-key="${esc(zone.key + ':' + mediaKey(row) + ':' + index)}" class="ec-prod-cand${row.picked ? ' is-picked' : ''}${row.dup ? ' is-dup' : ''}">
       <button type="button" class="ec-prod-cand-ck" data-lp="pick" data-zone="${zone.key}" data-index="${index}" aria-pressed="${row.picked}"${row.dup ? ' disabled' : ''} title="${row.dup ? esc(dupText(row.dup)) : row.picked ? '已勾选，点一下取消' : '勾选'}"></button>
       <button type="button" class="ec-prod-cand-media" data-lp="preview" data-zone="${zone.key}" data-index="${index}" title="放大查看">
         ${row.src ? `<img src="${esc(mediaSrc(row))}" alt="">` : imgTag(row.name) || `<i class="ec-prod-cand-mark">${zone.mark}</i>`}
@@ -226,7 +226,7 @@
   const lightbox = () => {
     const p = state.preview;
     if (!p) return '';
-    return `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-lightbox" role="dialog" aria-modal="true" aria-label="素材预览"><button type="button" data-lp="close-preview" aria-label="关闭">×</button>${p.loading ? '<div class="ec-prod-preview-loading"><span class="ec-prod-spinner"></span>正在准备可播放的预览…</div>' : p.error ? `<div class="ec-prod-preview-error">${esc(p.error)}</div>` : p.kind === 'video' && p.local ? `<video controls autoplay muted playsinline preload="metadata" src="${esc(window.CollectApi.mediaUrl(p.previewLocal || p.local))}" poster="${esc(mediaSrc(p))}"></video>` : p.local || p.src ? `<img src="${esc(p.local ? window.CollectApi.mediaUrl(p.local) : mediaSrc(p))}" alt="${esc(p.name)}">` : '<div class="ec-prod-lightbox-empty">这条素材没有可用的预览地址</div>'}<p><b>${esc(p.name)}</b><span>${p.kind === 'video' ? '视频预览' : '图片'} · ${esc(p.channel || p.from || '')}</span></p></div></div>`;
+    return `<div class="ec-prod-backdrop" data-ui-key="preview" role="presentation"><div class="ec-prod-lightbox" role="dialog" aria-modal="true" aria-label="素材预览"><button type="button" data-lp="close-preview" aria-label="关闭">×</button>${p.loading ? `<div class="ec-prod-preview-loading"><span class="ec-prod-spinner"></span>${esc(p.stage || '正在准备可播放的预览…')}</div>` : p.error ? `<div class="ec-prod-preview-error">${esc(p.error)}</div>` : p.kind === 'video' && p.local ? `<video controls autoplay muted playsinline preload="metadata" src="${esc(window.CollectApi.mediaUrl(p.previewLocal || p.local))}" poster="${esc(mediaSrc(p))}"></video>` : p.local || p.src ? `<img src="${esc(p.local ? window.CollectApi.mediaUrl(p.local) : mediaSrc(p))}" alt="${esc(p.name)}">` : '<div class="ec-prod-lightbox-empty">这条素材没有可用的预览地址</div>'}<p><b>${esc(p.name)}</b><span>${p.kind === 'video' ? '视频预览' : '图片'} · ${esc(p.channel || p.from || '')}</span></p></div></div>`;
   };
   /* ---------- 爬取记录（只出现在「联网爬取」tab；带时间，详情只列已归入的素材） ---------- */
   const RECORD_STATUS = {
@@ -356,7 +356,7 @@
     </section>`;
   const entryDialog = () => {
     const d = state.draft;
-    return `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-dialog" role="dialog" aria-modal="true" aria-labelledby="lpEntryTitle">
+    return `<div class="ec-prod-backdrop" data-ui-key="entry" role="presentation"><div class="ec-prod-dialog" role="dialog" aria-modal="true" aria-labelledby="lpEntryTitle">
       <header><div><h2 id="lpEntryTitle">录入商品</h2><p>第一步点「采集」：拉回资料并爬回商品图片；第二步点各区按钮爬视频 / 图片。勾选的才进「已勾选」，点「确认」才归档入库，没爬完也接着爬。</p></div><button type="button" data-lp="leave-entry" aria-label="关闭">×</button></header>
       <div class="ec-prod-dialog-body"><div class="ec-prod-form-grid">${entryForm()}${crawlTab(d)}</div></div>
       <footer>
@@ -486,6 +486,8 @@
   };
   const bind = root => {
     root.dataset.draftOwner = state.draft?.id || '';
+    if (root.dataset.eventsBound) return;
+    root.dataset.eventsBound = '1';
     root.querySelectorAll('[data-lp-draft]:not(button)').forEach(el => draftDomValues.set(el, el.value));
     root.addEventListener('compositionend', onInput);
     root.addEventListener('click', onClick);
@@ -506,14 +508,39 @@
     bind(el);
     return true;
   };
+  // Reconcile existing nodes: keep scroll containers, input focus, images and players alive.
+  const patchNode = (live, next) => {
+    if (live.nodeType !== next.nodeType || live.nodeName !== next.nodeName) {
+      live.replaceWith(next.cloneNode(true)); return;
+    }
+    if (live.nodeType === Node.TEXT_NODE) { if (live.nodeValue !== next.nodeValue) live.nodeValue = next.nodeValue; return; }
+    if (!(live instanceof Element)) return;
+    for (const attr of [...live.attributes]) if (!next.hasAttribute(attr.name) && attr.name !== 'data-events-bound') live.removeAttribute(attr.name);
+    for (const attr of next.attributes) if (live.getAttribute(attr.name) !== attr.value) live.setAttribute(attr.name, attr.value);
+    if (live instanceof HTMLTextAreaElement) {
+      if (document.activeElement !== live) live.value = next.value;
+      return;
+    }
+    const key = node => node instanceof Element ? node.id || node.getAttribute('data-ui-key') || null : null;
+    const keyed = new Map([...live.childNodes].filter(key).map(node => [key(node), node]));
+    let cursor = live.firstChild;
+    for (const desired of [...next.childNodes]) {
+      let current = key(desired) ? keyed.get(key(desired)) : cursor && !key(cursor) ? cursor : null;
+      if (current && (current.nodeType !== desired.nodeType || current.nodeName !== desired.nodeName)) current = null;
+      if (!current) { current = desired.cloneNode(true); live.insertBefore(current, cursor); }
+      else { if (current !== cursor) live.insertBefore(current, cursor); patchNode(current, desired); }
+      cursor = current.nextSibling;
+    }
+    while (cursor) { const old = cursor; cursor = cursor.nextSibling; old.remove(); }
+    if ((live instanceof HTMLInputElement || live instanceof HTMLSelectElement) && document.activeElement !== live && live.type !== 'file') live.value = next.value;
+  };
   const paint = () => {
     const current = document.querySelector('.ec-video-products');
     if (!current) return;
-    const next = document.createElement('div');
-    next.innerHTML = html();
-    const replacement = next.firstElementChild;
-    current.replaceWith(replacement);
-    bind(replacement);
+    const next = document.createElement('div'); next.innerHTML = html();
+    patchNode(current, next.firstElementChild);
+    current.querySelectorAll('[data-lp-draft]:not(button)').forEach(el => draftDomValues.set(el, el.value));
+    current.dataset.draftOwner = state.draft?.id || '';
   };
   /* 重绘但保住焦点与光标位置（输入框下方的建议列表需要即时展开/收起） */
   const paintKeepingFocus = () => {
@@ -523,7 +550,7 @@
     if (!focusKey) return;
     const next = document.getElementById(focusKey);
     if (!next) return;
-    next.focus();
+    if (document.activeElement !== next) next.focus({ preventScroll: true });
     if (caret !== null && next.setSelectionRange) { try { next.setSelectionRange(caret, caret); } catch { /* 部分输入类型不支持光标定位 */ } }
   };
   const dismissTop = () => {
@@ -802,7 +829,7 @@
   };
   const previewRow = async (row, kind, host) => {
     const previewId = uid('preview');
-    state.preview = { ...row, kind, loading: true, previewId }; paint();
+    state.preview = { ...row, kind, loading: true, stage: kind === 'video' ? '正在下载视频，下载完成后自动播放…' : '正在下载图片…', previewId }; paint();
     try {
       const result = await window.CollectApi.download(row, kind);
       row.local = result.path;
@@ -811,6 +838,7 @@
       for (const entry of (owner && poolFor(owner)[kind]) || []) if (mediaKey(entry) === key) entry.local = result.path;
       for (const record of owner?.crawls || []) for (const entry of record[kind] || []) if (mediaKey(entry) === key) entry.local = result.path;
       if (!isDraft(owner)) persist();
+      if (state.preview?.previewId === previewId) { state.preview.stage = '下载完成，正在检查播放格式…'; paint(); }
       const preview = kind === 'video' ? await window.CollectApi.previewVideo(result.path) : result;
       if (state.preview?.previewId === previewId) state.preview = { ...row, kind, local: result.path, previewLocal: preview.path, previewId };
     } catch (error) { if (state.preview?.previewId === previewId) state.preview = { ...row, kind, error: error.message, previewId }; }
