@@ -18,18 +18,25 @@ class StreamTests(unittest.TestCase):
         process = MagicMock()
         process.stdout = io.BytesIO(b"fragmented-mp4-data" * 100)
         process.poll.return_value = None
-        with tempfile.TemporaryDirectory() as directory, patch.object(service, "MEDIA", directory), patch.object(service, "_ffmpeg", return_value="ffmpeg"), patch.object(service, "_cookie_header", return_value=""), patch.object(service.subprocess, "Popen", return_value=process) as launch:
+        with tempfile.TemporaryDirectory() as directory, patch.object(service, "MEDIA", directory), patch.object(service, "_ffmpeg", return_value="ffmpeg"), patch.object(service.subprocess, "Popen", return_value=process) as launch:
+            cookie = Path(directory, 'fake.cookie.txt')
+            cookie.write_text('fake_session=must-not-leak', encoding='utf-8')
+            self.addCleanup(cookie.unlink, missing_ok=True)
             server = service.ThreadingHTTPServer(("127.0.0.1", 0), service.Handler)
             thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
             try:
                 url = f"http://127.0.0.1:{server.server_port}/api/stream?url=https%3A%2F%2Fcdn.example%2Fvideo.mp4&start=30.5"
-                with urllib.request.urlopen(url, timeout=3) as response:
+                request = urllib.request.Request(url, headers={'Origin': f'http://127.0.0.1:{server.server_port}'})
+                with patch.object(service, 'KS_COOKIE', str(cookie)), patch.object(service, 'DY_COOKIE', str(cookie)), urllib.request.urlopen(request, timeout=3) as response:
                     self.assertEqual(response.headers["Content-Type"], "video/mp4")
                     self.assertEqual(response.headers["Cache-Control"], "no-store")
+                    self.assertEqual(response.headers['Access-Control-Allow-Origin'], request.headers['Origin'])
                     self.assertEqual(response.read(), b"fragmented-mp4-data" * 100)
-                self.assertEqual(list(Path(directory).iterdir()), [])
+                self.assertEqual(list(Path(directory).iterdir()), [cookie])
                 self.assertEqual(launch.call_args.args[0][-1], "pipe:1")
                 args = launch.call_args.args[0]
+                self.assertNotIn('Cookie:', args[args.index('-headers') + 1])
+                self.assertNotIn('must-not-leak', str(args))
                 self.assertEqual(args[args.index('-ss') + 1], '30.5')
                 self.assertLess(args.index('-ss'), args.index('-i'))
                 process.kill.assert_called_once()

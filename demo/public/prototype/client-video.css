@@ -1,0 +1,89 @@
+/* Video tools: shared sizing layered after client-interface.css.
+ * Preserve the original purple/lime palette and media colors in styles.css. */
+.video-remake-screen {
+  font-family: var(--client-font-ui);
+  font-size: var(--client-font-size);
+  line-height: var(--client-line-height);
+}
+#app .video-remake-screen :is(h1,h2), #app :is(.video-copy-ai-dialog,.video-asset-picker) :is(h1,h2) { font-size: var(--client-font-size-title); line-height: var(--client-line-height); letter-spacing: normal; }
+#app .video-remake-screen h3 { font-size: var(--client-font-size); line-height: var(--client-line-height); }
+#app .video-remake-topbar { height: var(--client-tabs-height); min-height: var(--client-tabs-height); padding-inline: var(--client-space-16); gap: var(--client-space-12); backdrop-filter: var(--client-material-regular-backdrop); }
+.video-remake-brand { min-width: 0; }
+.video-remake-brand > i { width: var(--client-icon-control-size); height: var(--client-icon-control-size); border-radius: var(--client-radius-small); box-shadow: none; }
+.video-remake-brand strong { font-size: var(--client-font-size); }
+.video-remake-brand small { display: none; }
+.video-studio-sidebar { padding: var(--client-space-8); margin: var(--client-space-12) 0 var(--client-space-12) var(--client-space-12); border-width: var(--client-stroke); border-style: solid; border-radius: var(--client-radius-card); box-shadow: var(--client-shadow-sm); backdrop-filter: var(--client-material-thin-backdrop); }
+.video-studio-sidebar > header { padding: var(--client-space-8); }
+.video-studio-sidebar > button { min-height: var(--client-control-height); padding: var(--client-space-8); border-radius: var(--client-radius-small); }
+.video-studio-sidebar > button > i { width: var(--client-icon-control-size); height: var(--client-icon-control-size); border-radius: var(--client-button-radius); }
+.video-studio-sidebar > button small { font-size: var(--client-font-size-caption); line-height: var(--client-line-height); }
+.video-remake-form-head { padding: var(--client-space-16) var(--client-space-22); }
+.video-remake-form-head h1 { margin: var(--client-space-4) 0 var(--client-space-8); }
+.video-remake-form-head :is(small,p) { letter-spacing: normal; }
+.video-remake-step { padding-block: var(--client-space-16); }
+:is(.video-remake-form-panel,.video-remake-example-panel,.video-compose-preview-panel,.video-material-results-panel,.video-asset-library-panel) { border-radius: var(--client-radius-card); }
+.video-remake-screen textarea, .video-copy-ai-dialog textarea { min-height: var(--client-composer-input-min-height); max-height: var(--client-composer-input-max-height); padding: var(--client-space-12); border-radius: var(--client-button-radius); font: var(--client-font-size-small)/var(--client-line-height-prose) var(--client-font-ui); }
+.video-remake-screen input:not([type="file"]), .video-remake-screen select, .video-copy-ai-dialog input:not([type="file"]), .video-asset-picker input:not([type="file"]) { min-width: 0; height: var(--client-control-height); border-radius: var(--client-button-radius); }
+:is(.video-remake-screen,.video-copy-ai-dialog,.video-asset-picker) :is(button,input,textarea,select,a,[tabindex]):focus-visible { outline: var(--client-layout-2) solid var(--client-text-strong); outline-offset: var(--client-layout-2); }
+:is(.video-remake-screen,.video-copy-ai-dialog,.video-asset-picker) textarea:focus { box-shadow: none; }
+:is(.video-remake-inline-actions,.video-compose-inline-actions,.video-audio-script-toolbar,.video-remake-script-toolbar,.video-compose-script-toolbar) button,
+:is(.video-remake-param-row,.video-remake-audio-modes,.video-copy-ai-settings) button,
+.video-asset-picker-toolbar nav button,
+.video-asset-library-type-tabs button,
+.video-copy-ai-examples button,
+.video-copy-ai-dialog > footer button,
+.video-audio-result-meta > footer button,
+.video-asset-library-page > header label,
+.video-asset-picker > footer button { min-height: var(--client-control-height); height: var(--client-control-height); border-radius: var(--client-button-radius); font-size: var(--client-font-size-small); }
+#app :is(.video-remake-screen button.primary,.video-asset-library-page > header label.primary,[data-action="video-compose-confirm-script"],.video-remake-submit > button,.video-compose-match-button,[data-action="video-compose-generate"],[data-action="video-compose-download"],[data-action="video-remake-download"],[data-action="video-copy-ai-generate"],[data-action="video-copy-ai-apply"],[data-action="video-library-picker-confirm"]) { height: var(--client-control-height); min-height: var(--client-control-height); padding-block: 0; padding-inline: var(--client-space-16); border-width: var(--client-stroke); border-style: solid; border-radius: var(--client-primary-radius); box-shadow: none; font-size: var(--client-font-size-small); line-height: var(--client-line-height); }
+#app :is(.video-remake-screen button.primary,.video-asset-library-page > header label.primary,[data-action="video-compose-confirm-script"],.video-remake-submit > button,.video-compose-match-button,[data-action="video-compose-generate"],[data-action="video-compose-download"],[data-action="video-remake-download"],[data-action="video-copy-ai-generate"],[data-action="video-copy-ai-apply"],[data-action="video-library-picker-confirm"]) :is(i,small,b,span) { color: inherit; }
+#app :is(.video-remake-screen button.primary,.video-asset-library-page > header label.primary,[data-action="video-compose-confirm-script"],.video-remake-submit > button,.video-compose-match-button,[data-action="video-compose-generate"],[data-action="video-compose-download"],[data-action="video-remake-download"],[data-action="video-copy-ai-generate"],[data-action="video-copy-ai-apply"],[data-action="video-library-picker-confirm"]):hover:not(:disabled) { box-shadow: var(--client-shadow-sm); transform: none; }
+#app :is(.video-remake-screen button.primary,.video-asset-library-page > header label.primary,[data-action="video-compose-confirm-script"],.video-remake-submit > button,.video-compose-match-button,[data-action="video-compose-generate"],[data-action="video-copy-ai-generate"],[data-action="video-copy-ai-apply"],[data-action="video-library-picker-confirm"]):disabled { opacity: .45; transform: none; cursor: not-allowed; }
+.video-remake-submit { padding: var(--client-space-12) var(--client-space-22); }
+:is(.video-remake-product-preview > button,.video-remake-reference-preview > button,.video-remake-audio-file > div > button,.video-copy-ai-dialog > header > button,.video-asset-picker > header > button) { width: var(--client-icon-control-size); height: var(--client-icon-control-size); min-height: var(--client-icon-control-size); border-radius: var(--client-button-radius); }
+/* Preserve the caption filter behavior without replacing its source palette. */
+#app :is(.video-remake-example-media > em,.video-remake-product-preview > button,.video-remake-product-preview > small,.video-remake-reference-preview > span,.video-material-source-preview > span,.video-material-clip-card > div > em,.video-asset-card-media > em,.video-asset-card-media > small,.video-asset-card-media > b,.video-asset-card-media > span:not(.video-asset-waveform),.video-compose-segment-media > em,.video-audio-voice-card > div > em,.video-compose-canvas > span > i) { backdrop-filter: none; }
+:is(.video-material-source-preview > span,.video-remake-reference-preview > span,.video-compose-segment-media > span) :is(small,b,i,em) { color: inherit; }
+#app .video-audio-result-wave > button { backdrop-filter: none; }
+#app :is(.video-remake-output-state,.video-compose-canvas > em,.video-compose-result > span,.video-compose-output > div > span) { backdrop-filter: none; }
+#app :is(.video-remake-output-state,.video-compose-canvas > em,.video-compose-result > span,.video-compose-output > div > span) small { color: inherit; }
+:is(.video-copy-ai-dialog,.video-asset-picker) { width: min(var(--client-dialog-width),calc(100vw - var(--client-space-22) * 2)); max-height: calc(100dvh - var(--client-space-22) * 2); border-width: var(--client-stroke); border-style: solid; border-radius: var(--client-dialog-radius); box-shadow: var(--client-shadow-lg); }
+:is(.video-copy-ai-backdrop,.video-asset-picker-backdrop) { inset: 0; padding: var(--client-dialog-padding); backdrop-filter: none; }
+:is(.video-copy-ai-dialog,.video-asset-picker) > header { padding: var(--client-dialog-padding); gap: var(--client-space-12); }
+.video-copy-ai-body { min-height: 0; padding: var(--client-dialog-padding); }
+:is(.video-copy-ai-dialog,.video-asset-picker) > footer { flex: 0 0 auto; min-width: 0; padding: var(--client-space-12) var(--client-dialog-padding); gap: var(--client-space-12); flex-wrap: wrap; }
+.video-copy-ai-dialog > footer > small { max-width: 100%; width: 100%; }
+.video-copy-ai-dialog > footer > div { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+.video-copy-ai-dialog > header > span > i { width: var(--client-control-height); height: var(--client-control-height); border-radius: var(--client-radius-small); box-shadow: none; }
+.video-copy-ai-settings { grid-template-columns: minmax(0,1fr); }
+.video-asset-picker-toolbar { gap: var(--client-space-8); padding: var(--client-space-12) var(--client-dialog-padding); flex-wrap: wrap; }
+.video-asset-picker-toolbar > label { width: 100%; min-width: 0; }
+.video-asset-picker-toolbar > nav { max-width: 100%; flex-wrap: wrap; }
+.video-asset-picker-folderbar { min-height: 0; flex-direction: row; align-items: center; padding: var(--client-space-12) var(--client-dialog-padding); }
+.video-asset-picker-folderbar > div { max-height: var(--client-layout-80); overflow: auto; }
+.video-asset-picker-grid { grid-auto-rows: max-content; grid-template-columns: repeat(2,minmax(0,1fr)); min-height: 0; padding: var(--client-space-12) var(--client-dialog-padding); overflow: auto; }
+.video-asset-picker { height: min(var(--client-layout-780),calc(100dvh - var(--client-space-22) * 2)); }
+.video-remake-example-card > header { flex-wrap: wrap; align-items: flex-start; }
+.video-remake-example-card > header > span { flex: 1 0 100%; }
+.video-remake-example-card > header b { overflow: visible; white-space: normal; }
+.video-compose-match-button > small { display: none; }
+@media (max-width: 1079px) {
+  .video-remake-topbar .context-back-copy small { display: none; }
+  .video-studio-sidebar > button small { display: none; }
+  .video-studio-sidebar > button { min-height: var(--client-control-height); }
+  .video-studio-sidebar > button strong { font-size: var(--client-font-size-small); }
+}
+@media (max-width: 900px) {
+  .video-remake-form-panel { min-height: var(--client-layout-520); }
+  .video-remake-form-scroll { overflow: auto; }
+  .video-remake-submit { position: sticky; bottom: 0; z-index: 5; }
+  .video-remake-example-panel, .video-compose-preview-panel { overflow: auto; }
+  .video-copy-ai-dialog > header p { display: none; }
+  .video-asset-picker { grid-template-rows: auto auto auto minmax(0,1fr) auto; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .video-remake-topbar,.video-studio-sidebar { backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .video-remake-screen *, .video-copy-ai-dialog *, .video-asset-picker * { transition: none !important; animation-duration: 1ms !important; animation-iteration-count: 1 !important; }
+}
