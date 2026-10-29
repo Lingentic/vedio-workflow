@@ -176,11 +176,16 @@ export class Workflow {
       task.stage = 'copy';
     });
   }
-  generateVoice(id: string, intervalId?: string) {
+  confirmCopyAndVoice(id: string) {
+    this.confirmCopy(id);
+    return this.generateVoice(id, undefined, true);
+  }
+  generateVoice(id: string, intervalId?: string, autoConfirm = false) {
     const task = this.writable(id);
     if (!task.copyConfirmed) throw new AppError('请先确认文案');
-    if (!this.models.ready()) throw new AppError('未找到配音服务配置');
     const selected = intervalId ? task.intervals.filter(interval => interval.id === intervalId) : task.intervals.filter(interval => interval.status !== 'ready');
+    if (!selected.length && autoConfirm && !intervalId) return this.confirmVoice(id, false);
+    if (!this.models.ready()) throw new AppError('未找到配音服务配置');
     if (!selected.length) throw new AppError(intervalId ? '指定口播区间不存在' : '所有配音已就绪，请试听并确认，或指定一段重新配音');
     return this.start(task, 'voice', async () => {
       for (let index = 0; index < selected.length; index++) {
@@ -203,16 +208,23 @@ export class Workflow {
           this.store.putTask(task); throw error;
         }
       }
-      if (task.plan && task.intervals.every(interval => interval.status === 'ready')) this.rebuildPlan(task);
-      task.stage = 'voice';
+      if (autoConfirm) this.acceptVoice(task, false);
+      else {
+        if (task.plan && task.intervals.every(interval => interval.status === 'ready')) this.rebuildPlan(task);
+        task.stage = 'voice';
+      }
     });
   }
-  confirmVoice(id: string) {
+  confirmVoice(id: string, preparePlan = true) {
     const task = this.writable(id);
+    this.acceptVoice(task, preparePlan);
+    return this.store.putTask(task);
+  }
+  private acceptVoice(task: Task, preparePlan: boolean) {
     if (!task.copyConfirmed || !task.intervals.length || task.intervals.some(interval => interval.status !== 'ready' || !interval.relativePath || !fs.existsSync(this.store.path(interval.relativePath)) || !interval.nodeTimes?.length || !interval.cues?.length)) throw new AppError('请先完成全部配音及时间戳检查');
     task.intervals.forEach(interval => { interval.confirmed = true; }); task.audioConfirmed = true; task.stage = 'visual'; task.error = '';
-    if (!task.plan) task.plan = buildPlan(task, this.library); else this.rebuildPlan(task);
-    return this.store.putTask(task);
+    if (preparePlan) { if (!task.plan) task.plan = buildPlan(task, this.library); else this.rebuildPlan(task); }
+    else if (task.plan) task.plan.valid = false;
   }
   private rebuildPlan(task: Task) {
     const old = task.plan;

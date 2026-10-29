@@ -1,0 +1,79 @@
+/* 素材中心（PRD v2.4 §8）：主播素材 / 商品素材 两大板块。
+ * 令牌与基础控件（卡片、按钮、徽标、弹窗、表格）复用 ecommerce-video-ledger.css 的 .ec-video-ledger 作用域，
+ * 本文件只写素材中心特有的板块与卡片规则。加载顺序必须在 ledger 之后。 */
+
+/* ---------- 板块切换 ---------- */
+.ec-asset-boards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--led-space-3); }
+.ec-asset-board { display: flex; align-items: center; gap: 11px; padding: 14px var(--led-space-4); border: 1px solid var(--led-line); border-radius: var(--led-radius); background: var(--led-surface); text-align: left; transition: border-color var(--client-dur-enter) var(--client-ease-out), background var(--client-dur-enter) var(--client-ease-out), box-shadow var(--client-dur-enter) var(--client-ease-out); }
+.ec-asset-board:hover { border-color: #cbb9ea; background: #fbf9ff; }
+.ec-asset-board.active { border-color: var(--led-purple); background: #f8f5ff; box-shadow: 0 0 0 2px rgba(112, 72, 216, .12); }
+.ec-asset-board > i { width: 38px; height: 38px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 11px; color: #fff; background: var(--led-purple); font-size: 16px; font-style: normal; font-weight: 700; }
+.ec-asset-board > div { min-width: 0; }
+.ec-asset-board strong { display: block; font-size: 14px; font-weight: 650; }
+.ec-asset-board small { display: block; margin-top: 3px; color: var(--led-muted); font-size: 11.5px; line-height: 1.6; }
+.ec-asset-board > .is-tail { margin-left: auto; padding: 3px 10px; border-radius: 999px; color: #6541b7; background: var(--led-purple-soft); font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ---------- 分组 ---------- */
+.ec-asset-groups { display: grid; gap: var(--led-space-4); }
+.ec-asset-group { overflow: hidden; border: 1px solid var(--led-line); border-radius: var(--led-radius); background: var(--led-surface); box-shadow: var(--led-shadow); }
+.ec-asset-group > header { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; padding: 12px var(--led-space-4); border-bottom: 1px solid #f0eff4; background: #fbfafc; }
+.ec-asset-group > header > i { width: 24px; height: 24px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 7px; color: #fff; background: var(--led-purple); font-size: 11px; font-style: normal; font-weight: 700; }
+.ec-asset-group--red > header > i { background: var(--led-red); }
+.ec-asset-group--orange > header > i { background: var(--led-orange); }
+.ec-asset-group > header > b { font-size: 13px; font-weight: 650; }
+.ec-asset-group > header > small { color: var(--led-muted); font-size: 11px; }
+.ec-asset-group > header > .is-tail { display: flex; align-items: center; gap: var(--led-space-2); margin-left: auto; flex-wrap: wrap; }
+.ec-asset-group-body { padding: var(--led-space-4); }
+.ec-asset-subhead { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; color: var(--led-ink-soft); font-size: 12px; font-weight: 650; }
+.ec-asset-subhead + .ec-asset-grid { margin-bottom: 18px; }
+.ec-asset-subhead > span { padding: 1px 8px; border-radius: 999px; background: #f2f1f5; color: var(--led-muted); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ec-asset-subhead:last-of-type + .ec-asset-grid { margin-bottom: 0; }
+
+/* ---------- 素材卡片 ---------- */
+.ec-asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 11px; }
+.ec-asset-card { display: flex; flex-direction: column; min-width: 0; overflow: hidden; border: 1px solid var(--led-line); border-radius: 10px; background: var(--led-surface); transition: border-color var(--client-dur-enter) var(--client-ease-out), box-shadow var(--client-dur-enter) var(--client-ease-out); }
+.ec-asset-card:hover { border-color: #cbb9ea; box-shadow: 0 6px 16px rgba(52, 41, 84, .08); }
+.ec-asset-card.is-off { opacity: .58; }
+.ec-asset-card.is-red { border-color: #ecd3d7; }
+.ec-asset-media { position: relative; display: block; aspect-ratio: 4 / 3; max-height: 132px; overflow: hidden; background: #24212d; }
+.ec-asset-card--video .ec-asset-media { aspect-ratio: 9 / 16; max-height: 150px; }
+.ec-asset-media > i { position: absolute; inset: 0; display: grid; place-items: center; color: rgba(255, 255, 255, .74); font-size: 18px; font-style: normal; font-weight: 700; }
+.ec-asset-media > img { width: 100%; height: 100%; object-fit: cover; }
+.ec-asset-media > .ec-asset-dur { position: absolute; right: 5px; bottom: 5px; padding: 1px 5px; border-radius: 4px; color: #fff; background: rgba(23, 18, 30, .68); font-size: 10px; font-variant-numeric: tabular-nums; }
+.ec-asset-media > .ec-asset-lock { position: absolute; top: 5px; left: 5px; padding: 1px 6px; border-radius: 4px; color: #fff; background: rgba(180, 57, 74, .92); font-size: 10px; font-weight: 650; }
+.ec-asset-media > .ec-asset-hover { position: absolute; left: 50%; bottom: 8px; padding: 3px 10px; transform: translateX(-50%); border-radius: 999px; color: #fff; background: rgba(23, 18, 30, .74); font-size: 10.5px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity var(--client-dur-enter) var(--client-ease-out); }
+.ec-asset-card:hover .ec-asset-hover, .ec-asset-card:focus-within .ec-asset-hover { opacity: 1; }
+.ec-asset-body { display: grid; gap: 4px; padding: 8px 9px 9px; }
+.ec-asset-body > strong { overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.ec-asset-body > small { color: var(--led-muted); font-size: 10.5px; line-height: 1.55; }
+.ec-asset-ops { display: flex; gap: 5px; flex-wrap: wrap; padding: 0 9px 9px; }
+.ec-asset-ops > button { flex: 1 1 auto; min-height: 26px; padding: 0 8px; border: 1px solid var(--led-line); border-radius: 6px; color: var(--led-ink-soft); background: var(--led-surface); font-size: 11px; font-weight: 600; }
+.ec-asset-ops > button:hover:not(:disabled) { border-color: #cfc2ec; color: #5f3cb0; background: #faf8ff; }
+.ec-asset-ops > button.is-danger:hover:not(:disabled) { border-color: var(--led-danger); color: #fff; background: var(--led-danger); }
+.ec-asset-ops > button:disabled { opacity: .5; cursor: not-allowed; }
+
+/* 商品分组头（商品名称 + 主图） */
+.ec-asset-product { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.ec-asset-product > .ec-led-thumb { width: 46px; height: 46px; border-radius: 10px; }
+.ec-asset-product strong { display: block; max-width: 320px; overflow: hidden; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.ec-asset-product small { display: block; margin-top: 3px; color: var(--led-muted); font-size: 11px; }
+
+/* 版本归档 / 引用清单 */
+.ec-asset-versions { display: grid; gap: 7px; }
+.ec-asset-versions > div { display: flex; align-items: center; gap: 9px; padding: 9px 11px; border: 1px solid #f0eff4; border-radius: var(--led-radius-sm); background: #fbfafc; font-size: 12px; }
+.ec-asset-versions > div > b { font-weight: 650; }
+.ec-asset-versions > div > small { color: var(--led-muted); font-size: 11px; }
+.ec-asset-versions > div > .is-tail { margin-left: auto; }
+.ec-asset-refs { display: grid; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
+.ec-asset-refs li { display: flex; align-items: center; gap: 9px; padding: 8px 11px; border: 1px solid #eec7c3; border-radius: var(--led-radius-sm); background: var(--led-danger-soft); color: #9c2f27; font-size: 12px; }
+.ec-asset-refs li > b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.ec-asset-note { margin-top: 12px; padding: 10px 12px; border: 1px solid #efd9a8; border-radius: var(--led-radius-sm); background: #fffbf3; color: #8f5a0b; font-size: 11.5px; line-height: 1.7; }
+
+@media (max-width: 900px) {
+  .ec-asset-boards { grid-template-columns: minmax(0, 1fr); }
+  .ec-asset-board > .is-tail { margin-left: 0; }
+}
+@media (max-width: 720px) {
+  .ec-asset-grid { grid-template-columns: repeat(auto-fill, minmax(126px, 1fr)); }
+  .ec-asset-group > header > .is-tail { margin-left: 0; width: 100%; }
+}

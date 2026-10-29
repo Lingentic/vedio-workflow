@@ -144,8 +144,14 @@ const server = http.createServer(async (request, response) => {
         if (method === 'POST') {
           if (operation === 'switch') return json(response, workflow.publicTask(workflow.switch(id,string(data.productId,'商品'),string(data.templateId,'模板'),string(data.mode,'切换方式'))));
           if (operation === 'copy') return json(response, workflow.publicTask(workflow.generateCopy(id)), 202);
-          if (operation === 'copy/confirm') return json(response, workflow.publicTask(workflow.confirmCopy(id)));
-          if (operation === 'voice') return json(response, workflow.publicTask(workflow.generateVoice(id, data.intervalId === undefined ? undefined : string(data.intervalId,'口播区间'))), 202);
+          if (operation === 'copy/confirm') {
+            if (data.generateVoice !== undefined && typeof data.generateVoice !== 'boolean') throw new AppError('generateVoice 必须为布尔值');
+            return json(response, workflow.publicTask(data.generateVoice ? workflow.confirmCopyAndVoice(id) : workflow.confirmCopy(id)), data.generateVoice ? 202 : 200);
+          }
+          if (operation === 'voice') {
+            if (data.autoConfirm !== undefined && typeof data.autoConfirm !== 'boolean') throw new AppError('autoConfirm 必须为布尔值');
+            return json(response, workflow.publicTask(workflow.generateVoice(id, data.intervalId === undefined ? undefined : string(data.intervalId,'口播区间'), data.autoConfirm === true)), 202);
+          }
           if (operation === 'voice/confirm') return json(response, workflow.publicTask(workflow.confirmVoice(id)));
           if (operation === 'plan') return json(response, workflow.publicTask(workflow.plan(id)));
           if (operation === 'render') {
@@ -177,8 +183,8 @@ const server = http.createServer(async (request, response) => {
       return await sendFile(request, response, store.path(relative));
     }
     const publicDir = path.join(appRoot, 'public');
-    if (url.pathname === '/app.js' || url.pathname === '/sortable.js') {
-      const sourceFile = url.pathname === '/app.js' ? 'app.ts' : 'sortable.ts';
+    if (['/app.js','/sortable.js','/prototype-views.js'].includes(url.pathname)) {
+      const sourceFile = url.pathname.slice(1).replace(/\.js$/, '.ts');
       const source = await fsp.readFile(path.join(publicDir, sourceFile), 'utf8');
       response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
       response.end(stripTypeScriptTypes(source, { mode: 'strip', sourceUrl: sourceFile })); return;

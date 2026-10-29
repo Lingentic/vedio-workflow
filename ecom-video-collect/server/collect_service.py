@@ -38,11 +38,13 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -287,30 +289,10 @@ def _platform_of(url):
     return "kuaishou"
 
 
-def _cookie_header(platform):
-    """把平台 cookie 文件转成 Cookie 请求头；支持单行 header 与 Netscape 两种格式。"""
-    path = KS_COOKIE if platform == "kuaishou" else DY_COOKIE
-    try:
-        raw = open(path, encoding="utf-8", errors="replace").read()
-    except OSError:
-        return ""
-    lines = [ln.strip() for ln in raw.splitlines() if ln.strip() and not ln.startswith("#")]
-    if len(lines) == 1 and "=" in lines[0] and "\t" not in lines[0]:
-        return lines[0]
-    pairs = []
-    for ln in lines:
-        cols = ln.split("\t")
-        if len(cols) >= 7:
-            pairs.append(cols[5] + "=" + cols[6])
-    return "; ".join(pairs)
-
-
 def open_remote(url, platform):
+    # 媒体 URL、重定向和 HLS 分段都可能来自第三方；登录态只留在搜索客户端。
     referer = "https://www.douyin.com/" if platform == "douyin" else "https://www.kuaishou.com/"
     headers = {"User-Agent": UA, "Referer": referer}
-    cookie = _cookie_header(platform)
-    if cookie:
-        headers["Cookie"] = cookie
     return creq.get(url, headers=headers, impersonate="chrome131", timeout=20, stream=True)
 
 
@@ -319,14 +301,16 @@ def safe_name(name, ext):
     return base + ext
 
 
-def _unique_media(name):
-    dest = os.path.join(MEDIA, name)
-    stem, dot, suffix = name.rpartition(".")
-    i = 1
-    while os.path.exists(dest):
-        dest = os.path.join(MEDIA, f"{stem}-{i}{dot}{suffix}")
-        i += 1
-    return dest
+def _publish_media(source, name):
+    """原子发布已校验文件；link 不会覆盖任何已存在的路径。"""
+    stem, ext = os.path.splitext(name)
+    while True:
+        filename = f"{stem}-{uuid.uuid4().hex}{ext}"
+        try:
+            os.link(source, os.path.join(MEDIA, filename))
+            return "/media/" + filename
+        except FileExistsError:
+            continue
 
 
 _IMG_SIG = (b"\xff\xd8\xff", b"\x89PNG", b"GIF87", b"GIF89", b"RIFF", b"BM", b"II*\x00", b"MM\x00*")
@@ -357,8 +341,8 @@ def _require_video_stream(path):
         out = subprocess.run([fp, "-v", "error", "-select_streams", "v:0",
                               "-show_entries", "stream=codec_type", "-of", "csv=p=0", path],
                              capture_output=True, timeout=120)
-    except Exception:
-        return
+    except (OSError, subprocess.SubprocessError) as e:
+        raise RuntimeError("无法执行 FFprobe 校验媒体") from e
     if out.returncode != 0:
         err = (out.stderr or b"").decode("utf-8", "replace").strip().splitlines()
         raise RuntimeError("媒体文件不可解析" + ("：" + err[-1][:80] if err else ""))
@@ -417,72 +401,68 @@ def browser_preview(local, force=False):
 
 
 def download_to_media(url, platform, name, kind):
-    """下载远端媒体到 MEDIA，返回 ("/media/<file>", size, is_hls)。失败抛异常。"""
+    """独立暂存、校验后发布媒体，返回 ("/media/<file>", size, is_hls)。"""
     os.makedirs(MEDIA, exist_ok=True)
     r = open_remote(url, platform)
-    if r.status_code != 200:
-        raise RuntimeError(f"远端返回 {r.status_code}")
-    it = r.iter_content(1 << 16)
-    head = next(it, b"")
-    # 快手部分视频的"播放地址"实为 HLS 清单：抓分段并顺序拼接为 .ts
-    if head.lstrip().startswith(b"#EXTM3U"):
-        dest = _unique_media(safe_name(name, ".ts"))
-        playlist = (head + b"".join(it)).decode("utf-8", "replace")
-        segs = [ln.strip() for ln in playlist.splitlines()
-                if ln.strip() and not ln.startswith("#")]
-        if not segs:
-            raise RuntimeError("HLS 清单为空")
-        size = 0
-        with open(dest, "wb") as f:
-            for seg in segs:
-                su = urllib.parse.urljoin(url, seg)
-                sr = open_remote(su, platform)
-                if sr.status_code != 200:
-                    continue
-                for chunk in sr.iter_content(1 << 20):
-                    f.write(chunk)
-                    size += len(chunk)
-        if size < 1024:
-            os.remove(dest)
-            raise RuntimeError("HLS 分段下载失败")
-        try:
-            _require_video_stream(dest)
-        except Exception:
-            os.remove(dest)
-            raise
-        # 浏览器无法播放 .ts：有 ffmpeg 时流复制转封装为 .mp4，便于预览与导入
-        ffmpeg = _ffmpeg()
-        if ffmpeg:
-            mp4 = dest[:-3] + ".mp4"
-            try:
-                subprocess.run([ffmpeg, "-y", "-nostdin", "-loglevel", "error", "-i", dest,
-                                "-c", "copy", "-movflags", "+faststart", mp4],
-                               check=True, timeout=300, capture_output=True)
-                os.remove(dest)
-                return "/media/" + os.path.basename(mp4), size, False
-            except Exception:
-                pass  # 转封装失败时保留 .ts
-        return "/media/" + os.path.basename(dest), size, True
-    dest = _unique_media(safe_name(name, ".mp4" if kind == "video" else ".jpg"))
-    size = len(head)
-    with open(dest, "wb") as f:
-        f.write(head)
-        for chunk in it:
-            f.write(chunk)
-            size += len(chunk)
-    if size < 1024:
-        os.remove(dest)
-        raise RuntimeError("下载内容过小，疑似失效链接")
     try:
-        if kind == "image":
-            if not head.startswith(_IMG_SIG):
-                raise RuntimeError("返回的是网页而非图片（防盗链或链接失效），请检查凭证后重新采集")
-        else:
-            _require_video_stream(dest)
-    except Exception:
-        os.remove(dest)
-        raise
-    return "/media/" + os.path.basename(dest), size, False
+        if r.status_code != 200:
+            raise RuntimeError(f"远端返回 {r.status_code}")
+        it = r.iter_content(1 << 16)
+        head = next(it, b"")
+        # 临时目录由系统原子分配；失败清理只触及本次下载拥有的文件。
+        with tempfile.TemporaryDirectory(prefix=".download-", dir=MEDIA) as temporary:
+            is_hls = head.lstrip().startswith(b"#EXTM3U")
+            ext = ".ts" if is_hls else ".mp4" if kind == "video" else ".jpg"
+            dest = os.path.join(temporary, "source" + ext)
+            size = 0
+            with open(dest, "xb") as f:
+                if is_hls:
+                    playlist = (head + b"".join(it)).decode("utf-8", "replace")
+                    segs = [ln.strip() for ln in playlist.splitlines()
+                            if ln.strip() and not ln.startswith("#")]
+                    if not segs:
+                        raise RuntimeError("HLS 清单为空")
+                    for seg in segs:
+                        sr = open_remote(urllib.parse.urljoin(url, seg), platform)
+                        try:
+                            if sr.status_code != 200:
+                                raise RuntimeError(f"HLS 分段返回 {sr.status_code}")
+                            for chunk in sr.iter_content(1 << 20):
+                                f.write(chunk)
+                                size += len(chunk)
+                        finally:
+                            sr.close()
+                else:
+                    f.write(head)
+                    size = len(head)
+                    for chunk in it:
+                        f.write(chunk)
+                        size += len(chunk)
+            if size < 1024:
+                raise RuntimeError("下载内容过小，疑似失效链接")
+            if kind == "image" and not is_hls:
+                if not head.startswith(_IMG_SIG):
+                    raise RuntimeError("返回的是网页而非图片（防盗链或链接失效），请检查凭证后重新采集")
+            else:
+                _require_video_stream(dest)
+            ffmpeg = _ffmpeg() if is_hls else ""
+            if ffmpeg:
+                mp4 = os.path.join(temporary, "remux.mp4")
+                try:
+                    subprocess.run([ffmpeg, "-n", "-nostdin", "-loglevel", "error", "-i", dest,
+                                    "-c", "copy", "-movflags", "+faststart", mp4],
+                                   check=True, timeout=300, capture_output=True)
+                    if not os.path.isfile(mp4) or os.path.getsize(mp4) < 1024:
+                        raise RuntimeError("HLS 转封装结果无效")
+                    _require_video_stream(mp4)
+                except (subprocess.SubprocessError, OSError, RuntimeError):
+                    # 已校验的 TS 仍可导入；失败的 MP4 不发布。
+                    pass
+                else:
+                    return _publish_media(mp4, safe_name(name, ".mp4")), os.path.getsize(mp4), False
+            return _publish_media(dest, safe_name(name, ext)), size, is_hls
+    finally:
+        r.close()
 
 
 # ---------- 工作台联动 ----------
@@ -589,14 +569,48 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         sys.stderr.write("[collect] %s %s\n" % (self.address_string(), fmt % args))
 
+    def _allowed_origins(self):
+        port = self.server.server_port
+        origins = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
+        try:
+            wb = urllib.parse.urlsplit(WORKBENCH)
+            if wb.scheme in ("http", "https") and wb.hostname in ("127.0.0.1", "localhost") and not wb.username and not wb.password:
+                port = wb.port
+                authority = wb.hostname
+                if port and port != (80 if wb.scheme == "http" else 443):
+                    authority += f":{port}"
+                origins.add(f"{wb.scheme}://{authority}")
+        except ValueError:
+            pass  # 无效配置不能扩展允许来源。
+        return origins
+
+    def parse_request(self):
+        if not super().parse_request():
+            return False
+        hosts = self.headers.get_all("Host", [])
+        origins = self.headers.get_all("Origin", [])
+        allowed_hosts = {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}
+        if len(hosts) != 1 or hosts[0] not in allowed_hosts or len(origins) > 1 or (origins and origins[0] not in self._allowed_origins()):
+            self.close_connection = True
+            self._json({"ok": False, "message": "不允许的 Host 或 Origin"}, 403)
+            return False
+        return True
+
+    def _cors(self):
+        origin = self.headers.get("Origin")
+        if origin in self._allowed_origins():
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Methods", "GET,HEAD,POST,OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type,Range")
+            self.send_header("Access-Control-Expose-Headers", "Content-Length,Content-Range,Accept-Ranges")
+
     # ---- helpers ----
     def _send(self, code, body=b"", ctype="text/plain; charset=utf-8", headers=None):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self._cors()
         for k, v in (headers or {}).items():
             self.send_header(k, v)
         self.end_headers()
@@ -662,7 +676,7 @@ class Handler(BaseHTTPRequestHandler):
                 v = r.headers.get(h)
                 if v:
                     self.send_header(h, v)
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self._cors()
             if not r.headers.get("Content-Length"):
                 # 无长度流式响应：HTTP/1.1 keep-alive 下客户端无法判定结束，改为关连接收尾
                 self.send_header("Connection", "close")
@@ -721,7 +735,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", mimetypes.guess_type(target)[0] or "application/octet-stream")
         self.send_header("Content-Length", str(os.path.getsize(target)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self._cors()
         self.end_headers()
 
     # ---- static ----
@@ -744,6 +758,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", mimetypes.guess_type(target)[0] or "application/octet-stream")
         self.send_header("Content-Length", str(max(0, end - start + 1)))
         self.send_header("Accept-Ranges", "bytes")
+        self._cors()
         if requested:
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.end_headers()

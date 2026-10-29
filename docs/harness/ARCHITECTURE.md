@@ -18,15 +18,16 @@
 
 只有一个本地 Node 服务，没有独立“自动队列微服务”。浏览器刷新、切换模块不控制云任务或 FFmpeg 的进程生命周期。
 
-工作台与采集页的界面基于 `Lingentic/pm@21704c8` 对齐：工作台在 `demo/public/pm-ui.css` 维护适配样式，仍由 `app.ts` 读取真实服务端状态；采集页沿用上游商品获取布局，由 `web/collect-api.js` 接回现有扩展、搜索、下载及工作台导入接口。采集页「素材中心」导航在同一工作台内切换到真实素材库；本地增补入口也跳转该商品的素材目录，不再使用原型浏览器素材库作为真实入库结果。
+2026-10-29 按最新原型更新布局：`prototype-views.ts` 渲染目录式素材库、三步制作页、分组段落、真实记录台账和折叠详情，复用原型的 DOM 层次与 CSS 类；`workbench.css` 仅适配数据入口、弹窗挂载和窄窗口，不另建一套布局。发布脚本仍是独立演示岛；商品获取使用 `ecom-video-collect/web/` 的真实采集组件。来源与静态图片边界见 [原型来源](../../demo/public/prototype/README.md)。原型源目录保持不变。
 
-仓库根的 [ecom-video-collect/](../../ecom-video-collect/) 保留独立 Python 采集进程，商品获取界面由 demo 原生挂载：Chrome 扩展读取快分销详情与图集，Python 服务检索并下载快手／抖音视频，经 `POST /api/products` 与 `POST /api/products/:id/import`（`processed:true`）把商品和已下载的视频/图片素材推入素材库。demo 侧栏「商品获取」在当前页面切换，统一入口为 `http://127.0.0.1:4186/?page=collection`。Node 服务托管采集 JS/CSS，以 `/api/collect/*` 和 `/collect-media/*` 转发 Python API 和媒体；Python 默认 8765，仅作为内部采集服务。扩展桥接位于工作台顶层文档，沿用现有 localhost 匹配规则。采集组件独立管理 DOM，工作台轮询不覆盖录入草稿。首次进入时通过受来源和随机标识校验的隐藏页面读取同主机 8765 的 localStorage 记录，仅在新域没有记录时迁移，不改写旧记录；采集服务离线时不阻塞工作台其他模块。
+当前真实制作路径为 `copy/confirm {generateVoice:true}` → `confirmCopyAndVoice` → 生成缺失区间 → 校验音频及时间 → 自动确认 → `visual` 工作区试听。自动确认不建立旧 `plan`；新页选材仅前端演示，生成视频禁用。图中的 plan／renderer 仍是保留的后端实现，尚未接入新 UI。
 
 | 模块 | 责任与关键边界 |
 | --- | --- |
 | [server.ts](../../demo/server.ts) | 组装服务；校验 Host、Origin、JSON、路径等外部输入；路由 API；流式媒体 Range；擦除前端 TypeScript 类型；绑定 `127.0.0.1`。 |
 | [app.ts](../../demo/public/app.ts) | 字符串模板与 `patchView` 局部 DOM 更新；按稳定 key 保留页面、资源、口播区间及播放器。`newElements` 仅给新控件绑定一次事件；串行保存与轮询均不重建整页。不是业务状态的权威存储；输入法、焦点、弹窗与拖动由现有交互保留。 |
-| [sortable.ts](../../demo/public/sortable.ts) | Pointer Events 排序、跟手浮层、占位与边缘滚动；松手落位只改前端清单，保存方案才写服务端。 |
+| [prototype-views.ts](../../demo/public/prototype-views.ts)、[workbench.css](../../demo/public/workbench.css) | `libraryView`、`architectureView`、`copyView`、`generationView`、`recordsView`、`recordDetailsView`、`materialPickerView`；模板分组只影响展示，实际节点 ID、台词和区间仍取任务快照。逐节点素材选择只是演示，不写旧方案。 |
+| [sortable.ts](../../demo/public/sortable.ts) | 旧连续清单排序组件保留，当前新制作页未使用；不能把其存在当作逐段选材已实现。 |
 | [workflow.ts](../../demo/lib/workflow.ts) | 创建／切换任务、文案确认、区间复用、执行控制、方案与预览失效、完成与清理；当前服务一次只持有一个活动制作执行。 |
 | [library.ts](../../demo/lib/library.ts) | 资料验证、复制托管、探测、切分、逐失败范围重试、删除保护；固定片段按 binding 关联节点。 |
 | [models.ts](../../demo/lib/models.ts) | 文案请求、SSE 配音读取、错误脱敏与音频下载。字时间必须和确认文字对应；这里没有可靠的自动重提或云端任务恢复服务。 |
@@ -55,8 +56,10 @@
 
 改 HTTP 形状时同步 [API.md](../../demo/API.md) 与前端接口；改持久化字段时同步服务端类型、前端使用字段及兼容已有记录的处理；改声音／模板参数时检查区间签名与失效；改渲染规则时检查基础画面缓存签名，防止继续复用旧规则生成的画面。
 
-商品候选及详情视频预览先下载原视频并校验，再由采集服务按需生成浏览器可播放的预览副本。素材入库继续使用原视频；已选图片和采集主图也供商品列表、详情页展示，若未选图片则可显示已有视频封面。视频制作的右侧主内容使用原工作台布局和新建任务弹窗；所有模块共用新版工作流侧边栏。
+## 商品采集边界
 
-商品采集搜索对抖音签名器使用独立 argv 参数传递完整关键词，避免含空格的名称被守护协议拆分。网络失败与空结果分别反馈；搜索错误清理允许重入锁。采集组件通过局部 DOM 协调更新勾选、计数和爬取结果，保留弹窗滚动容器、输入框及播放器。媒体链接对原始文件名进行 URL 编码，确保含 `#`、`?`、`%` 的视频可通过同源代理读取；预览请求有超时提示。
+商品获取挂载在五模块工作台的 products 页；Node 托管 /collect/ 下的 JS/CSS，通过 /api/collect/* 和 /collect-media/* 转发本机 Python 采集服务（默认 8765）。扩展读取快分销商品详情，Python 搜索平台素材，下载后经商品／素材 API 入库；跳转素材中心时刷新服务端数据。旧 page=collection 链接兼容到商品获取。
 
-工作台素材库、时间线原片和手选素材预览使用 `/media/asset/:id?browser=1`，由 Media 按需生成浏览器兼容副本（数据根目录 `缓存/素材预览`）；同一文件并发请求复用转换，成功后复用缓存。原始媒体 API 与制作流程继续读取原文件，不改写素材记录，已有 HEVC 素材无需重新导入。
+组件独立管理 DOM，工作台轮询不覆盖采集录入；首次启动仅在新来源无记录时迁移旧 8765 来源的采集草稿，受来源及随机标识校验且有界超时。发布仍为演示，逐段选材与真实合成仍待重构。
+
+平台登录 Cookie 仅供平台搜索客户端使用，媒体代理及下载不携带。Python 精确检查本机 Host／Origin；Node 同源转发和无 Origin 的本机 CLI 可用。下载在独立临时目录完成，校验后原子发布独立文件名；并发同名或 HLS 转封装不覆盖已完成文件，失败只清理自身临时文件。浏览器预览副本不替换入库原视频。
