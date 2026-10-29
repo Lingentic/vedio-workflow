@@ -34,7 +34,7 @@
 | [templates.ts](../../demo/lib/templates.ts) | 加载固定模板／提示词／声音参数；拼变量、组连续区间、签名及文案响应校验。配置源是 `data/`，不要再硬编码第二套。 |
 | [alignment.ts](../../demo/lib/alignment.ts) | 数字等规范化、逐字对应，产出 `sentences`、`cues`、`nodeTimes`；无法完整对应时失败，不伪造平均字幕时间。 |
 | [plan.ts](../../demo/lib/plan.ts) | `soundBlocks`、`visualEvents`、`buildPlan`、`fullCues`；区分声音边界、通用主播覆盖与商品游标。 |
-| [renderer.ts](../../demo/lib/renderer.ts) | 上下分屏、渐变、裁满、30 FPS、逐段帧数校验、拼接、字幕、原声与 BGM；设置返工可复用有效基础画面。 |
+| [renderer.ts](../../demo/lib/renderer.ts) | 上下分屏、渐变、裁满、30 FPS、逐段帧数校验、拼接、字幕、原声与 BGM；设置返工可复用有效基础画面；最终合成叠加每次随机的轻量去重结构（程序化渐变垫底、主画面降不透明度、放大与三枚小标记、微缩放偏移、时域噪点、微色偏），成片不再流拷贝画面。 |
 | [media.ts](../../demo/lib/media.ts) | 有界收集 FFmpeg/FFprobe 输出、信号中止、真实视频流时长／起点／帧数、WAV 修复和哈希。 |
 | [store.ts](../../demo/lib/store.ts)、[paths.ts](../../demo/lib/paths.ts)、[types.ts](../../demo/lib/types.ts) | 持久化、目录边界及内部类型；没有 ORM 或生产 npm 依赖。 |
 
@@ -45,6 +45,8 @@
 3. **画面 → 设置返工**：方案签名决定基础画面是否可复用；修改字幕／BGM 只重做输出层。`refill:true` 才主动重选商品序列，保留文案与有效配音。
 
 ## 必要的边界校验
+
+模型服务可用 `DASHSCOPE_BASE_URL` 或 `BAILIAN_BASE_URL`（环境变量优先，其次凭证文件）指定根地址；未配置时仍用阿里云官方域名。配置中的 `/compatible-mode/v1` 后缀会移除，再分别拼接文案兼容接口与原生 SSE 配音接口。默认声音仍为既定小帅复刻音色；不要用开发者测试音色替换共享配置，否则区间签名变化会导致已有配音不能复用。
 
 - 外部 HTTP 输入由路由和 `validateProduct` 等接收边界验证；内部 TypeScript 类型不是模型响应或浏览器请求的运行时保证。
 - 文案节点 ID、固定文本与配音文字对应分别由模板层和对齐层验证，不能为了“走通流程”用默认空内容掩盖失败。
