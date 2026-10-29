@@ -838,7 +838,8 @@
   };
   const previewRow = async (row, kind, host) => {
     const previewId = uid('preview');
-    if (!row.local && window.CollectApi.onlineEnabled) {
+    const hasLocal = /^\/?media\//.test(row.local || '');
+    if (!hasLocal) {
       if (kind === 'image') {
         state.preview = { ...row, kind, previewId }; paint(); return;
       }
@@ -849,16 +850,16 @@
         : { ...row, kind, previewId, error: '这条记录没有视频地址，请重新爬取' };
       paint(); return;
     }
-    state.preview = { ...row, kind, loading: true, stage: kind === 'video' ? '正在下载视频，下载完成后自动播放…' : '正在下载图片…', previewId }; paint();
+    state.preview = { ...row, kind, loading: true, stage: kind === 'video' ? '正在读取本地视频…' : '正在读取本地图片…', previewId }; paint();
     try {
-      const result = await window.CollectApi.download(row, kind);
+      const result = { path: '/' + row.local.replace(/^\//, '') };
       row.local = result.path;
       const owner = ownerOf(crawlFor(host)) || (isDraft(host) ? host : find(host.id));
       const key = mediaKey(row);
       for (const entry of (owner && poolFor(owner)[kind]) || []) if (mediaKey(entry) === key) entry.local = result.path;
       for (const record of owner?.crawls || []) for (const entry of record[kind] || []) if (mediaKey(entry) === key) entry.local = result.path;
       if (!isDraft(owner)) persist();
-      if (state.preview?.previewId === previewId) { state.preview.stage = '下载完成，正在检查播放格式…'; paint(); }
+      if (state.preview?.previewId === previewId) { state.preview.stage = '正在检查本地播放格式…'; paint(); }
       const preview = kind === 'video' ? await window.CollectApi.previewVideo(result.path) : result;
       if (state.preview?.previewId === previewId) state.preview = { ...row, kind, local: result.path, previewLocal: preview.path, previewId };
     } catch (error) { if (state.preview?.previewId === previewId) state.preview = { ...row, kind, error: error.message, previewId }; }

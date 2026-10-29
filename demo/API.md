@@ -48,4 +48,4 @@
 
 候选在线播放使用 `GET /api/collect/stream?platform=kuaishou|douyin&url=<编码后的媒体地址>&start=0`：采集服务携带平台请求头从 CDN 读取，FFmpeg 实时输出 H.264/AAC fragmented MP4，由 stdout 直接转发，不创建媒体文件。响应 `Cache-Control:no-store`，通过 `start=<秒数>` 定位后重新推流，前端进度条按候选时长显示，支持前后拖动；单服务最多 2 个并发预览，单次最长 10 分钟。关闭播放器会清空 src 并中止接收，连接断开后终止转码进程。网络读取超时 15 秒，候选最多尝试 3 个地址；确认入库仍使用原下载接口保存原视频。已有本地素材预览继续复用本地文件。
 
-试用入口 `/?page=collection&preview=online` 启用在线候选预览，默认入口继续下载预览，便于对照验证。已有本地素材无需重新联网。
+正式入口 `/?page=collection` 默认启用在线候选预览，无需 `preview=online` 参数。候选预览不调用下载接口，确认入库才保存原媒体；已有本地素材无需重新联网。
