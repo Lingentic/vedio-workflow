@@ -1,0 +1,13 @@
+body[data-app="video-studio"] .video-remake-topbar {
+  justify-content: flex-end;
+}
+
+body[data-app="video-studio"] .pm-module-rail,
+body[data-app="video-studio"] .pm-primary-expand,
+body[data-app="video-studio"] .va-studio .back-button {
+  display: none !important;
+}
+
+body[data-app="video-studio"] .pm-desktop-operation {
+  width: 100%;
+}

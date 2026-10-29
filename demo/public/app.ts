@@ -1,22 +1,31 @@
+import { workbenchShell, productionFlow, architectureView, copyView, generationView, recordsView } from './prototype-views.js';
 import { bindSortableList } from './sortable.js';
 
 type Stage = 'copy' | 'voice' | 'visual' | 'preview';
 type TaskStatus = 'running' | 'done' | 'failed' | 'stopped' | 'interrupted';
-interface Template { id: string; name: string; title: string; summary: string; nodes: ScriptNode[]; variableNodeId?: string; }
-interface ScriptNode { id: string; type: 'host_clip' | 'fixed_narration' | 'generated_narration'; text: string; label?: string; }
-interface Product { productId: string; name: string; price: string; specification: string; sellingPoints: string; createdAt?: string; }
-interface Asset { id: string; productId?: string; kind: 'product' | 'source' | 'host' | 'presenter' | 'bgm'; title: string; status: 'ready' | 'pending' | 'failed' | 'partial' | 'deleted' | 'unavailable'; duration: number; width?: number; height?: number; size?: number; videoStart?: number; binding?: string; processed?: boolean; parentId?: string; error?: string; cuts?: number[]; cleaned?: boolean; url?: string; posterUrl?: string; available?: boolean; }
-interface Cue { text: string; begin: number; end: number; nodeId?: string; }
-interface Interval { id: string; nodeIds: string[]; text: string; signature: string; status: 'missing' | 'ready' | 'failed'; confirmed: boolean; audioUrl?: string; duration?: number; cues?: Cue[]; nodeTimes?: { id: string; begin: number; end: number }[]; error?: string; }
-interface QueueEntry { entryId: string; assetId: string; title: string; duration: number; url?: string; posterUrl?: string; available: boolean; }
-interface PicturePiece { mode: 'product' | 'host' | 'presenter'; start: number; duration: number; assetId?: string; productAssetId?: string; sourceStart?: number; productStart?: number; }
-interface Plan { mode: 'auto' | 'manual'; entries: QueueEntry[]; requiredDuration: number; availableDuration: number; valid: boolean; repeated: boolean; warnings: string[]; events: PicturePiece[]; pieces: PicturePiece[]; signature: string; duration: number; }
-interface Preview { relativePath: string; duration: number; width: number; height: number; fps: number; size: number; signature: string; createdAt: string; url: string; }
-interface Execution { id: string; kind: 'copy' | 'voice' | 'render'; status: TaskStatus; progress: number; message: string; startedAt: string; finishedAt?: string; }
-interface Task { id: string; name: string; productId: string; templateId: string; productSnapshot: Product; templateSnapshot: Template; variable: string; example: string; black: Record<string, string>; nodes: ScriptNode[]; confirmedNodes?: ScriptNode[]; stage: Stage; copyConfirmed: boolean; audioConfirmed: boolean; intervals: Interval[]; plan: Plan | null; settings: { subtitles: boolean; bgmId: string | null; bgmVolume: number }; preview: Preview | null; previewStale: boolean; previewChanges?: string[]; completed: boolean; execution: Execution | null; error: string; notice?: string; createdAt: string; updatedAt: string; }
-interface AppState { configured: boolean; dataRoot: string; defaultDataRoot: string; modelReady: boolean; toolsReady: boolean; templates: Template[]; products: Product[]; assets: Asset[]; tasks: Task[]; bgms: Asset[]; seedAvailable: boolean; activeExecution: ({ taskId: string } & Execution) | null; libraryBusy?: boolean; libraryMessage?: string; }
+export interface Template { id: string; name: string; title: string; summary: string; nodes: ScriptNode[]; variableNodeId?: string; }
+export interface ScriptNode { id: string; type: 'host_clip' | 'fixed_narration' | 'generated_narration'; text: string; label?: string; }
+export interface Product { productId: string; name: string; price: string; specification: string; sellingPoints: string; createdAt?: string; }
+export interface Asset { id: string; productId?: string; kind: 'product' | 'source' | 'host' | 'presenter' | 'bgm'; title: string; status: 'ready' | 'pending' | 'failed' | 'partial' | 'deleted' | 'unavailable'; duration: number; width?: number; height?: number; size?: number; videoStart?: number; binding?: string; processed?: boolean; parentId?: string; error?: string; cuts?: number[]; cleaned?: boolean; url?: string; posterUrl?: string; available?: boolean; }
+export interface Cue { text: string; begin: number; end: number; nodeId?: string; }
+export interface Interval { id: string; nodeIds: string[]; text: string; signature: string; status: 'missing' | 'ready' | 'failed'; confirmed: boolean; audioUrl?: string; duration?: number; cues?: Cue[]; nodeTimes?: { id: string; begin: number; end: number }[]; error?: string; }
+export interface QueueEntry { entryId: string; assetId: string; title: string; duration: number; url?: string; posterUrl?: string; available: boolean; }
+export interface PicturePiece { mode: 'product' | 'host' | 'presenter'; start: number; duration: number; assetId?: string; productAssetId?: string; sourceStart?: number; productStart?: number; }
+export interface Plan { mode: 'auto' | 'manual'; entries: QueueEntry[]; requiredDuration: number; availableDuration: number; valid: boolean; repeated: boolean; warnings: string[]; events: PicturePiece[]; pieces: PicturePiece[]; signature: string; duration: number; }
+export interface Preview { relativePath: string; duration: number; width: number; height: number; fps: number; size: number; signature: string; createdAt: string; url: string; }
+export interface Execution { id: string; kind: 'copy' | 'voice' | 'render'; status: TaskStatus; progress: number; message: string; startedAt: string; finishedAt?: string; }
+export interface Task { id: string; name: string; productId: string; templateId: string; productSnapshot: Product; templateSnapshot: Template; variable: string; example: string; black: Record<string, string>; nodes: ScriptNode[]; confirmedNodes?: ScriptNode[]; stage: Stage; copyConfirmed: boolean; audioConfirmed: boolean; intervals: Interval[]; plan: Plan | null; settings: { subtitles: boolean; bgmId: string | null; bgmVolume: number }; preview: Preview | null; previewStale: boolean; previewChanges?: string[]; completed: boolean; execution: Execution | null; error: string; notice?: string; createdAt: string; updatedAt: string; }
+export interface AppState { configured: boolean; dataRoot: string; defaultDataRoot: string; modelReady: boolean; toolsReady: boolean; templates: Template[]; products: Product[]; assets: Asset[]; tasks: Task[]; bgms: Asset[]; seedAvailable: boolean; activeExecution: ({ taskId: string } & Execution) | null; libraryBusy?: boolean; libraryMessage?: string; }
 interface ApiError { error?: string; message?: string; }
-type Page = 'production' | 'library' | 'records' | 'task';
+type Page = 'production' | 'library' | 'records' | 'task' | 'products' | 'publishing';
+interface PrototypeIsland { html(): string; mount(root: HTMLElement, options: {toast:(message:string)=>void;goto:(page:string)=>void}): void; setAccount(value:string): void; }
+declare global { interface Window { EcommerceVideoProducts: PrototypeIsland; EcommerceVideoPublishing: PrototypeIsland; } }
+let workbenchTemplateId = '';
+let workbenchSetupStep: 'architecture' | 'copy' = 'architecture';
+let libraryBoard: 'anchor' | 'product' = 'product';
+let anchorFolder = 'all';
+let workbenchNode = '';
+const prototypeSelection = new Map<string,string[]>();
 
 const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('页面容器缺失');
@@ -25,7 +34,7 @@ interface UiPointer { page: Page; taskId: string; }
 const UI_POINTER_KEY = 'video-workbench-ui-v1';
 let savedPointer: UiPointer | null = null;
 try { savedPointer = JSON.parse(localStorage.getItem(UI_POINTER_KEY) || 'null') as UiPointer | null; } catch { savedPointer = null; }
-let page: Page = savedPointer?.page === 'task' || savedPointer?.page === 'library' || savedPointer?.page === 'records' ? savedPointer.page : 'production';
+let page: Page = savedPointer && ['task','library','records','products','publishing'].includes(savedPointer.page) ? savedPointer.page : 'production';
 let selectedTaskId = savedPointer?.taskId || '';
 let libraryTab = 'product';
 let libraryMediaType: 'all' | 'video' | 'image' = 'all';
@@ -102,10 +111,8 @@ async function mutate(url: string, method = 'POST', body?: unknown, success?: st
 }
 function navButton(id: Page, icon: string, label: string): string { return `<button class="${page === id || (id === 'production' && page === 'task') ? 'active' : ''}" data-page="${id}"><span class="nav-icon">${icon}</span><span>${label}</span></button>`; }
 function shell(content: string): string {
-  return `<div class="shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">片</div><div class="brand-name">电商视频工作台</div></div><nav class="nav">${navButton('library','▦','素材库')}${navButton('production','▤','视频制作')}${navButton('records','◷','生成记录')}</nav><div class="side-spacer"></div><button class="button folder-setting" data-action="change-root">数据目录</button><div class="local-note" title="${esc(state?.dataRoot ?? '')}">${esc(state?.dataRoot ?? '')}</div></aside><main class="main"><header class="topbar"><div class="crumb">${page === 'library' ? '素材库' : page === 'task' ? '视频制作 / 编辑任务' : page === 'records' ? '生成记录' : '视频制作'}</div><div class="top-actions"><span class="connection"><i class="dot"></i>本地服务已连接</span><button class="icon-button" data-action="refresh" title="刷新">↻</button></div></header><div class="page" data-ui-key="page:${page}:${page === 'task' ? esc(selectedTaskId) : ''}">${content}</div></main></div>`;
+  return workbenchShell(page, content, state?.dataRoot || '');
 }
-// Compare with the last rendered template, not mutable live DOM: playback,
-// focus, expanded menus and scroll positions are browser-owned interaction state.
 function patchView(container: HTMLElement, markup: string): void {
   const template = document.createElement('template'); template.innerHTML = markup;
   const key = (node: Node): string | null => node instanceof Element ? node.getAttribute('data-ui-key') || node.id || null : null;
@@ -138,6 +145,8 @@ function patchView(container: HTMLElement, markup: string): void {
       for (const attr of next.attributes) if (before.getAttribute(attr.name) !== attr.value) live.setAttribute(attr.name, attr.value);
       if (live instanceof HTMLTextAreaElement && next instanceof HTMLTextAreaElement) {
         if (document.activeElement !== live && live.value !== next.value) live.value = next.value;
+      } else if (live instanceof HTMLElement && live.isContentEditable && document.activeElement === live) {
+        // Saving a draft must not replace the text node holding the current caret.
       } else {
         children(live, next);
         if (live instanceof HTMLInputElement && next instanceof HTMLInputElement && document.activeElement !== live) {
@@ -153,28 +162,26 @@ function patchView(container: HTMLElement, markup: string): void {
 }
 function render(): void {
   if (!state || !root || manualSortBusy) return;
+  const island = page === 'products' ? window.EcommerceVideoProducts : page === 'publishing' ? window.EcommerceVideoPublishing : undefined;
+  if (island && root.querySelector(`[data-ui-key="prototype:${page}"]`)) return;
   const auditionTask = page === 'task' ? selectedTask() : undefined;
   if (bgmAudition && (!auditionTask || auditionTask.stage !== 'visual' || auditionTask.id !== bgmAuditionTaskId || auditionTask.settings.bgmId !== bgmAuditionAssetId)) stopBgmAudition();
   rememberPointer();
   if (!state.configured) { patchView(root, renderSetup()); bind(); return; }
-  let content = page === 'library' ? renderLibrary() : page === 'records' ? renderRecords() : page === 'task' && selectedTask() ? renderTask(selectedTask()!) : renderProduction();
+  island?.setAccount('local-prototype-ui');
+  let content = island ? `<div data-ui-key="prototype:${page}"><div class="workbench-demo-notice">原型演示 · 此模块尚未接入真实后端</div>${island.html()}</div>` : page === 'library' ? renderLibrary() : page === 'records' ? renderRecords() : page === 'task' && selectedTask() ? renderTask(selectedTask()!) : renderProduction();
   if (page === 'task' && !selectedTask()) page = 'production';
   patchView(root, shell(content));
   bind();
+  island?.mount(root, {toast:showToast,goto:target=>{void navigate((target==='materials'?'library':target) as Page).catch(showError);}});
   updateBgmAuditionButton();
-  const task = page === 'task' ? selectedTask() : undefined;
-  if (task?.stage === 'preview' && task.previewStale && !task.completed && task.execution?.status !== 'running' && !document.querySelector('.modal-backdrop')) {
-    const key = JSON.stringify([task.preview?.url, task.settings, task.black, task.variable, task.plan?.signature, task.intervals.map(interval => [interval.signature, interval.duration, interval.audioUrl]), task.previewChanges]);
-    if (previewPrompts.get(task.id) !== key) { previewPrompts.set(task.id, key); showRegenerationDialog(task); }
-  }
 }
 function renderSetup(): string {
   return `<div class="shell"><main class="main" style="grid-column:1/-1"><div class="page" style="max-width:600px;padding-top:15vh"><h1>设置本地工作目录</h1><p class="subhead">素材、文案与生成记录将保存在你选择的目录中，原视频不会被移动或覆盖。</p><div class="card" style="margin-top:24px"><label class="field-label" for="data-root">数据目录</label><input id="data-root" class="input" value="${esc(state!.defaultDataRoot)}"><div class="row" style="justify-content:space-between;margin-top:14px"><span class="section-hint">使用 Videos 下的独立目录</span><button class="button" data-action="choose-folder" data-target="data-root">选择文件夹</button></div><div class="modal-footer"><button class="button primary" data-action="setup">开始使用</button></div></div></div></main></div>`;
 }
 function renderProduction(): string {
-  const tasks = state!.tasks;
-  const drafts = tasks.filter(task => !task.completed).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt));
-  return `<div class="page-head" data-ui-key="page-heading"><div><h1>视频制作</h1></div></div>${state!.libraryBusy ? `<div class="busy-bar" data-ui-key="execution-progress"><span class="spinner"></span>${esc(state!.libraryMessage || '正在整理本地素材…')}</div>` : ''}<section class="production-start"><div><div class="section-title">开始新制作</div></div><button class="button primary" data-action="new-task">＋ 新建视频任务</button></section><div class="section-head"><div><div class="section-title">继续已有任务</div></div><button class="button small" data-page="records">查看全部记录</button></div><div class="task-list">${drafts.length ? drafts.map(taskRow).join('') : `<div class="empty"><strong>暂无可继续的任务</strong>新建视频任务后，未完成的编辑会显示在这里。</div>`}</div>`;
+  if (!workbenchTemplateId) workbenchTemplateId = state!.templates[0]?.id || '';
+  return architectureView(state!.templates, workbenchTemplateId, workbenchSetupStep, state!.products);
 }
 function renderRecords(): string {
   const filters = appliedRecordFilters;
@@ -182,21 +189,7 @@ function renderRecords(): string {
     && (!filters.status || (filters.status === 'incomplete' ? !task.completed : taskFilterStatus(task) === filters.status))
     && (!filters.from || localDay(task.createdAt) >= filters.from)
     && (!filters.to || localDay(task.createdAt) <= filters.to)).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt));
-  return `<div class="page-head" data-ui-key="page-heading"><div><h1>生成记录</h1></div></div>
-  <form class="card record-filters" data-record-search>
-    <label class="record-keyword">关键词<input type="search" class="input" name="keyword" placeholder="搜索任务、商品名称或 ID" value="${esc(recordFilters.keyword)}"></label>
-    <label>任务状态<select class="select" name="status">${[['','全部状态'],['incomplete','未完成'],['running','进行中'],['error','有错误'],['completed','已完成']].map(([value,label]) => `<option value="${value}" ${recordFilters.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
-    <label>创建日期起<input type="date" class="input" name="from" value="${esc(recordFilters.from)}"></label><label>创建日期止<input type="date" class="input" name="to" value="${esc(recordFilters.to)}"></label>
-    <div class="row record-filter-actions"><button class="button primary" type="submit">搜索</button><button class="button" type="button" data-reset-record-search>重置</button></div>
-  </form><p class="section-hint" data-record-count>找到 ${tasks.length} 条记录 · 共 ${state!.tasks.length} 条</p>
-  <div class="card records-card"><div class="records-head"><span>任务</span><span>状态</span><span>更新时间</span><span>操作</span></div>${tasks.length ? tasks.map(task => {
-    const previewValid = !!task.preview && !task.previewStale;
-    const status = task.completed ? '已完成' : task.execution?.status === 'running' ? `${statusName(task.execution.kind)}中 ${task.execution.progress}%` : task.error ? '有错误' : '未完成';
-    const images = state!.assets.filter(asset => asset.productId === task.productId && asset.available && isImageAsset(asset));
-    let cover = images.find(asset => asset.id === recordCovers.get(task.productId));
-    if (!cover && images.length) { cover = images[Math.floor(Math.random() * images.length)]; recordCovers.set(task.productId, cover.id); }
-    return `<div class="record-row" data-ui-key="record:${esc(task.id)}"><div class="record-overview"><div class="record-cover">${cover ? `<img src="${esc(cover.url)}" alt="${esc(task.productSnapshot.name)}">` : productIcon}</div><div><div class="task-name">${esc(task.name)}</div></div></div><span class="badge ${task.completed ? 'green' : task.error ? 'red' : task.execution?.status === 'running' ? 'amber' : ''}">${status}</span><span class="section-hint">${dateText(task.updatedAt)}</span><div class="row record-actions">${task.completed ? `<button class="button small" data-action="record-open" data-id="${esc(task.id)}">查看成片</button><button class="button small" data-action="record-export" data-id="${esc(task.id)}" ${previewValid ? '' : 'disabled'}>导出副本</button>` : `<button class="button small primary" data-action="record-open" data-id="${esc(task.id)}">继续</button>`}</div></div>`;
-  }).join('') : `<div class="empty"><strong>${state!.tasks.length ? '没有匹配的记录' : '还没有生成记录'}</strong>${state!.tasks.length ? '试试其他关键词，或重置筛选条件。' : '创建任务后，草稿与成片都会保存在这里。'}</div>`}</div>`;
+  return recordsView(tasks, recordFilters, state!.tasks.length);
 }
 function taskRow(task: Task): string {
   const running = task.execution?.status === 'running';
@@ -215,6 +208,12 @@ function libraryProductOptions(query: string): string {
   return options.length ? options.map((option, index) => `<button type="button" role="option" tabindex="-1" id="library-product-option-${index}" class="product-picker-option" data-product-option="${esc(option.id)}" aria-selected="${libraryProductId === option.id}"><span><strong>${esc(option.title)}</strong><small>${esc(option.detail)}</small></span><span class="product-picker-count">${esc(option.count)}${libraryProductId === option.id ? ' ✓' : ''}</span></button>`).join('') : '<div class="product-picker-empty">没有匹配的商品</div>';
 }
 function renderLibrary(): string {
+  const anchor = state!.assets.filter(asset => ['host','presenter','bgm'].includes(asset.kind) && asset.available);
+  const selected = anchor.filter(asset => anchorFolder === 'all' || asset.kind === anchorFolder);
+  const folders = libraryBoard === 'anchor' ? [['all','全部素材'],['host','开场与收尾原片'],['presenter','通用主播画面'],['bgm','声音']] : [['all','全部商品'], ...state!.products.map(item => [item.productId,item.name])];
+  return `<main class="ec-video-ledger workbench-library"><nav class="ec-video-material-tools">${['素材库','素材分割','产品替换','音频处理'].map((title,i)=>`<button type="button" class="${i===0?'active':''}" data-video-tool="${i}" ${i?'disabled title="此入口暂保留原型，尚未接入"':''}>${title}</button>`).join('')}</nav><div class="ec-led-head"><h1>素材库</h1><span class="workbench-live-badge">本机素材</span></div><div class="ec-asset-boards">${[['anchor','播','IP主播素材','主播原片、通用画面与声音',anchor.length],['product','商','产品素材','按商品归集视频、图片和资料',state!.assets.filter(a=>a.kind==='product'&&a.available).length]].map(([id,icon,title,description,count])=>`<button class="ec-asset-board ${libraryBoard===id?'active':''}" data-library-board="${id}"><i>${icon}</i><div><strong>${title}</strong><small>${description}</small></div><span class="is-tail">${count}</span></button>`).join('')}</div><div class="workbench-library-layout"><aside class="workbench-folders"><h3>素材目录</h3>${folders.map(([id,title])=>`<button type="button" data-library-folder="${esc(id)}" class="${(libraryBoard==='anchor'?anchorFolder:libraryProductId)===id?'active':''}"><span>▱</span>${esc(title)}</button>`).join('')}</aside><section class="workbench-library-files">${libraryBoard==='product'?renderProductLibrary():`<div class="workbench-table-heading"><h2>${esc(folders.find(([id])=>id===anchorFolder)?.[1] || '全部素材')}</h2><span>${selected.length} 项</span></div><div class="library-asset-grid">${selected.map(libraryAsset).join('') || '<div class="empty">此目录暂无本机素材</div>'}</div>`}</section></div></main>`;
+}
+function renderProductLibrary(): string {
   const products = state!.products;
   if (!libraryProductId || (libraryProductId !== 'all' && !products.some(product => product.productId === libraryProductId))) libraryProductId = products[0]?.productId || 'all';
   const selectedProduct = products.find(product => product.productId === libraryProductId);
@@ -225,7 +224,7 @@ function renderLibrary(): string {
   const list = statusList.filter(asset => libraryMediaType === 'all' || isImageAsset(asset) === (libraryMediaType === 'image'));
   const openSearch = root?.querySelector<HTMLInputElement>('[data-product-picker-popup]:not([hidden]) [data-product-search]')?.value || '';
   const emptyTitle = libraryMediaType === 'image' ? '暂无图片' : libraryMediaType === 'video' ? '暂无视频' : libraryTab === 'product' ? '暂无可用素材' : '暂无未处理素材';
-  return `<div class="page-head" data-ui-key="page-heading"><div><h1>素材库</h1></div><div class="row"><button class="button" data-action="seed" ${state!.seedAvailable ? '' : 'disabled'}>导入示例素材</button><button class="button primary" data-action="add-product">＋ 添加商品</button></div></div>
+  return `<div class="page-head workbench-product-toolbar" data-ui-key="page-heading"><div class="row"><button class="button" data-action="seed" ${state!.seedAvailable ? '' : 'disabled'}>导入示例素材</button><button class="button primary" data-action="add-product">＋ 添加商品</button></div></div>
   ${state!.libraryBusy ? `<div class="busy-bar" data-ui-key="execution-progress"><span class="spinner"></span>${esc(state!.libraryMessage || '素材处理中…')}</div>` : ''}
   <div class="library-product-bar" data-ui-key="library-product-picker"><div class="product-picker" data-product-picker><button type="button" class="select product-picker-trigger" data-product-picker-trigger aria-labelledby="library-product-value" aria-haspopup="listbox" aria-expanded="false" aria-controls="library-product-options" title="选择商品"><span id="library-product-value">${selectedProduct ? `${esc(selectedProduct.name)} · ${readyProductAssets(selectedProduct.productId).length} 段` : `全部商品 · ${products.length} 个`}</span><span aria-hidden="true">⌄</span></button><div class="product-picker-popup" data-product-picker-popup hidden><input type="search" class="input" data-product-search role="combobox" aria-label="搜索商品" aria-expanded="false" aria-autocomplete="list" aria-controls="library-product-options" placeholder="输入商品名称或 ID 搜索" autocomplete="off"><div id="library-product-options" role="listbox" aria-label="商品" class="product-picker-options">${libraryProductOptions(openSearch)}</div><div class="product-picker-hint" aria-live="polite" data-product-search-count>共 ${products.length} 个商品</div></div></div></div>
   ${selectedProduct ? `<div class="card library-product-info" data-ui-key="product-info:${esc(selectedProduct.productId)}"><div><strong>${esc(selectedProduct.name)}</strong><span class="section-hint">商品ID ${esc(selectedProduct.productId)}</span><p>${esc(money(selectedProduct.price))} · ${esc(selectedProduct.specification)}</p></div><div class="row"><button class="button" data-action="edit-product" data-id="${esc(selectedProduct.productId)}">编辑资料</button><button class="button primary" data-action="import-videos" data-id="${esc(selectedProduct.productId)}">添加视频</button></div></div>` : ''}
@@ -240,16 +239,11 @@ function libraryAsset(asset: Asset): string {
 }
 
 function renderTask(task: Task): string {
-  const statuses: Stage[] = ['copy','voice','visual','preview']; const index = statuses.indexOf(task.stage);
-  return `<div class="page-head" data-ui-key="page-heading"><div><h1>${esc(task.name)}</h1><p class="subhead">${esc(task.productSnapshot.name)} · ${esc(task.templateSnapshot.name)}${task.completed ? ' · 已完成' : ''}</p></div><div class="row">${!task.completed ? `<button class="button" data-action="switch-task" ${state!.activeExecution ? 'disabled' : ''}>切换商品或模板</button>` : ''}<button class="button" data-page="records">返回记录</button></div></div>
-  ${task.error ? `<div class="status-box error" data-ui-key="task-error">${esc(task.error)}</div>` : ''}${task.notice ? `<div class="notice" data-ui-key="task-notice">${esc(task.notice)}</div>` : ''}${task.execution?.status === 'running' ? `<div class="busy-bar" data-ui-key="execution-progress"><span class="spinner"></span><span style="flex:1">${esc(task.execution.message || statusName(task.execution.kind))}</span><strong>${task.execution.progress}%</strong><button class="button small danger" data-action="stop-task" ${task.execution.kind === 'render' ? '' : 'disabled'}>停止合成</button></div>` : ''}
-  <div class="task-workspace" data-ui-key="task-workspace"><section><div class="stage-tabs" data-ui-key="stage-tabs">${statuses.map((stage,i) => `<button class="stage-tab ${stage === task.stage ? 'active' : i < index ? 'done' : ''}" data-stage="${stage}" ${task.completed ? 'disabled' : ''}>${i < index ? '✓ ' : `${String(i+1).padStart(2,'0')} `}${stageName(stage)}</button>`).join('')}</div><div class="card stage-panel" data-ui-key="stage:${task.stage}">${renderStage(task)}</div>${task.completed ? `<details class="card frozen-parameters" data-ui-key="completed-parameters"><summary>查看制作参数与完整文案</summary><dl><dt>商品ID</dt><dd>${esc(task.productId)}</dd><dt>商品资料快照</dt><dd>${esc(task.productSnapshot.name)} · ${esc(money(task.productSnapshot.price))} · ${esc(task.productSnapshot.specification)}</dd><dt>卖点</dt><dd>${esc(task.productSnapshot.sellingPoints)}</dd><dt>配音</dt><dd>Qwen 3.1 Plus · 小帅复刻音色 · 1.1倍语速</dd><dt>成片规格</dt><dd>1080×1920 · 30 FPS · MP4</dd><dt>输出设置</dt><dd>${task.settings.subtitles ? '开启黄色字幕' : '不添加字幕'} · ${esc(state!.bgms.find(asset => asset.id === task.settings.bgmId)?.title || '不使用BGM')}</dd></dl><div class="frozen-script">${task.nodes.map(node => `<p class="frozen-${node.type}">${esc(node.text)}</p>`).join('')}</div><p class="section-hint">商品素材顺序（参数快照）</p><ol>${task.plan?.entries.map(entry => `<li>${esc(entry.title)} · ${duration(entry.duration)}</li>`).join('') || ''}</ol></details>` : ''}</section><aside class="card side-card" data-ui-key="task-summary">${renderTaskAside(task)}</aside></div>`;
+  const step = task.stage === 'copy' ? 'copy' : 'generation';
+  return `<main class="ec-video-production" data-ui-key="task:${esc(task.id)}"><div class="workbench-task-header"><h2>${esc(task.name)}</h2><div class="row">${!task.completed?`<button class="button" data-action="switch-task" ${state!.activeExecution?'disabled':''}>切换商品或模板</button>`:''}<button class="button" data-page="records">返回记录</button></div></div>${productionFlow(step,task.completed)}${task.error?`<div class="status-box error" data-ui-key="task-error">${esc(task.error)}</div>`:''}${task.notice?`<div class="notice">${esc(task.notice)}</div>`:''}${task.execution?.status==='running'?`<div class="busy-bar" data-ui-key="execution-progress"><span class="spinner"></span><span>${esc(task.execution.message)}</span><progress max="100" value="${task.execution.progress}"></progress><strong>${Math.floor(task.execution.progress)}%</strong></div>`:''}<div class="ec-video-production-content"><section class="ec-video-production-panel" data-ui-key="stage:${step}:${task.completed}">${task.completed?renderPreviewStage(task):renderStage(task)}</section></div></main>`;
 }
 function renderStage(task: Task): string {
-  if (task.stage === 'copy') return renderCopyStage(task);
-  if (task.stage === 'voice') return renderVoiceStage(task);
-  if (task.stage === 'visual') return renderVisualStage(task);
-  return renderPreviewStage(task);
+  return task.stage === 'copy' ? copyView(task, state!) : generationView(task, state!, workbenchNode, prototypeSelection);
 }
 function renderCopyPreview(task: Task, nodes = task.nodes): string {
   const loading = task.execution?.status === 'running' && task.execution.kind === 'copy';
@@ -385,6 +379,18 @@ function newElements<T extends HTMLElement>(selector: string): T[] {
 function bind(): void {
   if (!root) return;
   newElements<HTMLElement>('[data-page]').forEach(element => element.addEventListener('click', () => { void navigate(element.dataset.page as Page).catch(showError); }));
+  newElements<HTMLSelectElement>('[data-architecture-template]').forEach(select => select.addEventListener('change', () => { workbenchTemplateId = select.value; render(); }));
+  newElements<HTMLSelectElement>('[data-create-product]').forEach(select => select.addEventListener('change', () => {
+    if (!select.value) return; select.disabled = true;
+    void api<Task>('/api/tasks', 'POST', {productId:select.value,templateId:workbenchTemplateId}).then(async task=>{selectedTaskId=task.id;workbenchNode='';prototypeSelection.clear();page='task';await refresh();window.scrollTo(0,0);}).catch(error=>{select.disabled=false;showError(error);});
+  }));
+  newElements<HTMLSelectElement>('[data-switch-product]').forEach(select => select.addEventListener('change', () => { const task=selectedTask(); if (!task) return; const productId=select.value; select.value=task.productId; showModal(switchModal(task, productId)); }));
+  newElements<HTMLButtonElement>('[data-library-board]').forEach(button => button.addEventListener('click', () => { libraryBoard=button.dataset.libraryBoard as typeof libraryBoard; render(); }));
+  newElements<HTMLButtonElement>('[data-library-folder]').forEach(button => button.addEventListener('click', () => { if(libraryBoard==='anchor')anchorFolder=button.dataset.libraryFolder!;else libraryProductId=button.dataset.libraryFolder!;render(); }));
+  newElements<HTMLElement>('[data-black-edit]').forEach(editor => editor.addEventListener('input', () => {
+    const proxy=document.createElement('textarea');proxy.dataset.blackNode=editor.dataset.blackEdit;proxy.value=editor.innerText;
+    queueDraftFromInput(proxy);if(proxy.value!==editor.innerText)editor.textContent=proxy.value;
+  }));
   newElements<HTMLElement>('[data-open-task]').forEach(element => element.addEventListener('click', () => { void openTask(element.dataset.openTask || '').catch(showError); }));
   newElements<HTMLButtonElement>('[data-stage]').forEach(button => button.addEventListener('click', () => { const target = button.dataset.stage as Stage; void goStage(target).catch(showError); }));
   newElements<HTMLButtonElement>('[data-action]').forEach(button => button.addEventListener('click', () => { void handleAction(button).catch(showError); }));
@@ -421,6 +427,7 @@ async function navigate(target: Page): Promise<void> {
   if (target !== 'task') { page = target; selectedTaskId = ''; }
   else page = target;
   render();
+  window.scrollTo(0,0);
 }
 async function openTask(id: string): Promise<void> {
   const current = selectedTask(); if (current) await flushTaskDraft(current.id);
@@ -549,7 +556,25 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   if (task) { await flushTaskDraft(task.id); task = selectedTask(); }
   if (action === 'refresh' || action === 'task-refresh') return refresh();
   if (action === 'home') { page = 'production'; selectedTaskId = ''; return render(); }
-  if (action === 'new-task') return showModal(newTaskModal());
+  if (action === 'new-task') { selectedTaskId='';page='production';workbenchSetupStep='architecture';return render(); }
+  if (action === 'workbench-stage') {
+    if (state!.activeExecution) return showToast('配音正在生成，请稍候');
+    const step=button.dataset.step;
+    if (step==='architecture') { workbenchTemplateId=task?.templateId || workbenchTemplateId;page='production';workbenchSetupStep='architecture';return render(); }
+    if (step==='copy') { if(task) { if(page==='production' && workbenchTemplateId && workbenchTemplateId!==task.templateId)return showModal(switchModal(task,task.productId,workbenchTemplateId));page='task';return goStage('copy'); } workbenchSetupStep='copy';return render(); }
+    if (!task?.copyConfirmed) return showToast('请先确认文案并生成配音');
+    return goStage(task.audioConfirmed?'visual':'voice');
+  }
+  if (action === 'select-shot') { workbenchNode=button.dataset.id!;return render(); }
+  if (action === 'prototype-remove') { const key=workbenchNode || task?.nodes[0]?.id;const ids=prototypeSelection.get(key!)||[];ids.splice(Number(button.dataset.index),1);prototypeSelection.set(key!,ids);return render(); }
+  if (action === 'prototype-add') { const key=workbenchNode || task?.nodes[0]?.id;if(key)prototypeSelection.set(key,[...(prototypeSelection.get(key)||[]),button.dataset.id!]);closeModal();return render(); }
+  if (action === 'prototype-materials' && task) {
+    return showModal(`<div class="modal material-picker"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>选择本段素材</h2><p class="modal-intro">仅演示选材界面，尚未写入真实编排。</p><div class="asset-grid">${readyProductAssets(task.productId).map(asset=>`<article class="asset-card">${asset.posterUrl?`<img src="${esc(asset.posterUrl)}" alt="">`:''}<div class="asset-caption">${esc(asset.title)}<div class="row"><button class="button small" data-action="preview-asset" data-id="${esc(asset.id)}">预览</button><button class="button small primary" data-action="prototype-add" data-id="${esc(asset.id)}">加入</button></div></div></article>`).join('') || '<p>暂无本机商品视频</p>'}</div></div>`);
+  }
+  if (action === 'record-details') {
+    const record=state!.tasks.find(item=>item.id===button.dataset.id)!;
+    return showModal(`<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>制作详情</h2><p class="modal-intro">${esc(record.id)}</p><dl><dt>商品</dt><dd>${esc(record.productSnapshot.name)}</dd><dt>模板</dt><dd>${esc(record.templateSnapshot.title)}</dd><dt>状态</dt><dd>${record.completed?'已完成，参数只读':record.error?esc(record.error):'未完成'}</dd></dl><h3>完整文案</h3><div class="workbench-detail-script">${record.nodes.map(node=>`<p>${esc(node.text)}</p>`).join('')}</div><div class="modal-footer"><button class="button" data-close-modal>关闭</button></div></div>`);
+  }
   if (action === 'add-product') return showModal(productModal());
   if (action === 'edit-product') { const product = state!.products.find(item => item.productId === button.dataset.id); if (product) showModal(productModal(product)); return; }
   if (action === 'choose-folder') { const kind = 'folder'; const result = await api<{ paths: string[] }>('/api/dialog', 'POST', { kind }); const target = document.getElementById(button.dataset.target || '') as HTMLInputElement | null; if (target && result.paths[0]) target.value = result.paths[0]; return; }
@@ -561,11 +586,12 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     const asset = state!.assets.find(item => item.id === button.dataset.id);
     if (!asset?.url || !asset.available) return showToast('该素材暂不可用，请检查来源文件', true);
     if (isImageAsset(asset)) return showModal(`<div class="modal asset-image-modal"><button class="modal-close" data-close-modal aria-label="关闭预览">×</button><h2>${esc(asset.title)}</h2><img src="${esc(asset.url)}" alt="${esc(asset.title)}"></div>`);
+    if (asset.kind === 'bgm') return showModal(`<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>${esc(asset.title)}</h2><audio controls preload="metadata" src="${esc(asset.url)}" style="width:100%;margin-top:20px"></audio></div>`);
     return showVideoPreview(asset.title, asset.url, 0, undefined, `${duration(asset.duration)} · ${asset.width || ''}×${asset.height || ''}`);
   }
   if (action === 'retry-asset') { await mutate(`/api/assets/${encodeURIComponent(button.dataset.id || '')}/retry`, 'POST', {}, '已完成重试'); return; }
   if (action === 'delete-asset') { if (!confirm('从素材库移除此商品片段？正在被合成使用的素材会由服务端拒绝删除。')) return; await mutate(`/api/assets/${encodeURIComponent(button.dataset.id || '')}`, 'DELETE', undefined, '素材记录已更新'); return; }
-  if (action === 'record-open') { selectedTaskId = button.dataset.id || ''; page = 'task'; resetManualSelection(selectedTaskId); previewPrompts.delete(selectedTaskId); const record = selectedTask(); if (record?.completed) record.stage = 'preview'; render(); return; }
+  if (action === 'record-open') { selectedTaskId = button.dataset.id || ''; workbenchNode='';prototypeSelection.clear();page = 'task'; resetManualSelection(selectedTaskId); previewPrompts.delete(selectedTaskId); const record = selectedTask(); if (record?.completed) record.stage = 'preview'; render(); return; }
   if (action === 'record-export') { const result = await api<{ paths: string[] }>('/api/dialog', 'POST', { kind: 'folder' }); if (!result.paths[0]) return; await mutate(`/api/tasks/${encodeURIComponent(button.dataset.id || '')}/export`, 'POST', { directory: result.paths[0] }, '成片副本已导出'); return; }
   if (action === 'switch-task' && task) return showModal(switchModal(task, button.dataset.productId, button.dataset.templateId));
   if (!task) return;
@@ -597,8 +623,8 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     await mutate(`/api/tasks/${encodeURIComponent(task.id)}/copy`, 'POST', {}, '已提交商品文案生成');
     root?.querySelector('[data-copy-preview]')?.scrollIntoView({ block: 'nearest' }); return;
   }
-  if (action === 'confirm-copy') { await mutate(`/api/tasks/${encodeURIComponent(task.id)}/copy/confirm`, 'POST', {}, '文案已确认'); return; }
-  if (action === 'generate-voice') { const id = button.dataset.id; await mutate(`/api/tasks/${encodeURIComponent(task.id)}/voice`, 'POST', id ? { intervalId: id } : {}, '已提交配音生成'); return; }
+  if (action === 'confirm-copy') { button.disabled=true; try { await mutate(`/api/tasks/${encodeURIComponent(task.id)}/copy/confirm`, 'POST', {generateVoice:true}, '文案已确认，正在准备配音'); window.scrollTo(0,0); } catch(error) { button.disabled=false; throw error; } return; }
+  if (action === 'generate-voice') { const id = button.dataset.id; await mutate(`/api/tasks/${encodeURIComponent(task.id)}/voice`, 'POST', {autoConfirm:true,...(id?{intervalId:id}:{})}, '已提交配音生成'); return; }
   if (action === 'confirm-voice') { if (task.audioConfirmed) await goStage('visual'); else await mutate(`/api/tasks/${encodeURIComponent(task.id)}/voice/confirm`, 'POST', {}, '配音已确认'); return; }
   if (action === 'auto-plan') { const updated = await api<Task>(`/api/tasks/${encodeURIComponent(task.id)}/plan`, 'POST', {}); state!.tasks = state!.tasks.map(item => item.id === task.id ? updated : item); resetManualSelection(task.id); showToast('随机画面方案已生成'); render(); return; }
   if (action === 'add-manual-asset') { manualSelection.push(button.dataset.id || ''); render(); return; }
@@ -695,7 +721,7 @@ async function applyTaskSwitch(taskId: string, productId: string, templateId: st
   controls.forEach(button => { button.disabled = true; });
   try {
     const task = await api<Task>(`/api/tasks/${encodeURIComponent(taskId)}/switch`, 'POST', { productId, templateId, mode });
-    closeModal(); selectedTaskId = task.id; manualSelectionTaskId = ''; manualSelection = []; page = 'task'; await refresh();
+    closeModal(); selectedTaskId = task.id; workbenchNode=''; prototypeSelection.clear(); workbenchTemplateId=task.templateId; manualSelectionTaskId = ''; manualSelection = []; page = 'task'; await refresh();
   } catch (error) { controls.forEach(button => { button.disabled = false; }); throw error; }
 }
 function dataRootModal(): string {

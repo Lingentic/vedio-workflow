@@ -18,11 +18,16 @@
 
 只有一个本地 Node 服务，没有独立“自动队列微服务”。浏览器刷新、切换模块不控制云任务或 FFmpeg 的进程生命周期。
 
+2026-10-29 接入原型布局：`prototype-views.ts` 渲染三步制作页和真实记录表，`workbench.css` 适配从原型复制的样式。`public/prototype/` 中商品获取／发布脚本是独立演示岛，仅使用浏览器演示数据，不读写业务库。来源与静态图片边界见 [原型来源](../../demo/public/prototype/README.md)。原型源目录保持不变。
+
+当前真实制作路径为 `copy/confirm {generateVoice:true}` → `confirmCopyAndVoice` → 生成缺失区间 → 校验音频及时间 → 自动确认 → `visual` 工作区试听。自动确认不建立旧 `plan`；新页选材仅前端演示，生成视频禁用。图中的 plan／renderer 仍是保留的后端实现，尚未接入新 UI。
+
 | 模块 | 责任与关键边界 |
 | --- | --- |
 | [server.ts](../../demo/server.ts) | 组装服务；校验 Host、Origin、JSON、路径等外部输入；路由 API；流式媒体 Range；擦除前端 TypeScript 类型；绑定 `127.0.0.1`。 |
 | [app.ts](../../demo/public/app.ts) | 字符串模板与 `patchView` 局部 DOM 更新；按稳定 key 保留页面、资源、口播区间及播放器。`newElements` 仅给新控件绑定一次事件；串行保存与轮询均不重建整页。不是业务状态的权威存储；输入法、焦点、弹窗与拖动由现有交互保留。 |
-| [sortable.ts](../../demo/public/sortable.ts) | Pointer Events 排序、跟手浮层、占位与边缘滚动；松手落位只改前端清单，保存方案才写服务端。 |
+| [prototype-views.ts](../../demo/public/prototype-views.ts)、[workbench.css](../../demo/public/workbench.css) | 原型布局、固定模板全文、自动配音进度、原片与口播试听、真实记录表；逐节点素材选择只是演示，不写旧方案。 |
+| [sortable.ts](../../demo/public/sortable.ts) | 旧连续清单排序组件保留，当前新制作页未使用；不能把其存在当作逐段选材已实现。 |
 | [workflow.ts](../../demo/lib/workflow.ts) | 创建／切换任务、文案确认、区间复用、执行控制、方案与预览失效、完成与清理；当前服务一次只持有一个活动制作执行。 |
 | [library.ts](../../demo/lib/library.ts) | 资料验证、复制托管、探测、切分、逐失败范围重试、删除保护；固定片段按 binding 关联节点。 |
 | [models.ts](../../demo/lib/models.ts) | 文案请求、SSE 配音读取、错误脱敏与音频下载。字时间必须和确认文字对应；这里没有可靠的自动重提或云端任务恢复服务。 |

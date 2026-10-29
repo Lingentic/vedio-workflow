@@ -1,0 +1,221 @@
+/* Shared controls for product acquisition, generation records and publishing.
+ * Keep the enterprise workbench palette here; module files retain their layout.
+ * The root scope excludes the video production and shared video tool screens.
+ */
+:is(.ec-video-products, .ec-video-ledger) {
+  --ec-control-primary: #7952f7;
+  --ec-control-primary-hover: #6841df;
+  --ec-control-primary-active: #5c35ca;
+  --ec-control-ink: #4f465f;
+  --ec-control-brand-ink: #6742ed;
+  --ec-control-surface: #fff;
+  --ec-control-border: #e5ddf2;
+  --ec-control-hover: #f6f2ff;
+  --ec-control-selected: #ede7ff;
+  --ec-control-selected-border: #d9cafb;
+  --ec-control-danger: #c0392f;
+  --ec-control-danger-hover: #a52f27;
+  --ec-control-danger-soft: #fdecea;
+  --ec-control-danger-border: #efc9c5;
+  --ec-control-disabled: #81778f;
+  --ec-control-disabled-bg: #f2f0f6;
+  --ec-control-disabled-border: #e4dfea;
+  --ec-control-focus: #987bff;
+}
+
+.ec-video-products {
+  --prod-purple: var(--ec-control-primary);
+  --prod-purple-soft: var(--ec-control-selected);
+}
+.ec-video-ledger {
+  --led-purple: var(--ec-control-primary);
+  --led-purple-soft: var(--ec-control-selected);
+}
+
+/* Primary, secondary, quiet and destructive actions share one state system. */
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn, .ec-led-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--ec-control-border);
+  border-radius: 8px;
+  color: var(--ec-control-ink);
+  background: var(--ec-control-surface);
+  box-shadow: none;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--client-dur-enter) var(--client-ease-out), color var(--client-dur-enter) var(--client-ease-out), background var(--client-dur-enter) var(--client-ease-out), box-shadow var(--client-dur-enter) var(--client-ease-out);
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn, .ec-led-btn):hover:not(:disabled) {
+  border-color: var(--ec-control-selected-border);
+  color: var(--ec-control-primary-hover);
+  background: var(--ec-control-hover);
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn, .ec-led-btn):active:not(:disabled) {
+  color: var(--ec-control-primary-active);
+  background: var(--ec-control-selected);
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn--primary, .ec-led-btn--primary) {
+  border-color: var(--ec-control-primary);
+  color: #fff;
+  background: var(--ec-control-primary);
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn--primary, .ec-led-btn--primary):hover:not(:disabled) {
+  border-color: var(--ec-control-primary-hover);
+  color: #fff;
+  background: var(--ec-control-primary-hover);
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn--primary, .ec-led-btn--primary):active:not(:disabled) {
+  border-color: var(--ec-control-primary-active);
+  color: #fff;
+  background: var(--ec-control-primary-active);
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn--quiet, .ec-led-btn--quiet) {
+  border-color: transparent;
+  color: var(--ec-control-primary-hover);
+  background: transparent;
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn--quiet, .ec-led-btn--quiet):hover:not(:disabled) {
+  border-color: transparent;
+  color: var(--ec-control-primary-active);
+  background: var(--ec-control-hover);
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn--danger, .ec-led-btn--danger) {
+  border-color: var(--ec-control-danger-border);
+  color: var(--ec-control-danger);
+  background: var(--ec-control-danger-soft);
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn--danger, .ec-led-btn--danger):hover:not(:disabled) {
+  border-color: var(--ec-control-danger);
+  color: var(--ec-control-danger-hover);
+  background: #fbe0dc;
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn--danger, .ec-led-btn--danger):active:not(:disabled) {
+  border-color: var(--ec-control-danger-hover);
+  color: var(--ec-control-danger-hover);
+  background: #f6d4cf;
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn--solid-danger, .ec-led-btn--solid-danger) {
+  border-color: var(--ec-control-danger);
+  color: #fff;
+  background: var(--ec-control-danger);
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn--solid-danger, .ec-led-btn--solid-danger):hover:not(:disabled) {
+  border-color: var(--ec-control-danger-hover);
+  color: #fff;
+  background: var(--ec-control-danger-hover);
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn--solid-danger, .ec-led-btn--solid-danger):active:not(:disabled) {
+  border-color: #8f2821;
+  color: #fff;
+  background: #8f2821;
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn--sm, .ec-led-btn--sm) {
+  min-height: 28px;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+.ec-video-products .ec-prod-btn :is(i, svg) { font-style: normal; }
+
+/* Secondary controls retain their original geometry and use the same colors. */
+.ec-video-products :is(.ec-prod-seg, .ec-prod-channel) button,
+.ec-video-products .ec-prod-media-ops :is(button, .ec-prod-media-replace),
+.ec-video-ledger .ec-led-menu > button {
+  color: var(--ec-control-ink);
+  background: var(--ec-control-surface);
+  border-color: var(--ec-control-border);
+}
+.ec-video-products :is(.ec-prod-seg, .ec-prod-channel) button:hover:not(:disabled),
+.ec-video-products .ec-prod-media-ops :is(button, .ec-prod-media-replace):hover:not(:disabled),
+.ec-video-ledger .ec-led-menu > button:hover:not(:disabled) {
+  color: var(--ec-control-primary-hover);
+  background: var(--ec-control-hover);
+  border-color: var(--ec-control-selected-border);
+}
+.ec-video-products :is(.ec-prod-seg, .ec-prod-channel) button.active:not(:disabled) {
+  color: var(--ec-control-brand-ink);
+  background: var(--ec-control-selected);
+  border-color: var(--ec-control-selected-border);
+  font-weight: 650;
+}
+.ec-video-products :is(.ec-prod-seg, .ec-prod-channel) button.active:hover:not(:disabled) {
+  color: var(--ec-control-primary-active);
+  background: #e5daff;
+}
+.ec-video-products :is(.ec-prod-ai, .ec-prod-btn--collect) {
+  border-color: var(--ec-control-selected-border);
+  color: var(--ec-control-brand-ink);
+  background: var(--ec-control-selected);
+}
+.ec-video-products :is(.ec-prod-ai, .ec-prod-btn--collect):hover:not(:disabled) {
+  color: var(--ec-control-primary-active);
+  background: #e5daff;
+}
+.ec-video-products .ec-prod-media-ops .is-danger:not(:disabled),
+.ec-video-ledger .ec-led-menu > button[data-pub="cancel"]:not(:disabled) {
+  border-color: var(--ec-control-danger-border);
+  color: var(--ec-control-danger);
+  background: var(--ec-control-danger-soft);
+}
+.ec-video-products .ec-prod-media-ops .is-danger:hover:not(:disabled),
+.ec-video-ledger .ec-led-menu > button[data-pub="cancel"]:hover:not(:disabled) {
+  border-color: var(--ec-control-danger);
+  color: var(--ec-control-danger-hover);
+  background: #fbe0dc;
+}
+.ec-video-products .ec-prod-chip > button {
+  color: #fff;
+  background: var(--ec-control-danger);
+}
+.ec-video-products .ec-prod-chip > button:hover:not(:disabled) { background: var(--ec-control-danger-hover); }
+.ec-video-ledger .ec-led-account-add {
+  border-color: var(--ec-control-selected-border);
+  color: var(--ec-control-primary-hover);
+  background: #fbf9ff;
+}
+.ec-video-ledger .ec-led-account-add:hover:not(:disabled) {
+  border-color: var(--ec-control-primary);
+  color: var(--ec-control-primary-active);
+  background: var(--ec-control-hover);
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-dialog, .ec-led-dialog) > header > button {
+  color: var(--ec-control-ink);
+  background: transparent;
+}
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-dialog, .ec-led-dialog) > header > button:hover:not(:disabled) {
+  color: var(--ec-control-primary-hover);
+  background: var(--ec-control-hover);
+}
+
+/* Opaque disabled colors remain stable under hover and across all variants. */
+:is(.ec-video-products, .ec-video-ledger) button:disabled,
+.ec-video-products .ec-prod-media-ops button:disabled,
+:is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-dialog, .ec-led-dialog) > header > button:disabled {
+  border-color: var(--ec-control-disabled-border);
+  color: var(--ec-control-disabled);
+  background: var(--ec-control-disabled-bg);
+  opacity: 1;
+  box-shadow: none;
+  transform: none;
+  cursor: not-allowed;
+}
+:is(.ec-video-products, .ec-video-ledger) :is(button, [role="button"], input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--ec-control-focus);
+  outline-offset: 3px;
+}
+.ec-video-products .ec-prod-media-replace:focus-within,
+:is(.ec-video-products, .ec-video-ledger) :is(label.ec-prod-btn, label.ec-led-btn):focus-within {
+  outline: 2px solid var(--ec-control-focus);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.ec-video-products, .ec-video-ledger) :is(.ec-prod-btn, .ec-led-btn) { transition: none; }
+}

@@ -20,12 +20,12 @@
 - `PATCH /api/tasks/:id` `{variable?,example?,black?,settings?,stage?}` → 自动保存编辑稿。`black` 为 `{nodeId:text}`。`settings` 为 `{subtitles,bgmId,bgmVolume}`；音量为 0~0.5，默认不选 BGM。已确认声音对应的文案实际变化需先由 UI 确认重配。
 - `POST /api/tasks/:id/switch` `{productId,templateId,mode:"overwrite"|"new"}` → 黑色为空时可直接覆盖；有黑色时 UI 先显示保留并新建/覆盖/取消。
 - `POST /api/tasks/:id/copy` → 202，真实 Qwen 生成全部黑色，固定节点不改。
-- `POST /api/tasks/:id/copy/confirm` → 确认当前文案，按实际变化失效受影响的连续口播区间。
-- `POST /api/tasks/:id/voice` `{intervalId?}` → 202，只生成缺失/失效区间，或指定一个区间重配；期间锁文案与任务切换。
+- `POST /api/tasks/:id/copy/confirm` `{generateVoice?:boolean}` → 确认当前文案，按实际变化失效受影响区间。新 UI 传 `true`，返回 202 并自动配音；全部就绪后自动确认、进入 visual，**不建立旧选材队列**。默认不传保留旧的仅确认行为。
+- `POST /api/tasks/:id/voice` `{intervalId?,autoConfirm?:boolean}` → 202，只生成缺失/失效区间，或指定一个区间重配；期间锁编辑。新 UI 重试传 `autoConfirm:true`，成功后自动确认并进入 visual，不建立旧队列；默认仍为旧的待手动确认行为。
 - `POST /api/tasks/:id/voice/confirm` → 全部必需音频与时间有效才确认。
-- `POST /api/tasks/:id/plan` → 生成一次全片连续随机商品队列；通用主播期间暂停商品游标。
+- `POST /api/tasks/:id/plan` → 保留的后端接口，当前新 UI 不调用。生成一次全片连续随机商品队列；通用主播期间暂停商品游标。
 - `PUT /api/tasks/:id/plan` `{assetIds:[按顺序可重复的商品素材ID]}` → 手动方案，仅整条素材操作；时长不足时保存并返回 `plan.valid=false`，禁止合成。
-- `POST /api/tasks/:id/render` `{refill?:boolean}` → 202，默认保留画面方案并本地 FFmpeg 合成；`refill:true` 为当前商品重新随机填充商品画面。字幕/BGM变化仍保留画面和素材顺序。
+- `POST /api/tasks/:id/render` `{refill?:boolean}` → 保留的后端接口，当前新 UI 暂不开放合成。202，默认保留画面方案并本地 FFmpeg 合成；`refill:true` 为当前商品重新随机填充商品画面。
 - `POST /api/tasks/:id/stop` → 仅停止本地合成，实际退出后解除输入保护；文案/TTS 不提供主动取消。
 - `POST /api/tasks/:id/complete` → 当前预览有效才确认完成，参数只读，后台清理本任务中间文件。
 - `POST /api/tasks/:id/export` `{directory}` → 将当前成片以新文件名复制到所选目录；不改变任务状态。

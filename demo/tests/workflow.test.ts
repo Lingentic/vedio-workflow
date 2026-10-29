@@ -31,6 +31,26 @@ function asset(store:Store,id:string,duration:number,kind:Asset['kind']='product
 }
 const spokenWords=(text:string):WordTime[]=>[...text].map((char,i)=>({text:char,begin_time:i*100,end_time:(i+1)*100}));
 
+test('确认文案后服务端配音，失败保留已成区间；重试仅补失败项，完成不接入旧选材队列',async t=>{
+  const e=environment(t);
+  const task=e.workflow.create('test-product','template-01-insoles');
+  task.templateSnapshot.nodes=[{id:'a',type:'generated_narration',text:''},{id:'r',type:'host_clip',text:'主播'},{id:'b',type:'generated_narration',text:''}];
+  task.templateSnapshot.variableNodeId=undefined;task.black={a:'柔软舒适。',b:'保暖耐用。'};e.store.putTask(task);
+  e.models.ready=()=>true;
+  const calls:string[]=[];let fail=true;
+  e.models.voice=async text=>{calls.push(text);if(text==='保暖耐用。'&&fail)throw new Error('模拟配音断连');return {audio:Buffer.from('voice'),words:spokenWords(text),requestId:'test',billedCharacters:text.length};};
+  e.media.probe=async()=>({duration:2,width:0,height:0,fps:0,hasVideo:false,hasAudio:true,size:5});
+  e.media.ff=async()=>'';
+  e.workflow.confirmCopyAndVoice(task.id);await e.workflow.active!.promise;
+  const failed=e.workflow.get(task.id),firstFile=failed.intervals[0].relativePath;
+  assert.equal(failed.execution?.status,'failed');assert.equal(failed.intervals[0].status,'ready');assert.equal(failed.intervals[1].status,'failed');assert.equal(failed.plan,null);assert.equal(failed.audioConfirmed,false);
+  fail=false;e.workflow.generateVoice(task.id,undefined,true);await e.workflow.active!.promise;
+  const ready=e.workflow.get(task.id);
+  assert.deepEqual(calls,['柔软舒适。','保暖耐用。','保暖耐用。']);assert.equal(ready.intervals[0].relativePath,firstFile);
+  assert.equal(ready.audioConfirmed,true);assert.equal(ready.stage,'visual');assert.equal(ready.plan,null);assert.ok(ready.intervals.every(i=>i.confirmed&&i.cues?.length&&i.nodeTimes?.length));
+  e.workflow.confirmCopyAndVoice(task.id);assert.equal(calls.length,3,'再次确认相同文案直接复用全部配音');
+});
+
 test('金额6.90保持完整，前后字幕时间不重叠',()=>{
   const text='只要6.90元，马上拍。',nodes:ScriptNode[]=[{id:'n',type:'generated_narration',text}];
   const result=alignAudio(text,nodes,spokenWords('只要六点九零元马上拍'),5);
