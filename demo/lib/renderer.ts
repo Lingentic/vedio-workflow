@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -82,6 +83,11 @@ export async function renderTask(task: Task, library: Library, media: Media, sig
   await media.ff(['-n', '-f', 'concat', '-safe', '0', '-i', 'voice-list.txt', '-c:a', 'copy', 'narration.wav'], { signal, cwd: work });
   const args = ['-n', '-i', picture, '-i', 'narration.wav'];
   const filters: string[] = [];
+  const zoom = 1.02 + Math.random() * 0.025;
+  const wide = Math.round(1080 * zoom) & ~1, tall = Math.round(1920 * zoom) & ~1;
+  const offsetX = randomInt(wide - 1080 + 1) & ~1, offsetY = randomInt(tall - 1920 + 1) & ~1;
+  const gain = () => (0.99 + Math.random() * 0.02).toFixed(4);
+  let video = `scale=${wide}:${tall},crop=1080:1920:${offsetX}:${offsetY},noise=alls=${(4 + Math.random() * 2).toFixed(1)}:allf=t,colorchannelmixer=rr=${gain()}:gg=${gain()}:bb=${gain()}`;
   if (task.settings.subtitles) {
     await fsp.writeFile(path.join(work, 'captions.ass'), assDocument(task, library), 'utf8');
     const fonts = path.join(store.root, '固定素材', '字幕字体');
@@ -92,14 +98,15 @@ export async function renderTask(task: Task, library: Library, media: Media, sig
       await fsp.copyFile(sourceFont, path.join(fonts, 'msyhbd.ttc'));
     }
     const escaped = fonts.replaceAll('\\', '/').replaceAll(':', '\\:').replaceAll("'", "\\'");
-    filters.push(`[0:v]ass=filename=captions.ass:fontsdir='${escaped}'[v]`);
+    video += `,ass=filename=captions.ass:fontsdir='${escaped}'`;
   }
+  filters.push(`[0:v]${video},format=yuv420p[v]`);
   if (task.settings.bgmId) {
     args.push('-stream_loop', '-1', '-i', source(task.settings.bgmId));
     filters.push(`[2:a]volume=${task.settings.bgmVolume}[music];[1:a][music]amix=inputs=2:duration=first:normalize=0[a]`);
   }
-  if (filters.length) args.push('-filter_complex_threads', '2', '-filter_complex', filters.join(';'));
-  args.push('-map', task.settings.subtitles ? '[v]' : '0:v:0', '-map', task.settings.bgmId ? '[a]' : '1:a:0', ...(task.settings.subtitles ? codec : ['-c:v', 'copy']), '-c:a', 'aac', '-b:a', '192k', '-t', number(plan.duration), '-movflags', '+faststart', '-progress', 'pipe:1', path.join(out, 'result.mp4'));
+  args.push('-filter_complex_threads', '2', '-filter_complex', filters.join(';'));
+  args.push('-map', '[v]', '-map', task.settings.bgmId ? '[a]' : '1:a:0', ...codec, '-c:a', 'aac', '-b:a', '192k', '-t', number(plan.duration), '-movflags', '+faststart', '-progress', 'pipe:1', path.join(out, 'result.mp4'));
   onProgress(80, '正在合成字幕和背景音乐');
   await media.ff(args, { signal, cwd: work, onProgress: seconds => onProgress(80 + Math.min(18, seconds / plan.duration * 18), '正在合成字幕和背景音乐') });
   const output = path.join(out, 'result.mp4'), info = await media.probe(output);
