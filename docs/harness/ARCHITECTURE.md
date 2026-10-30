@@ -29,7 +29,8 @@
 | [prototype-views.ts](../../demo/public/prototype-views.ts)、[workbench.css](../../demo/public/workbench.css) | `libraryView`、`architectureView`、`copyView`、`generationView`、`recordsView`、`recordDetailsView`、`materialPickerView`；模板分组只影响展示，实际节点 ID、台词和区间仍取任务快照。逐节点素材选择只是演示，不写旧方案。 |
 | [sortable.ts](../../demo/public/sortable.ts) | 旧连续清单排序组件保留，当前新制作页未使用；不能把其存在当作逐段选材已实现。 |
 | [workflow.ts](../../demo/lib/workflow.ts) | 创建／切换任务、文案确认、区间复用、执行控制、方案与预览失效、完成与清理；当前服务一次只持有一个活动制作执行。 |
-| [library.ts](../../demo/lib/library.ts) | 资料验证、复制托管、探测、切分、逐失败范围重试、删除保护；固定片段按 binding 关联节点。 |
+| [library.ts](../../demo/lib/library.ts) | 资料验证、复制托管、原视频待处理队列、切分命名批次、逐失败范围恢复、删除保护；固定片段按 binding 关联节点。 |
+| [shot-plan.ts](../../demo/lib/shot-plan.ts)、[material-naming.ts](../../demo/lib/material-naming.ts) | 固定切点、15.2／1.9 默认值；编号代理、单次视觉命名、短名及描述校验、请求回执和本地结果恢复。完整边界见 [素材处理](MATERIAL_PROCESSING.md)。 |
 | [models.ts](../../demo/lib/models.ts) | 文案请求、SSE 配音读取、错误脱敏与音频下载。字时间必须和确认文字对应；这里没有可靠的自动重提或云端任务恢复服务。 |
 | [templates.ts](../../demo/lib/templates.ts) | 加载固定模板／提示词／声音参数；拼变量、组连续区间、签名及文案响应校验。配置源是 `data/`，不要再硬编码第二套。 |
 | [alignment.ts](../../demo/lib/alignment.ts) | 数字等规范化、逐字对应，产出 `sentences`、`cues`、`nodeTimes`；无法完整对应时失败，不伪造平均字幕时间。 |

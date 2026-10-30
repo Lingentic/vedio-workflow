@@ -2,6 +2,15 @@ export type NodeType = 'host_clip' | 'fixed_narration' | 'generated_narration';
 export interface ScriptNode { id: string; type: NodeType; text: string; label?: string; }
 export interface Template { id: string; name: string; title: string; summary: string; nodes: ScriptNode[]; variableNodeId?: string; }
 export interface Product { productId: string; name: string; price: string; specification: string; sellingPoints: string; createdAt?: string; }
+export interface MaterialProcessingSettings { threshold: number; minDurationSec: number; }
+export interface MaterialProcessing {
+  stage: 'queued' | 'scanning' | 'splitting' | 'naming' | 'ready' | 'failed' | 'interrupted';
+  progress: number; message: string; error?: string;
+}
+export interface MaterialNaming {
+  status: 'pending' | 'running' | 'ready' | 'failed' | 'uncertain';
+  attemptId?: string; requestId?: string; error?: string; resultPath?: string; signature?: string;
+}
 export interface Asset {
   id: string; productId?: string; kind: 'product' | 'source' | 'host' | 'presenter' | 'bgm';
   title: string; status: 'ready' | 'pending' | 'failed' | 'partial' | 'deleted' | 'unavailable';
@@ -11,6 +20,7 @@ export interface Asset {
   binding?: string; processed?: boolean; parentId?: string; error?: string;
   sourceRange?: { start: number; end: number };
   cuts?: number[]; outputs?: Record<string, string>; cleaned?: boolean; cleanupError?: string;
+  description?: string; processing?: MaterialProcessing; naming?: MaterialNaming; splitSettings?: MaterialProcessingSettings;
   url?: string; posterUrl?: string; available?: boolean; createdAt: string;
 }
 export interface WordTime { text: string; begin_time: number; end_time: number; begin_index?: number; end_index?: number; }

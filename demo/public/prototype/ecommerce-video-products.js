@@ -18,18 +18,11 @@
   };
   const CATEGORIES = ['家居百货', '食品饮料', '数码家电', '服饰鞋包', '美妆个护', '其他'];
   const PLATFORMS = ['快手', '抖音'];
-  /* 黑段（AI 补全）装配所需的素材位，用于「素材缺失清单」（PRD §3.3 末行 / §4.4-②） */
-  const REQUIRED_SLOTS = [
-    { key: 'product', label: '产品画面' },
-    { key: 'usage', label: '使用场景' },
-    { key: 'detail', label: '细节特写' },
-    { key: 'price', label: '价格机制' },
-  ];
   /* ---------- 联网爬取（PRD §4.7：视频 / 图片两个独立分区，分开回填、分开勾选） ---------- */
   const CRAWL_CHANNELS = ['快手', '抖音'];
   const CRAWL_ZONES = [
-    { key: 'video', label: '视频', mark: '▶', card: 'video' },
-    { key: 'image', label: '图片', mark: '⛰', card: 'image' },
+    { key: 'video', label: '视频', card: 'video' },
+    { key: 'image', label: '图片', card: 'image' },
   ];
   /* 候选库（原型演示数据）：按「分区 → 渠道」两级组织；两渠道刻意共用一条同名素材，用于演示去重标识 */
   const CRAWL_BANK = {
@@ -164,21 +157,11 @@
   const today = () => new Date().toISOString().slice(0, 10);
   const find = id => state.items.find(item => item.id === id) || null;
   const toast = message => api.toast?.(message);
+  const icon = name => `<svg class="workbench-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="/icons.svg#${name}"></use></svg>`;
   /* 真实图片：与商品/素材名稳定绑定，缺模块时退回文字占位 */
   const imgOf = (key, count) => window.EcommerceVideoImages?.of(key, count) || '';
   const imgTag = key => { const src = imgOf(key); return src ? `<img src="${esc(src)}" alt="">` : ''; };
   const materialTotal = item => (item?.materials?.main || 0) + (item?.materials?.video || 0) + (item?.materials?.image || 0);
-  /* 黑段缺料：按素材位规则推断，用于详情页缺失清单 */
-  const missingSlots = item => {
-    const videos = item?.materials?.video || 0;
-    const images = (item?.materials?.main || 0) + (item?.materials?.image || 0);
-    const missing = [];
-    if (images < 1) missing.push(REQUIRED_SLOTS[0]);
-    if (videos < 2) missing.push(REQUIRED_SLOTS[1]);
-    if (images < 4) missing.push(REQUIRED_SLOTS[2]);
-    if (videos < 3) missing.push(REQUIRED_SLOTS[3]);
-    return missing;
-  };
   const filtered = () => {
     const f = state.filters;
     const q = f.q.trim().toLowerCase();
@@ -221,19 +204,14 @@
       <td class="is-num">${esc(item.updated)}</td>
       <td class="is-right"><a class="ec-prod-link" role="button" data-lp="open-supplement" data-id="${item.id}" title="给这个商品增补本地素材">增补素材</a></td>
     </tr>`).join('')}</tbody></table></div>`;
-  const emptyState = () => `<div class="ec-prod-empty"><i>商</i><h3>${state.items.length ? '没有匹配的商品' : '还没有录入任何商品'}</h3><p>${state.items.length ? '换个关键词，或放宽价格、佣金区间再试。' : '点「录入商品」填写快手商品ID 并采集资料，右列联网爬取素材，点确认即入库。'}</p><div>${state.items.length ? '<button type="button" class="ec-prod-btn" data-lp="reset-filters">⟳ 清空筛选</button>' : '<button type="button" class="ec-prod-btn ec-prod-btn--primary" data-lp="open-entry">＋ 录入第一个商品</button>'}</div></div>`;
-  const gapNotice = () => {
-    const rows = state.items.filter(item => item.status === 'ready' && missingSlots(item).length);
-    if (!rows.length) return '';
-    return `<div class="ec-prod-gap"><strong>${rows.length} 个商品已「素材就绪」，但黑段素材位仍缺料，进视频制作生成时会逐项提示：</strong><ul>${rows.map(item => `<li>${esc(item.name.slice(0, 18))}… 缺 ${missingSlots(item).map(s => s.label).join('、')}</li>`).join('')}</ul></div>`;
-  };
+  const emptyState = () => `<div class="ec-prod-empty"><i>${icon('product')}</i><h3>${state.items.length ? '没有匹配的商品' : '还没有录入任何商品'}</h3><p>${state.items.length ? '换个关键词，或放宽价格、佣金区间再试。' : '点「录入商品」填写快手商品ID 并采集资料，右列联网爬取素材，点确认即入库。'}</p><div>${state.items.length ? '<button type="button" class="ec-prod-btn" data-lp="reset-filters">⟳ 清空筛选</button>' : '<button type="button" class="ec-prod-btn ec-prod-btn--primary" data-lp="open-entry">＋ 录入第一个商品</button>'}</div></div>`;
   /* ---------- 联网爬取面板：两个候选区（视频 / 图片）＋ 一个合并的归档区 ---------- */
   const dupText = dup => dup === 'seen' ? '与其他渠道重复' : '';
   /* 候选卡：左上角复选框＝唯一的勾选开关，点图/封面＝放大；不做单条删除、不做归入按钮 */
   const candidateTile = (row, index, zone) => `<article class="ec-prod-cand${row.picked ? ' is-picked' : ''}${row.dup ? ' is-dup' : ''}">
       <button type="button" class="ec-prod-cand-ck" data-lp="pick" data-zone="${zone.key}" data-index="${index}" aria-pressed="${row.picked}"${row.dup ? ' disabled' : ''} title="${row.dup ? esc(dupText(row.dup)) : row.picked ? '已勾选，点一下取消' : '勾选'}"></button>
       <button type="button" class="ec-prod-cand-media" data-lp="preview" data-zone="${zone.key}" data-index="${index}" title="放大查看">
-        ${row.src ? `<img src="${esc(row.src)}" alt="">` : imgTag(row.name) || `<i class="ec-prod-cand-mark">${zone.mark}</i>`}
+        ${row.src ? `<img src="${esc(row.src)}" alt="">` : imgTag(row.name) || `<i class="ec-prod-cand-mark">${icon(zone.key)}</i>`}
         <span class="ec-prod-cand-src">${esc(row.channel)}</span>
         <span class="ec-prod-cand-dur is-num">${row.duration ? `${row.duration}s` : esc(row.size)}</span>
         ${row.dup ? `<span class="ec-prod-cand-dup">${esc(dupText(row.dup))}</span>` : ''}
@@ -248,7 +226,7 @@
     ];
     return `<div class="ec-prod-pool">
       <span class="ec-prod-pool-label">${draft ? '已勾选' : '已归入'} ${files.length}</span>
-      ${files.length ? files.map(file => `<span class="ec-prod-chip">${file.src ? `<img src="${esc(file.src)}" alt="">` : `<i>${file.kind === 'video' ? '▶' : '图'}</i>`}<em>${file.kind === 'video' ? '视频' : '图片'}</em><span title="${esc(file.name)}">${esc(file.from ? `${file.from} · ${file.name}` : file.name)}</span>${locked ? '' : `<button type="button" data-lp="remove-pool" data-zone="${file.kind}" data-index="${file.at}" aria-label="${draft ? '取消勾选' : '移出'} ${esc(file.name)}">×</button>`}</span>`).join('') : `<span class="ec-prod-hint">${draft ? '勾选左上角复选框先攒着，点「确认」才归档' : '勾选候选后点下面的「归入素材中心」'}</span>`}
+      ${files.length ? files.map(file => `<span class="ec-prod-chip">${file.src ? `<img src="${esc(file.src)}" alt="">` : `<i>${icon(file.kind === 'video' ? 'video' : 'image')}</i>`}<em>${file.kind === 'video' ? '视频' : '图片'}</em><span title="${esc(file.name)}">${esc(file.from ? `${file.from} · ${file.name}` : file.name)}</span>${locked ? '' : `<button type="button" data-lp="remove-pool" data-zone="${file.kind}" data-index="${file.at}" aria-label="${draft ? '取消勾选' : '移出'} ${esc(file.name)}">×</button>`}</span>`).join('') : `<span class="ec-prod-hint">${draft ? '勾选左上角复选框先攒着，点「确认」才归档' : '勾选候选后点下面的「归入素材中心」'}</span>`}
     </div>`;
   };
   const crawlZone = (host, crawl, zone, locked) => {
@@ -262,7 +240,7 @@
       ? `已重试仍未取到${zone.label}候选，可完善商品名称 / 类目后重试本区。`
       : `点右上按钮按所选渠道爬${zone.label}，候选只回填到这个区。`;
     return `<div class="ec-prod-zone ec-prod-zone--${zone.key}">
-      <header><i>${zone.mark}</i><b>${zone.label}候选</b>${data.paused ? '<span class="ec-prod-badge ec-prod-badge--warn ec-prod-badge--plain">已暂停</span>' : ''}<span class="ec-prod-zone-count${data.results.length ? '' : ' is-zero'}">${data.results.length} 条</span>
+      <header><i>${icon(zone.key)}</i><b>${zone.label}候选</b>${data.paused ? '<span class="ec-prod-badge ec-prod-badge--warn ec-prod-badge--plain">已暂停</span>' : ''}<span class="ec-prod-zone-count${data.results.length ? '' : ' is-zero'}">${data.results.length} 条</span>
         <button type="button" class="ec-prod-btn ec-prod-btn--sm${data.running ? '' : ' ec-prod-btn--collect'}" data-lp="run-zone" data-zone="${zone.key}"${canRun ? '' : ' disabled title="先填商品名称并至少选一个渠道"'}>${runLabel}</button>
       </header>
       <div class="ec-prod-zone-body${data.running && !data.results.length ? ' is-loading' : ''}">
@@ -314,7 +292,7 @@
   };
   const crawlRecords = host => {
     const rows = [...(host.crawls || [])].reverse();
-    const head = `<header><b><i>⛰</i>爬取记录</b><small class="ec-prod-hint">${rows.length ? `共 ${rows.length} 次 · 详情只列勾选归入过的素材` : '每次联网爬取留一条，按时间倒排'}</small></header>`;
+    const head = `<header><b><i>${icon('records')}</i>爬取记录</b><small class="ec-prod-hint">${rows.length ? `共 ${rows.length} 次 · 详情只列勾选归入过的素材` : '每次联网爬取留一条，按时间倒排'}</small></header>`;
     if (!rows.length) {
       const legacy = poolTotal(host) || (host.materials?.video || 0) + (host.materials?.image || 0);
       return `<section class="ec-prod-records">${head}<p class="ec-prod-records-empty">${legacy
@@ -345,7 +323,7 @@
     return `<div class="ec-prod-backdrop" role="presentation"><div class="ec-prod-dialog ec-prod-dialog--slim" role="dialog" aria-modal="true" aria-label="爬取详情">
       <header><div><h2>爬取详情</h2><p>${esc(cnStamp(record.at))} · 渠道 ${esc(record.channel)} · 抓到 视频 ${record.video.length} / 图片 ${record.image.length} · 已归入 ${kept.length}${record.failed.length ? ` · ${esc(record.failed.join('、'))} 未返回` : ''}</p></div><button type="button" data-lp="close-record" aria-label="关闭">×</button></header>
       <div class="ec-prod-dialog-body">
-        ${kept.length ? `<div class="ec-prod-media-grid">${kept.map(row => `<article class="ec-prod-media"><div class="ec-prod-media-frame">${row.src ? `<img src="${esc(row.src)}" alt="">` : ''}<span class="ec-prod-tag">${row.kind === 'video' ? '视频' : '图片'}</span>${row.kind === 'video' ? '<span class="ec-prod-play">▶</span>' : ''}${row.duration ? `<span class="ec-prod-dur is-num">00:${String(row.duration).padStart(2, '0')}</span>` : ''}</div><div class="ec-prod-media-body"><strong>${esc(row.name)}</strong><small>来源 ${esc(row.channel)} · 已归入素材中心</small></div></article>`).join('')}</div>` : '<p class="ec-prod-hint" style="padding:18px 0">这次抓到了素材，但还没勾选归入素材中心。</p>'}
+        ${kept.length ? `<div class="ec-prod-media-grid">${kept.map(row => `<article class="ec-prod-media"><div class="ec-prod-media-frame">${row.src ? `<img src="${esc(row.src)}" alt="">` : ''}<span class="ec-prod-tag">${row.kind === 'video' ? '视频' : '图片'}</span>${row.kind === 'video' ? `<span class="ec-prod-play">${icon('play')}</span>` : ''}${row.duration ? `<span class="ec-prod-dur is-num">00:${String(row.duration).padStart(2, '0')}</span>` : ''}</div><div class="ec-prod-media-body"><strong>${esc(row.name)}</strong><small>来源 ${esc(row.channel)} · 已归入素材中心</small></div></article>`).join('')}</div>` : '<p class="ec-prod-hint" style="padding:18px 0">这次抓到了素材，但还没勾选归入素材中心。</p>'}
       </div>
       <footer><span class="is-spacer"></span><button type="button" class="ec-prod-btn" data-lp="close-record">关闭</button></footer>
     </div></div>`;
@@ -468,15 +446,15 @@
     return rows.length ? rows : mediaFiles(item, kind).map(file => ({ ...file, origin: file.from || '联网爬取', inPool: true }));
   };
   const mediaCard = (kind, row) => `<article class="ec-prod-media">
-      <div class="ec-prod-media-frame">${row.src ? `<img src="${esc(row.src)}" alt="">` : ''}<span class="ec-prod-tag">${!row.inPool ? '未归入' : kind === 'video' ? '常规' : '图片'}</span>${kind === 'video' ? '<span class="ec-prod-play">▶</span>' : ''}${row.duration ? `<span class="ec-prod-dur is-num">00:${String(row.duration).padStart(2, '0')}</span>` : ''}</div>
+      <div class="ec-prod-media-frame">${row.src ? `<img src="${esc(row.src)}" alt="">` : ''}<span class="ec-prod-tag">${!row.inPool ? '未归入' : kind === 'video' ? '常规' : '图片'}</span>${kind === 'video' ? `<span class="ec-prod-play">${icon('play')}</span>` : ''}${row.duration ? `<span class="ec-prod-dur is-num">00:${String(row.duration).padStart(2, '0')}</span>` : ''}</div>
       <div class="ec-prod-media-body"><strong>${esc(row.name)}</strong><small>来源 ${esc(row.origin)} · ${row.inPool ? '已归入素材中心' : '未归入，只在候选区'}</small></div>
     </article>`;
   /* 增补本地素材：列表行右侧蓝链进来的二级窗口，与联网爬取彻底分开 */
   const supplementView = () => {
     const item = find(state.supplementId);
     if (!item) return '';
-    const zone = (kind, mark, title, hint, accept) => `<label class="ec-prod-upzone ec-prod-upzone--${kind}" data-drop="${kind}" data-id="${item.id}">
-        <i aria-hidden="true">${mark}</i><b>上传${title}</b>
+    const zone = (kind, title, hint, accept) => `<label class="ec-prod-upzone ec-prod-upzone--${kind}" data-drop="${kind}" data-id="${item.id}">
+        <i aria-hidden="true">${icon(kind)}</i><b>上传${title}</b>
         <span>${hint}</span><small>点击选择，或把文件拖到这里</small>
         <input type="file" accept="${accept}" multiple data-lp-append="${kind}" hidden>
       </label>`;
@@ -485,16 +463,16 @@
       <header><div><h2 id="lpUpTitle">增补本地素材</h2><p>${esc(item.name)} · 文件只在本机读取，不发往任何服务端；增补进来的标「本地增补」，参与生成装配</p></div><button type="button" data-lp="close-supplement" aria-label="关闭">×</button></header>
       <div class="ec-prod-dialog-body">
         <div class="ec-prod-up-grid">
-          ${zone('video', '▶', '视频', `支持 MP4、MOV · 单个不超过 1GB · 已增补 ${local('video').length} 个`, 'video/*')}
-          ${zone('image', '⛰', '图片', `支持 JPG、PNG、GIF · 单个不超过 50MB · 已增补 ${local('image').length} 个`, 'image/*')}
+          ${zone('video', '视频', `支持 MP4、MOV · 单个不超过 1GB · 已增补 ${local('video').length} 个`, 'video/*')}
+          ${zone('image', '图片', `支持 JPG、PNG、GIF · 单个不超过 50MB · 已增补 ${local('image').length} 个`, 'image/*')}
         </div>
-        ${[...local('video'), ...local('image')].length ? `<div class="ec-prod-local"><b>已增补 ${[...local('video'), ...local('image')].length} 个</b><ul>${[...local('video'), ...local('image')].map(row => `<li><i>${row.key === 'video' ? '▶' : '图'}</i><span><strong title="${esc(row.name)}">${esc(row.name)}</strong><small class="is-num">${esc(row.size || '')} · 本地增补</small></span><button type="button" data-lp="remove-local" data-id="${item.id}" data-kind="${row.key}" data-index="${row.at}" aria-label="移出 ${esc(row.name)}">×</button></li>`).join('')}</ul></div>` : '<p class="ec-prod-hint" style="padding:14px 0 0">还没有增补过本地素材。</p>'}
+        ${[...local('video'), ...local('image')].length ? `<div class="ec-prod-local"><b>已增补 ${[...local('video'), ...local('image')].length} 个</b><ul>${[...local('video'), ...local('image')].map(row => `<li><i>${icon(row.key === 'video' ? 'video' : 'image')}</i><span><strong title="${esc(row.name)}">${esc(row.name)}</strong><small class="is-num">${esc(row.size || '')} · 本地增补</small></span><button type="button" data-lp="remove-local" data-id="${item.id}" data-kind="${row.key}" data-index="${row.at}" aria-label="移出 ${esc(row.name)}">×</button></li>`).join('')}</ul></div>` : '<p class="ec-prod-hint" style="padding:14px 0 0">还没有增补过本地素材。</p>'}
       </div>
       <footer><span class="is-spacer"></span><button type="button" class="ec-prod-btn" data-lp="close-supplement">关闭</button></footer>
     </div></div>`;
   };
   /* 基本信息 tab（详情侧）：已获取的资料留存不动 ＋ 联网爬到的素材全铺在这（不标归入时间） */
-  const detailInfo = (item, missing) => `<div class="ec-prod-detail-top">
+  const detailInfo = item => `<div class="ec-prod-detail-top">
         <section class="ec-prod-hero">
           <div class="ec-prod-hero-media"><span class="ec-prod-thumb" style="width:100%;height:100%;border:0;border-radius:0">${productImage(item, item.materials.main ? '商品主图' : '暂无主图')}</span>${item.assets?.main?.[0]?.src ? '<em>采集主图</em>' : window.EcommerceVideoProductImages?.get(item) ? '<em>相似商品示意图</em>' : item.materials.main ? '<em>商品主图</em>' : ''}</div>
         </section>
@@ -510,13 +488,12 @@
           <div class="ec-prod-split-label" style="margin-top:16px"><i>✦</i>商品亮点</div>
           <p class="ec-prod-highlight">${item.highlight ? esc(item.highlight) : '尚未填写商品亮点，生成时黑段缺少卖点依据。'}</p>
           ${item.negatives ? `<div class="ec-prod-split-label" style="margin-top:14px"><i>!</i>负面词汇（生成时规避）</div><p class="ec-prod-highlight">${esc(item.negatives)}</p>` : ''}
-          ${item.status === 'ready' && missing.length ? `<div class="ec-prod-gap"><strong>黑段素材缺失清单</strong><ul>${missing.map(s => `<li>${esc(s.label)}</li>`).join('')}</ul></div>` : ''}
         </section>
       </div>
       ${['video', 'image'].map(kind => {
         const list = crawledOf(item, kind);
         return `<section class="ec-prod-media-group">
-        <header><i>${kind === 'video' ? '▶' : '⛰'}</i><b>${kind === 'video' ? '视频素材' : '图片素材'} <span>(${list.length})</span></b><small class="ec-prod-hint">联网爬到的都在这 · 已归入 ${list.filter(row => row.inPool).length}</small></header>
+        <header><i>${icon(kind === 'video' ? 'video' : 'image')}</i><b>${kind === 'video' ? '视频素材' : '图片素材'} <span>(${list.length})</span></b><small class="ec-prod-hint">联网爬到的都在这 · 已归入 ${list.filter(row => row.inPool).length}</small></header>
         ${list.length ? `<div class="ec-prod-media-grid${kind === 'video' ? ' ec-prod-media-grid--video' : ''}">${list.map(row => mediaCard(kind, row)).join('')}</div>` : `<div class="ec-prod-hint" style="padding:18px 0">还没有${kind === 'video' ? '视频' : '图片'}素材${kind === 'video' ? '，黑段将回退默认组合' : ''}；到「联网爬取」tab 再爬一次补齐。</div>`}
       </section>`;
       }).join('')}`;
@@ -532,7 +509,7 @@
     if (!item) return '';
     return `<div class="ec-prod-detail">
       ${panelTabs(item)}
-      ${state.detailPanel === 'info' ? detailInfo(item, missingSlots(item)) : crawlTab(item)}
+      ${state.detailPanel === 'info' ? detailInfo(item) : crawlTab(item)}
       <div class="ec-prod-detail-footer">
         <button type="button" class="ec-prod-btn" data-lp="close-detail">关闭</button>
       </div>
@@ -545,7 +522,7 @@
     const rows = filtered();
     return `<div class="ec-video-products-scroll"><div class="ec-video-products-inner">
       ${state.detailId ? detailView() : `${head()}${filterCard()}
-      <div class="ec-prod-card"><div class="ec-prod-card-body">${rows.length ? table(rows) : emptyState()}${gapNotice()}</div></div>`}
+      <div class="ec-prod-card"><div class="ec-prod-card-body">${rows.length ? table(rows) : emptyState()}</div></div>`}
     </div></div>
     ${state.dialog === 'entry' ? entryDialog() : ''}
     ${leaveDialog()}

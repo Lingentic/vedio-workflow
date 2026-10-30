@@ -116,7 +116,7 @@ select.ec-prod-control { appearance: none; padding-right: 28px; background-image
 .ec-prod-field--search { flex: 1 1 320px; min-width: 240px; }
 .ec-prod-searchbox { display: flex; align-items: center; gap: 7px; }
 .ec-prod-searchbox .ec-prod-control { flex: 1 1 auto; min-width: 0; }
-.ec-prod-filter-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.ec-prod-filter-actions { display: flex; flex: 1 0 100%; align-items: center; justify-content: flex-end; gap: 6px; }
 
 /* ---------- 整行可点（PRD §4.4-①：行内不放操作按钮，Hover 高亮 + 键盘可达） ---------- */
 .ec-prod-table--rows tbody tr { cursor: pointer; }
@@ -194,12 +194,6 @@ select.ec-prod-control { appearance: none; padding-right: 28px; background-image
 .ec-prod-empty h3 { margin: 18px 0 7px; font-size: 15px; }
 .ec-prod-empty p { max-width: 380px; color: var(--prod-muted); font-size: 12px; line-height: 1.8; }
 .ec-prod-empty > div { display: flex; gap: 8px; margin-top: 20px; }
-
-/* ---------- 缺失清单 ---------- */
-.ec-prod-gap { margin-top: var(--prod-space-3); padding: 11px 13px; border: 1px solid #efd9a8; border-radius: var(--prod-radius-sm); background: #fffbf3; }
-.ec-prod-gap > strong { display: block; color: #8f5a0b; font-size: 12px; font-weight: 650; }
-.ec-prod-gap > ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 9px 0 0; padding: 0; list-style: none; }
-.ec-prod-gap li { padding: 3px 8px; border: 1px solid #e8cba0; border-radius: 5px; color: #96631a; background: #fff; font-size: 11px; }
 
 /* ---------- 弹窗通用 ---------- */
 .ec-prod-backdrop { position: fixed; inset: 0; z-index: 900; display: grid; place-items: center; padding: var(--prod-space-5); background: rgba(32, 27, 48, .34); backdrop-filter: blur(4px); }

@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | Product | `productId`；名称、价格、规格、卖点 | 库中编辑不自动写入已建立任务的 `productSnapshot`。 |
 | Asset | `id`；kind、status、相对文件路径、媒体信息、productId 或固定 binding | 原始源与产出片段是不同记录；删除记录与文件清理可处于不同状态。 |
+| 商品素材处理 | source 的 `processing/naming/splitSettings/cuts/outputs`；child 的 `parentId/sourceRange/title/description/processed` | 子片段 ID 与来源先事务保存；命名成功后才发布为已处理，失败不清理恢复材料。见 [切分与命名](MATERIAL_PROCESSING.md)。 |
 | Task | `id`；商品／模板快照、文案、区间、方案、设置、预览、确认／完成状态 | 一个任务一条记录，覆盖当前进度，不自动保存多轮生成历史。 |
 | Execution | `id`、`kind=copy/voice/render`、status、progress | 属于任务的一次执行；`done` 仅是该步骤成功。 |
 | Interval | 稳定区间 ID、nodeIds、text、signature、音频、字句和节点时间 | 复用要求 ID／签名匹配、ready 且文件仍存在；confirmed 另决定是否已经完成音频确认。 |
@@ -62,6 +63,7 @@ SQLite 位于 `数据记录/app.sqlite`，开启 WAL。当前仅有 `products`�
 
 - 当前一个服务只持有一个活动制作执行。前端切换模块不终止服务端工作；任务执行期间的编辑锁由前端与 Workflow 共同约束。
 - Workflow 启动时把持久化 `running` 改为 `interrupted`，保留成功步骤并提示人工确认，不重新提交付费请求。不是云端结果查询／取消保证。
+- 商品原视频的 processing 独立于制作任务；Library 启动只标记中断和命名不确定，不自动重新请求。托管原视频保留；历史 cleaned 源不自动回补。恢复与回执细节见 [素材处理](MATERIAL_PROCESSING.md#失败恢复与文件保留)。
 - 停止接口只停止当前本地 render；不提供 copy／voice 主动取消。SIGINT／SIGTERM 对 render 有显式 abort 和等待；不能声称所有云请求都已优雅停止或退款。
 - 故障、停止、恢复更新原 Task，不另建“恢复记录”。已完成但清理未 done 的任务可在重启后重新排清理。
 

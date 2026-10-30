@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { appRoot, defaultDataRoot, inside, loadProfile, nativeDialog, saveProfile } from './lib/paths.ts';
 import { Store } from './lib/store.ts';
@@ -11,6 +12,7 @@ import { Library, seedAvailable, seedLibrary, validateProduct } from './lib/libr
 import { Workflow } from './lib/workflow.ts';
 import { templates } from './lib/templates.ts';
 import { AppError } from './lib/types.ts';
+import { ShotNamer } from './lib/material-naming.ts';
 
 const port = Number(process.env.PORT || 4186);
 const defaultRoot = defaultDataRoot();
@@ -18,14 +20,16 @@ const profile = loadProfile();
 profile.dataRoot = process.env.DEMO_DATA_ROOT || profile.dataRoot || defaultRoot;
 const media = new Media(profile.ffmpeg, profile.ffprobe);
 const models = new Models(profile);
+const namer = new ShotNamer(profile, fetch, media);
 function createContext(root: string) {
   const store = new Store(root);
   let workflow: Workflow;
-  const library = new Library(store, media, id => !!workflow?.active?.inputIds.has(id));
+  const library = new Library(store, media, id => !!workflow?.active?.inputIds.has(id), namer);
   try { workflow = new Workflow(store, library, media, models); return { store, library, workflow }; }
   catch (error) { store.close(); throw error; }
 }
 let { store, library, workflow } = createContext(profile.dataRoot);
+let activeUploads = 0;
 saveProfile(profile);
 
 function json(response: http.ServerResponse, data: unknown, status = 200) {
@@ -71,16 +75,36 @@ const server = http.createServer(async (request, response) => {
     if (request.headers.origin && ![`http://127.0.0.1:${port}`, `http://localhost:${port}`].includes(request.headers.origin)) throw new AppError('请求来源不受支持', 403);
     const url = new URL(request.url || '/', `http://127.0.0.1:${port}`), parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
     const method = request.method || 'GET';
+    if (parts[0] === 'api' && parts[1] === 'products' && parts[3] === 'upload' && method === 'POST') {
+      const productId = parts[2];
+      if (!store.product(productId)) throw new AppError('商品不存在', 404);
+      if (library.busy) throw new AppError('素材处理中，请稍后导入', 409);
+      const name = url.searchParams.get('name'), processed = url.searchParams.get('processed');
+      if (!name || name.length > 255 || /[\x00-\x1f<>:"/\\|?*]/.test(name) || !/\.(mp4|mov|mkv|webm|m4v|avi|mts|ts)$/i.test(name)) throw new AppError('请选择有效的视频文件');
+      if (processed !== 'true' && processed !== 'false') throw new AppError('请选择原始视频或已处理片段');
+      const uploadStore = store, uploadLibrary = library;
+      const file = uploadStore.path(path.join('缓存', '导入', Store.id(), name));
+      activeUploads++;
+      try {
+        await fsp.mkdir(path.dirname(file), { recursive: true });
+        await pipeline(request, fs.createWriteStream(file, { flags: 'wx' }));
+        if (!(await fsp.stat(file)).size) throw new AppError('视频文件为空');
+        const assets = await uploadLibrary.importFiles(productId, [file], processed === 'true');
+        return json(response, { assets: assets.map(asset => uploadLibrary.publicAsset(asset)) }, 201);
+      } finally { activeUploads--; await fsp.rm(file, { force: true }); }
+    }
     if (parts[0] === 'api') {
       const data = ['POST','PATCH','PUT'].includes(method) ? await body(request) : {};
       if (parts[1] === 'state' && method === 'GET') {
         return json(response, { configured: true, dataRoot: store.root, defaultDataRoot: defaultRoot, modelReady: models.ready(), toolsReady: true, templates,
           products: store.products(), assets: store.assets().map(asset => library.publicAsset(asset)), tasks: store.tasks().map(task => workflow.publicTask(task)),
           bgms: store.assets().filter(asset => asset.kind === 'bgm' && library.available(asset)).map(asset => library.publicAsset(asset)), seedAvailable: seedAvailable(),
-          activeExecution: workflow.active ? { taskId: workflow.active.task.id, ...workflow.active.task.execution } : null, libraryBusy: library.busy, libraryMessage: library.message });
+          activeExecution: workflow.active ? { taskId: workflow.active.task.id, ...workflow.active.task.execution } : null, libraryBusy: library.busy || activeUploads > 0, libraryMessage: library.message || (activeUploads ? '正在读取并导入视频' : ''),
+          materialProcessing: { settings: library.processingSettings(), namingReady: namer.ready(), namingModel: namer.model } });
       }
+      if (parts[1] === 'library' && parts[2] === 'processing-settings' && method === 'PUT') return json(response, library.saveProcessingSettings(data));
       if (parts[1] === 'setup' && method === 'POST') {
-        workflow.idle(); if (library.busy) throw new AppError('素材处理中，暂不能更换数据目录', 409);
+        workflow.idle(); if (library.busy || activeUploads) throw new AppError('素材处理中，暂不能更换数据目录', 409);
         const target = data.dataRoot === undefined ? defaultRoot : string(data.dataRoot, '数据目录');
         if (!path.isAbsolute(target) || target === appRoot || inside(appRoot, target)) throw new AppError('请选择独立于代码目录的绝对数据路径');
         await workflow.waitForCleanup(); workflow.idle();
@@ -113,6 +137,12 @@ const server = http.createServer(async (request, response) => {
         if (parts[3] === 'import' && method === 'POST') {
           if (typeof data.processed !== 'boolean') throw new AppError('请选择原始视频或已处理片段');
           return json(response, { assets: await library.importFiles(id, paths(data.paths), data.processed) });
+        }
+        if (parts[3] === 'process' && method === 'POST') {
+          if (activeUploads) throw new AppError('正在读取视频，请导入完成后再处理', 409);
+          if (data.confirmUncertain !== undefined && typeof data.confirmUncertain !== 'boolean') throw new AppError('命名确认格式错误');
+          library.startProcessing(id, pathsIds(data.assetIds), data.confirmUncertain === true);
+          return json(response, { accepted: true }, 202);
         }
         if (method === 'PATCH') {
           const next = validateProduct({ ...product, ...data, productId: product.productId }); store.putProduct(next); return json(response, next);
@@ -188,6 +218,7 @@ function pathsIds(value: unknown): string[] { if (!Array.isArray(value) || value
 server.requestTimeout = 20 * 60 * 1000;
 server.listen(port, '127.0.0.1', () => { console.log(`电商视频工作台Demo：http://127.0.0.1:${port}/`); console.log(`数据目录：${store.root}`); });
 async function shutdown() {
+  await library.stopProcessing();
   if (workflow.active?.kind === 'render') workflow.active.controller.abort();
   if (workflow.active?.promise && workflow.active.kind === 'render') await workflow.active.promise;
   await workflow.waitForCleanup();

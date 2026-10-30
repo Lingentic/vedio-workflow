@@ -5,8 +5,12 @@ import os from 'node:os';
 import { Store } from './store.ts';
 import { Media, fileHash } from './media.ts';
 import { AppError } from './types.ts';
-import type { Asset, MediaInfo, Product } from './types.ts';
+import type { Asset, MaterialProcessing, MaterialProcessingSettings, MediaInfo, Product } from './types.ts';
 import { productFacts, signature } from './templates.ts';
+import { DEFAULT_PROCESSING_SETTINGS, planFixedShots, savedShots, validateProcessingSettings } from './shot-plan.ts';
+import type { FixedShot } from './shot-plan.ts';
+import { NamingFailure } from './material-naming.ts';
+import type { MaterialNamer } from './material-naming.ts';
 
 export function validateProduct(input: unknown): Product {
   if (!input || typeof input !== 'object') throw new AppError('商品资料必须为对象');
@@ -21,20 +25,68 @@ export function validateProduct(input: unknown): Product {
 }
 
 function assetMediaInfo(kind: Asset['kind'], info: MediaInfo): MediaInfo {
-  if (kind !== 'product' && kind !== 'presenter') return info;
+  if (kind !== 'product' && kind !== 'presenter' && kind !== 'source') return info;
   if (!info.videoDuration) throw new Error('无法读取视频画面时长，请先转换成标准MP4');
   return { ...info, duration: info.videoDuration };
 }
 
 export class Library {
   store: Store; media: Media; isProtected: (id: string) => boolean;
+  namer?: MaterialNamer;
+  controller: AbortController | null = null;
+  processingPromise: Promise<void> = Promise.resolve();
   busy = false;
   message = '';
-  constructor(store: Store, media: Media, isProtected: (id: string) => boolean) { this.store = store; this.media = media; this.isProtected = isProtected; }
-  available(asset: Asset) { return asset.status === 'ready' && !!asset.relativePath && fs.existsSync(this.store.path(asset.relativePath)); }
+  constructor(store: Store, media: Media, isProtected: (id: string) => boolean, namer?: MaterialNamer) {
+    this.store = store; this.media = media; this.isProtected = isProtected; this.namer = namer;
+    for (const asset of store.assets()) {
+      if (asset.kind !== 'source' || !asset.processing || !['queued', 'scanning', 'splitting', 'naming'].includes(asset.processing.stage)) continue;
+      const uncertain = asset.naming?.status === 'running';
+      asset.status = asset.outputs && Object.keys(asset.outputs).length ? 'partial' : 'failed';
+      asset.processing = { stage: 'interrupted', progress: asset.processing.progress, message: '处理已中断，已完成片段保留，请手动继续' };
+      asset.error = uncertain ? '上次命名结果不确定，没有自动重新请求' : asset.processing.message;
+      if (uncertain) asset.naming = { ...asset.naming!, status: 'uncertain', error: asset.error };
+      store.putAsset(asset);
+    }
+  }
+  processingSettings() { return validateProcessingSettings(this.store.setting('material-processing') || DEFAULT_PROCESSING_SETTINGS); }
+  saveProcessingSettings(value: unknown): MaterialProcessingSettings {
+    if (this.busy) throw new AppError('素材处理中，请结束后再修改设置', 409);
+    const settings = validateProcessingSettings(value); this.store.setting('material-processing', settings); return settings;
+  }
+  startProcessing(productId: string, ids: string[], confirmUncertain = false) {
+    if (this.busy) throw new AppError('素材处理中，请等待当前批次完成', 409);
+    if (!this.namer?.ready()) throw new AppError('命名服务尚未配置，请配置后再开始处理', 409);
+    if (!ids.length) throw new AppError('请先选择待处理原视频');
+    const sources = [...new Set(ids)].map(id => {
+      const asset = this.store.asset(id);
+      if (!asset || asset.productId !== productId || asset.kind !== 'source' || asset.status === 'deleted' || asset.cleaned || asset.processed) throw new AppError('只能处理当前商品下尚未完成的原视频');
+      if (asset.naming?.status === 'uncertain' && !confirmUncertain) throw new AppError('上次命名结果不确定，继续可能再次计费，请先确认', 409);
+      return asset;
+    });
+    const settings = this.processingSettings();
+    this.busy = true; this.controller = new AbortController(); const signal = this.controller.signal;
+    for (const source of sources) { source.processing = { stage: 'queued', progress: 0, message: '等待处理' }; this.store.putAsset(source); }
+    this.processingPromise = (async () => {
+      for (let i = 0; i < sources.length; i++) {
+        if (signal.aborted) break;
+        this.message = `正在处理第 ${i + 1}/${sources.length} 条原视频：${sources[i].title}`;
+        await this.split(this.store.asset(sources[i].id)!, settings, signal);
+      }
+    })().catch(error => { this.message = `批次处理失败：${(error as Error).message}`; }).finally(() => {
+      for (const item of sources) {
+        const latest = this.store.asset(item.id)!;
+        if (latest.processing?.stage === 'queued') { latest.processing = { stage: 'interrupted', progress: 0, message: '本次批次未完成，请手动继续' }; this.store.putAsset(latest); }
+      }
+      this.busy = false; this.controller = null;
+    });
+  }
+  async stopProcessing() { this.controller?.abort(); await this.processingPromise; }
+  fileAvailable(asset: Asset) { return (asset.status === 'ready' || (asset.kind === 'source' && asset.status !== 'deleted')) && !!asset.relativePath && fs.existsSync(this.store.path(asset.relativePath)); }
+  available(asset: Asset) { return this.fileAvailable(asset) && !(asset.kind === 'product' && asset.processed === false); }
   publicAsset(asset: Asset): Asset {
     const available = this.available(asset);
-    const status = asset.status === 'ready' && !available && !asset.cleaned ? 'unavailable' : asset.status;
+    const status = asset.status === 'ready' && !this.fileAvailable(asset) && !asset.cleaned ? 'unavailable' : asset.status;
     return { ...asset, status, available, url: asset.relativePath ? `/media/asset/${asset.id}` : undefined, posterUrl: asset.posterPath ? `/poster/${asset.id}` : undefined };
   }
   ready(productId: string): Asset[] { return this.store.assets(productId).filter(asset => asset.kind === 'product' && this.available(asset)); }
@@ -43,7 +95,7 @@ export class Library {
     const id = Store.id();
     const relativeDir = kind === 'product' || kind === 'source' ? path.join('商品素材', 'product-' + signature(productId).slice(0, 16), id) : path.join('固定素材', id);
     const dir = this.store.path(relativeDir);
-    const asset: Asset = { id, productId, kind, title: path.basename(source), status: 'pending', duration: 0, sourcePath: source, binding, processed: true, createdAt: new Date().toISOString() };
+    const asset: Asset = { id, productId, kind, title: path.basename(source), status: 'pending', duration: 0, sourcePath: source, binding, processed: kind !== 'source', createdAt: new Date().toISOString() };
     this.store.putAsset(asset);
     try {
       const info = assetMediaInfo(kind, await this.media.probe(source));
@@ -79,42 +131,103 @@ export class Library {
         this.message = `正在处理第 ${i + 1}/${files.length} 个文件`;
         const asset = await this.importOne(files[i], productId, processed ? 'product' : 'source');
         asset.processed = processed; this.store.putAsset(asset);
-        if (!processed && asset.status === 'ready') await this.split(asset);
         results.push(this.store.asset(asset.id)!);
       }
       return results;
     } finally { this.busy = false; this.message = ''; }
   }
-  async split(source: Asset) {
-    if (!source.relativePath) throw new AppError('原视频尚未可靠保存');
-    const input = this.store.path(source.relativePath), dir = path.dirname(input);
+  async saveCut(source: Asset, shot: FixedShot, index: number, signal: AbortSignal) {
+    const key = `${shot.startSec}:${shot.endSec}`;
+    const oldId = source.outputs![key], old = oldId ? this.store.asset(oldId) : null;
+    if (old?.status === 'deleted' || (old && this.fileAvailable(old))) return;
+    const child: Asset = old || { id: oldId || Store.id(), productId: source.productId, kind: 'product',
+      title: `${path.parse(source.title).name} · 片段 ${index + 1}`, status: 'pending', duration: 0,
+      parentId: source.id, sourceRange: { start: shot.startSec, end: shot.endSec }, sourcePath: source.sourcePath,
+      processed: false, naming: { status: 'pending' }, createdAt: new Date().toISOString() };
+    // Reserve the child identity and parent link together before any asynchronous media work.
+    this.store.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.store.putAsset(child); source.outputs![key] = child.id; this.store.putAsset(source); this.store.db.exec('COMMIT');
+    } catch (error) { this.store.db.exec('ROLLBACK'); throw error; }
+    const dir = this.store.path(path.join('商品素材', 'product-' + signature(source.productId).slice(0, 16), child.id));
+    await fsp.mkdir(dir, { recursive: true });
+    const target = path.join(dir, 'original.mp4'), temporary = path.join(dir, 'cut.part.mp4');
+    if (!fs.existsSync(target)) {
+      await fsp.rm(temporary, { force: true });
+      await this.media.ff(['-n', '-i', this.store.path(source.relativePath!), '-ss', String(shot.startSec + Math.max(0, source.videoStart || 0)), '-t', String(shot.durationSec),
+        '-map', '0:v:0', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-c:a', 'aac', '-movflags', '+faststart', temporary], { signal });
+      const checked = assetMediaInfo('product', await this.media.probe(temporary));
+      if (Math.abs(checked.duration - shot.durationSec) > 0.12) throw new Error('切片实际画面时长与切分范围不一致');
+      await fsp.rename(temporary, target);
+    }
+    const info = assetMediaInfo('product', await this.media.probe(target));
+    if (Math.abs(info.duration - shot.durationSec) > 0.12) throw new Error('已保存切片的时长不符合范围，请检查处理记录');
+    Object.assign(child, info, { status: 'ready', processed: false, relativePath: path.relative(this.store.root, target), sourceHash: await fileHash(target), naming: { status: 'pending' } });
+    this.store.putAsset(child);
+    try {
+      const poster = this.store.path(path.join('缓存', `${child.id}.jpg`));
+      if (!fs.existsSync(poster)) await this.media.poster(target, poster);
+      child.posterPath = path.relative(this.store.root, poster); this.store.putAsset(child);
+    } catch (error) { child.error = `切片已保存，缩略图生成失败：${(error as Error).message}`; this.store.putAsset(child); }
+  }
+  async split(source: Asset, settings = this.processingSettings(), signal = new AbortController().signal) {
+    const input = source.relativePath ? this.store.path(source.relativePath) : '', dir = input ? path.dirname(input) : this.store.root;
+    const hadUncertainRequest = source.naming?.status === 'uncertain';
+    let requestSubmitted = false;
+    const progress = (stage: MaterialProcessing['stage'], percent: number, message: string) => {
+      source.processing = { stage, progress: Math.round(percent), message }; this.store.putAsset(source);
+    };
     source.status = 'pending'; this.store.putAsset(source);
     try {
+      if (!input) throw new Error('原视频尚未可靠保存，请重新导入');
+      if (!fs.existsSync(input)) throw new Error('托管原视频暂不可用，请重新导入原文件');
       if (!source.cuts) {
-        await this.media.ff(['-i', input, '-an', '-vf', 'scdet=t=10,metadata=mode=print:file=scenes.txt', '-f', 'null', '-'], { cwd: dir });
+        source.splitSettings = settings;
+        progress('scanning', 0, '检测镜头变化');
+        await this.media.ff(['-i', input, '-map', '0:v:0', '-an', '-vf', `setpts=PTS-STARTPTS,scdet=threshold=${settings.threshold},metadata=mode=print:file=scenes.txt`, '-progress', 'pipe:1', '-f', 'null', '-'], {
+          cwd: dir, signal, onProgress: seconds => progress('scanning', Math.min(20, seconds / source.duration * 20), '检测镜头变化'),
+        });
         const info = await fsp.readFile(path.join(dir, 'scenes.txt'), 'utf8');
         const changes = [...info.matchAll(/lavfi\.scd\.time=([\d.]+)/g)].map(match => Number(match[1]));
-        const cuts = [0];
-        for (const at of changes) if (at - cuts.at(-1)! >= 1 && source.duration - at >= 1) cuts.push(at);
-        cuts.push(source.duration); source.cuts = cuts; source.outputs = {}; this.store.putAsset(source);
+        const shots = planFixedShots(changes.map(timeSec => ({ timeSec, score: settings.threshold })), source.duration, settings);
+        source.cuts = [0, ...shots.map(shot => shot.endSec)]; source.outputs = {}; this.store.putAsset(source);
       }
-      for (let i = 0; i < source.cuts.length - 1; i++) {
-        const key = `${source.cuts[i]}:${source.cuts[i + 1]}`;
-        const oldId = source.outputs?.[key];
-        const old = oldId ? this.store.asset(oldId) : null;
-        if (old?.status === 'ready' || old?.status === 'deleted') continue;
-        const temp = path.join(dir, `cut-${i}-${Store.id()}.mp4`);
-        await this.media.ff(['-n', '-ss', String(source.cuts[i]), '-i', input, '-t', String(source.cuts[i + 1] - source.cuts[i]), '-map', '0:v:0', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-c:a', 'aac', '-movflags', '+faststart', temp]);
-        const child = await this.importOne(temp, source.productId);
-        if (child.status !== 'ready') throw new Error(child.error || '片段入库失败');
-        child.title = `${path.parse(source.title).name} · 片段 ${i + 1}`; child.sourcePath = source.sourcePath; child.parentId = source.id; child.sourceRange = { start: source.cuts[i], end: source.cuts[i+1] };
-        this.store.putAsset(child); source.outputs![key] = child.id; this.store.putAsset(source);
-        await fsp.unlink(temp);
+      if (source.cuts.length < 2 || source.cuts[0] !== 0 || source.cuts.some((cut, i) => !Number.isFinite(cut) || (i > 0 && cut <= source.cuts![i - 1])) || Math.abs(source.cuts.at(-1)! - source.duration) > 0.12) throw new Error('已保存的切分范围不符合原视频，请重新导入核对');
+      source.outputs ||= {};
+      const shots = savedShots(source.cuts);
+      for (let i = 0; i < shots.length; i++) {
+        signal.throwIfAborted();
+        progress('splitting', 20 + i / (source.cuts.length - 1) * 50, `保存片段 ${i + 1}/${source.cuts.length - 1}`);
+        await this.saveCut(source, shots[i], i, signal);
       }
-      source.status = 'ready'; source.error = '';
-      this.store.putAsset(source);
-      try { await fsp.unlink(input); source.cleaned = true; } catch (error) { source.cleanupError = (error as Error).message; }
-    } catch (error) { source.status = source.outputs && Object.keys(source.outputs).length ? 'partial' : 'failed'; source.error = (error as Error).message; }
+      if (!this.namer) throw new Error('命名服务尚未配置，已完成的片段保留');
+      progress('naming', 75, '生成片段短名称与画面描述');
+      const result = await this.namer.name({ source: input, directory: dir, shots, sourceHash: source.sourceHash || await fileHash(input),
+        productName: this.store.product(source.productId!)?.name || '', signal, previousAttemptId: source.naming?.attemptId,
+        onRequest: attemptId => { requestSubmitted = true; source.naming = { status: 'running', attemptId }; this.store.putAsset(source); },
+      });
+      signal.throwIfAborted();
+      this.store.db.exec('BEGIN IMMEDIATE');
+      try {
+        for (const label of result.labels) {
+          const shot = shots.find(item => item.shotId === label.shotId)!;
+          const child = this.store.asset(source.outputs[`${shot.startSec}:${shot.endSec}`]);
+          if (!child || child.status === 'deleted') continue;
+          child.title = label.title; child.description = label.description; child.processed = true; child.naming = { status: 'ready', requestId: result.requestId };
+          this.store.putAsset(child);
+        }
+        source.status = 'ready'; source.processed = true; source.error = '';
+        source.naming = { ...source.naming, status: 'ready', requestId: result.requestId, resultPath: path.relative(this.store.root, result.resultPath), signature: result.signature };
+        source.processing = { stage: 'ready', progress: 100, message: '切分与命名完成' };
+        this.store.putAsset(source); this.store.db.exec('COMMIT');
+      } catch (error) { this.store.db.exec('ROLLBACK'); throw error; }
+    } catch (error) {
+      source.processed = false;
+      source.status = source.outputs && Object.keys(source.outputs).length ? 'partial' : 'failed'; source.error = (error as Error).message;
+      const uncertain = error instanceof NamingFailure ? error.uncertain || (!requestSubmitted && hadUncertainRequest) : requestSubmitted || hadUncertainRequest;
+      source.naming = { ...source.naming, status: uncertain ? 'uncertain' : 'failed', error: source.error };
+      source.processing = { stage: signal.aborted ? 'interrupted' : 'failed', progress: source.processing?.progress || 0, message: source.error, error: source.error };
+    }
     this.store.putAsset(source);
   }
   async retry(id: string): Promise<Asset> {
@@ -123,7 +236,7 @@ export class Library {
     if (this.busy) throw new AppError('正在导入其他素材，请稍后重试', 409);
     this.busy = true;
     try {
-    if (asset.kind === 'source' && asset.relativePath && fs.existsSync(this.store.path(asset.relativePath))) { await this.split(asset); return this.store.asset(id)!; }
+    if (asset.kind === 'source') throw new AppError('请从商品未处理列表选择原视频并继续切分命名');
     if (asset.relativePath && fs.existsSync(this.store.path(asset.relativePath))) {
       Object.assign(asset, assetMediaInfo(asset.kind, await this.media.probe(this.store.path(asset.relativePath))), { status: 'ready', error: '' });
       return this.store.putAsset(asset);
@@ -142,16 +255,17 @@ export class Library {
     const replacement = await this.importOne(input, asset.productId, asset.kind, asset.binding);
     // Keep the failed entry identity so drafts and the retry row continue referring to it.
     const newId = replacement.id;
-    Object.assign(asset, replacement, { id, sourcePath: asset.sourcePath }); this.store.putAsset(asset);
+    Object.assign(asset, replacement, { id, sourcePath: asset.sourcePath, title: asset.title }); this.store.putAsset(asset);
     this.store.db.prepare('DELETE FROM assets WHERE id=?').run(newId);
     if (temporary && fs.existsSync(temporary)) await fsp.unlink(temporary);
-    if (asset.kind === 'source' && asset.status === 'ready') await this.split(asset);
     return this.store.asset(id)!;
     } finally { this.busy = false; this.message = ''; }
   }
   async remove(id: string) {
     const asset = this.store.asset(id);
     if (!asset || asset.kind !== 'product') throw new AppError('只能删除商品的独立视频片段');
+    const parent = asset.parentId ? this.store.asset(asset.parentId) : null;
+    if (parent?.processing && ['queued', 'scanning', 'splitting', 'naming'].includes(parent.processing.stage)) throw new AppError('该原视频正在处理，请完成后再删除片段', 409);
     if (this.isProtected(id)) throw new AppError('该片段正在用于生成视频，请完成后再删除', 409);
     asset.status = 'deleted'; this.store.putAsset(asset);
     for (const relative of [asset.relativePath, asset.posterPath].filter((value): value is string => !!value)) {

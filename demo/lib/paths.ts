@@ -7,7 +7,7 @@ export const appRoot = path.resolve(import.meta.dirname, '..');
 export const profileDir = process.env.DEMO_PROFILE_DIR || path.join(appRoot, '.local');
 export const profileFile = path.join(profileDir, 'settings.json');
 
-export interface Profile { dataRoot?: string; seedRoot?: string; credentialsFile?: string; ffmpeg?: string; ffprobe?: string; }
+export interface Profile { dataRoot?: string; seedRoot?: string; credentialsFile?: string; namingCredentialsFile?: string; namingModel?: string; namingBaseUrl?: string; ffmpeg?: string; ffprobe?: string; }
 
 export function videosDirectory() {
   if (process.platform === 'win32') {

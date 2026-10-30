@@ -31,7 +31,6 @@
     { key: 'dup', label: '同素材重复度', hard: false, desc: '同商品多号发布需错开素材顺序与封面帧' },
     { key: 'weight', label: '账号权重匹配', hard: true, desc: '账号环境异常或登录态失效时不入队' },
   ];
-  const PLATFORM_MARK = { 快手: '快', 抖音: '抖', TikTok: 'T' };
 
   const seedAccounts = () => [
     { id: 'acc-01', platform: '快手', name: '老葛严选01', uid: 'laoge_xs01', status: 'ok', fingerprint: '独立设备指纹 · 已启用', proxy: '112.65.**.18:8123', speed: 186, cookie: '本地加密 Cookie · 有效', note: '独立环境已启用', checked: '2026-10-22 08:30' },
@@ -74,6 +73,7 @@
 
   /* ---------- 工具 ---------- */
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const icon = name => `<svg class="workbench-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="/icons.svg#${name}"></use></svg>`;
   const money = value => `¥${Number(value || 0).toFixed(2)}`;
   const later = (fn, ms) => { const t = setTimeout(accountScope.guard(fn), ms); timers.push(t); return t; };
   const clearTimers = () => { timers.forEach(id => { clearTimeout(id); clearInterval(id); }); timers = []; };
@@ -111,7 +111,7 @@
     const tasks = state.tasks.filter(task => task.accountId === acc.id);
     const counts = { queued: tasks.filter(t => t.status === 'queued' || t.status === 'publishing').length, ok: tasks.filter(t => t.status === 'published' || t.status === 'reviewing').length, bad: tasks.filter(t => t.status === 'failed' || t.status === 'precheck' || t.status === 'blocked' || t.status === 'missed').length };
     return `<article class="ec-led-account${acc.status === 'warn' ? ' is-warn' : ''}${acc.status === 'danger' ? ' is-danger' : ''}">
-      <header><i>${PLATFORM_MARK[acc.platform] || '账'}</i><div><strong title="${esc(acc.name)}">${esc(acc.name)}</strong><small>${esc(acc.platform)} · @${esc(acc.uid)}</small></div><span class="is-tail">${accountTag(acc)}</span></header>
+      <header><i>${icon('user')}</i><div><strong title="${esc(acc.name)}">${esc(acc.name)}</strong><small>${esc(acc.platform)} · @${esc(acc.uid)}</small></div><span class="is-tail">${accountTag(acc)}</span></header>
       <div class="ec-led-env">
         <div><span>设备指纹</span><b class="${acc.status === 'danger' ? 'is-danger' : 'is-ok'}">${esc(acc.fingerprint)}</b></div>
         <div><span>代理 IP</span><b class="${acc.proxy === '未配置' || acc.speed > 500 ? 'is-warn' : 'is-ok'}">${esc(acc.proxy)} · <span class="is-num">${acc.speed}ms</span></b></div>
@@ -129,7 +129,7 @@
   };
 
   const accountsSection = () => `<div class="ec-led-card">
-      <header><b><i>环</i>账号环境</b><small>每账号独立设备指纹 + 代理 IP + 本地加密 Cookie，异常项标色；异常账号在发布选号中置灰</small>
+      <header><b><i>${icon('user')}</i>账号环境</b><small>每账号独立设备指纹 + 代理 IP + 本地加密 Cookie，异常项标色；异常账号在发布选号中置灰</small>
         <span class="is-tail"><button type="button" class="ec-led-btn ec-led-btn--sm" data-pub="check-all" ${state.checking || !state.accounts.length ? 'disabled' : ''}>${state.checking ? '<span class="ec-led-spinner" style="width:13px;height:13px;border-width:2px"></span> 体检中…' : '♥ 批量体检'}</button><button type="button" class="ec-led-btn ec-led-btn--sm ec-led-btn--primary" data-pub="add-account">＋ 添加账号</button></span>
       </header>
       <div class="ec-led-card-body"><div class="ec-led-accounts">
@@ -186,7 +186,7 @@
       <td class="is-check"><input type="checkbox" data-pub="select" data-id="${task.id}" ${state.selected.includes(task.id) ? 'checked' : ''} ${canResubmit(task) ? '' : 'disabled title="发布成功 / 发布中的任务不可重新提交"'} aria-label="选择 ${esc(task.id)}"></td>
       <td class="is-num"><b>${esc(task.id)}</b></td>
       <td class="is-num">${esc(task.recordId)}<small class="ec-led-hint" style="display:block;margin-top:3px">${esc(task.duration)}</small></td>
-      <td><div class="ec-led-cell-product"><span class="ec-led-thumb">${PLATFORM_MARK[acc?.platform] || '账'}</span><span><strong>${esc(acc?.name || '—')}</strong><small>${esc(acc?.platform || '')} · ${acc?.status === 'danger' ? '环境异常' : acc?.status === 'warn' ? 'IP弱' : '环境就绪'}</small></span></div></td>
+      <td><div class="ec-led-cell-product"><span class="ec-led-thumb">${icon('user')}</span><span><strong>${esc(acc?.name || '—')}</strong><small>${esc(acc?.platform || '')} · ${acc?.status === 'danger' ? '环境异常' : acc?.status === 'warn' ? 'IP弱' : '环境就绪'}</small></span></div></td>
       <td>${infoCell(task)}<small class="ec-led-hint" style="display:block;margin-top:4px" title="${esc(task.title)}">${esc(task.title)}</small></td>
       <td>${progressCell(task)}</td>
       <td class="is-num">${task.actual ? esc(task.actual) : '<span class="ec-led-hint">—</span>'}</td>
@@ -197,7 +197,7 @@
     </tr>`;
     }).join('')}</tbody></table></div>`;
 
-  const emptyState = () => `<div class="ec-led-empty"><i>发</i><h3>暂无发布任务</h3><p>从「生成记录」勾选「已完成」的成片点「批量提交发布」，任务会在这里执行过审预检后入队；也可以在此新建定时发布任务。</p><div><button type="button" class="ec-led-btn ec-led-btn--primary" data-pub="goto-records">去生成记录挑成片</button><button type="button" class="ec-led-btn" data-pub="new-timed">＋ 新建定时任务</button></div></div>`;
+  const emptyState = () => `<div class="ec-led-empty"><i>${icon('publish')}</i><h3>暂无发布任务</h3><p>从「生成记录」勾选「已完成」的成片点「批量提交发布」，任务会在这里执行过审预检后入队；也可以在此新建定时发布任务。</p><div><button type="button" class="ec-led-btn ec-led-btn--primary" data-pub="goto-records">去生成记录挑成片</button><button type="button" class="ec-led-btn" data-pub="new-timed">＋ 新建定时任务</button></div></div>`;
 
   /* ---------- 弹窗 ---------- */
   const precheckReport = () => {
@@ -271,7 +271,7 @@
       <header><div><h2 id="pubAddTitle">添加账号</h2><p>选择平台后扫码绑定，成功后在本地创建独立隔离环境（独立设备指纹 + 代理 IP + 本地加密 Cookie）。</p></div><button type="button" data-pub="dismiss" aria-label="关闭">×</button></header>
       <div class="ec-led-dialog-body">
         <div class="ec-led-split-label"><i>1</i>选择平台</div>
-        <div class="ec-led-accounts" style="grid-template-columns:repeat(3,minmax(0,1fr))">${['快手', '抖音', 'TikTok'].map(p => `<button type="button" class="ec-led-btn${draft.platform === p ? ' ec-led-btn--primary' : ''}" data-pub="pick-platform" data-value="${p}">${PLATFORM_MARK[p]} ${p}</button>`).join('')}</div>
+        <div class="ec-led-accounts" style="grid-template-columns:repeat(3,minmax(0,1fr))">${['快手', '抖音', 'TikTok'].map(p => `<button type="button" class="ec-led-btn${draft.platform === p ? ' ec-led-btn--primary' : ''}" data-pub="pick-platform" data-value="${p}">${icon('user')} ${p}</button>`).join('')}</div>
         <div class="ec-led-split-label" style="margin-top:18px"><i>2</i>扫码绑定<small>${draft.scanning ? '等待手机确认…' : '点击下方按钮模拟扫码结果'}</small></div>
         <div class="ec-led-qr"><div class="ec-led-qr-frame">${draft.scanning ? '<span class="ec-led-spinner" style="border-color:rgba(255,255,255,.4);border-top-color:#fff"></span>' : `<span>${esc(draft.platform)} 扫码登录</span>`}</div>
           <p class="ec-led-hint" style="line-height:1.7;text-align:center">${esc(draft.note || '扫码成功后账号卡片标注「独立环境已启用」；扫码失败可重试，不影响已有账号。')}</p>
@@ -332,7 +332,7 @@
       ${accountsSection()}
       ${filterCard()}
       <div class="ec-led-card">
-        <header><b><i>发</i>发布任务列表</b><small>共 ${rows.length} 条记录 · 同账号并发 ${ACCOUNT_CONCURRENCY} / 全局并发 ${GLOBAL_CONCURRENCY}</small>
+        <header><b><i>${icon('publish')}</i>发布任务列表</b><small>共 ${rows.length} 条记录 · 同账号并发 ${ACCOUNT_CONCURRENCY} / 全局并发 ${GLOBAL_CONCURRENCY}</small>
           <span class="is-tail">
             <button type="button" class="ec-led-btn ec-led-btn--sm ec-led-btn--primary" data-pub="batch-resubmit" ${state.selected.length ? '' : 'disabled'} title="${state.selected.length ? '按原参数批量重新提交并记录重提次数' : '勾选失败 / 待审 / 预检未过 / 阻塞 / 错失的记录后可点'}">批量重新提交 (${state.selected.length})</button>
             <button type="button" class="ec-led-btn ec-led-btn--sm" data-pub="refresh">⟳ 刷新</button>
@@ -348,7 +348,7 @@
     ${state.confirm ? confirmDialog() : ''}`;
   };
 
-  const head = (count, counts) => `<div class="ec-led-head"><div><h1><i>发</i>发布中心</h1><p>工作流第 4 步：多账号隔离环境批量发布 + 定时无人值守 + 发布台账。账号环境在本模块内维护。</p></div>
+  const head = (count, counts) => `<div class="ec-led-head"><div><h1><i>${icon('publish')}</i>发布中心</h1><p>工作流第 4 步：多账号隔离环境批量发布 + 定时无人值守 + 发布台账。账号环境在本模块内维护。</p></div>
     <div class="ec-led-head-actions">
       <span class="ec-led-count is-num">共 ${count} 条 · 排队 ${counts.queued} · 发布中 ${counts.publishing} · 待处理 ${counts.failed}</span>
       <button type="button" class="ec-led-btn" data-pub="new-timed">＋ 新建定时任务</button>

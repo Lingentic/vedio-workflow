@@ -4,15 +4,18 @@
 
 所有 JSON 接口成功返回直接的数据对象；失败返回 `{error,message}`，HTTP 状态为 400/404/409/500 等。付费模型不会自动重试。异步操作返回 202 和当前 task，前端每秒刷新当前任务；生成记录保持同一 task ID。
 
-- `GET /api/state` → `{configured,dataRoot,defaultDataRoot,modelReady,toolsReady,templates,products,assets,tasks,bgms,seedAvailable,activeExecution}`。
+- `GET /api/state` → `{configured,dataRoot,defaultDataRoot,modelReady,toolsReady,templates,products,assets,tasks,bgms,seedAvailable,activeExecution,libraryBusy,libraryMessage,materialProcessing}`；`materialProcessing` 含切分 settings、命名配置就绪布尔值及模型名，不返回密钥。
 - `POST /api/setup` `{dataRoot?}` → 初始保存目录，省略则取运行电脑实际 Videos 已知文件夹/电商视频工作台Demo。已经配置后只能在没有任务执行时修改；已有数据不自动搬迁。
 - `POST /api/dialog` `{kind:"folder"|"videos"}` → `{paths:[]}`；取消返回空列表。
 - `POST /api/seed` → 导入本机用户提供的两个商品和固定素材，原文件不动；已有导入不重复复制。
 - `GET /api/products` / `GET /api/products/:id` → 商品资料与当前素材。
 - `POST /api/products` `{productId,name,price,specification,sellingPoints,localVideos:[{path,processed:true}]}` → 接收商品及本地文件；追加走同一接口。卖点为文本。
 - `PATCH /api/products/:id` `{price,specification,sellingPoints,name}` → 仅库中修改，不追溯已建立任务的快照。
-- `POST /api/products/:id/import` `{paths:[绝对路径],processed:true|false}` → 按文件入库。原始视频进入本地切分；已处理片段直接校验入库。
-- `POST /api/assets/:id/retry` → 仅补失败的文件/输出。
+- `POST /api/products/:id/import` `{paths:[绝对路径],processed:true|false}` → 按文件入库。原始视频仅进入未处理；已处理片段直接校验入库。
+- `POST /api/products/:id/upload?name=文件名&processed=true|false` → 浏览器选择视频后的原始文件流，返回 201 `{assets}`。只写本机托管目录，成功复制后清理上传缓存；文件名及商品归属在边界校验。
+- `PUT /api/library/processing-settings` `{threshold,minDurationSec}` → 保存当前库切分设置；默认 `15.2 / 1.9`，只影响新切分计划。
+- `POST /api/products/:id/process` `{assetIds:[原视频ID],confirmUncertain?:true}` → 202 `{accepted:true}`，后台串行切分并命名；只允许当前商品的未完成原视频。命名结果不确定时须显式确认，不自动重发。
+- `POST /api/assets/:id/retry` → 恢复独立片段文件，保留素材 ID、名称、描述及来源；原视频处理重试走上述 process 接口。
 - `DELETE /api/assets/:id` → 删除托管商品片段，保留删除记录；正在合成的输入拒绝删除。
 - `GET /media/asset/:id`、`GET /poster/:id` → 素材/缩略图，支持 Range。
 - `POST /api/tasks` `{productId,templateId}` → 创建草稿和单一生成记录，默认 stage=copy。

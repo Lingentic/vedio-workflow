@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f5f8" />
+    <title>切分实验台</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="切分实验台首页"><span class="brand-mark">S</span><span>切分实验台</span></a>
+      <div class="topbar-meta"><span class="live-dot"></span><span>本机预览</span><span class="topbar-divider"></span><span id="job-status">等待视频</span></div>
+    </header>
+
+    <main class="workspace">
+      <aside class="controls-panel" aria-label="切分设置">
+        <div class="panel-heading"><span class="eyebrow">参数工作台</span><h1>调节切点</h1><p>观察阈值和最短时长如何改变片段数量。</p></div>
+        <section class="source-block">
+          <div class="field-label">视频文件</div>
+          <input id="video-file" type="file" accept="video/*,.mp4,.mov,.mkv,.webm,.m4v,.avi,.mts,.ts" hidden />
+          <button id="pick-source" class="button button-quiet source-picker" type="button"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 7V5.5A1.5 1.5 0 0 1 4.5 4h5L12 7h7.5A1.5 1.5 0 0 1 21 8.5v10a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5V7Z"/></svg><span id="pick-label">选择视频</span></button>
+          <div id="selected-file" class="selected-file" aria-live="polite">尚未选择视频</div>
+          <button id="analyze" class="button button-primary analyze-button" type="button" disabled>扫描视频</button>
+          <div id="scan-progress" class="scan-progress" hidden><div class="progress-line"><span id="progress-label">正在分析</span><span id="progress-value">0%</span></div><div class="progress-track"><span id="progress-bar"></span></div></div>
+          <p id="source-error" class="inline-error" role="alert" hidden></p>
+        </section>
+
+        <section class="parameter-block">
+          <div class="section-label"><span>切分参数</span><span class="section-index">01 — 02</span></div>
+          <label class="parameter" for="threshold-number"><span class="parameter-name">变化分数阈值</span><span class="parameter-value"><input id="threshold-number" class="number-input" type="number" min="0.1" max="100" step="0.1" value="15.2" aria-label="变化分数阈值" /></span></label>
+          <input id="threshold" class="range-input" type="range" min="0.1" max="100" step="0.1" value="15.2" aria-label="切点阈值" />
+          <div class="range-ends"><span>0.1 更敏感</span><span>100 更严格</span></div>
+          <label class="parameter min-param" for="min-number"><span class="parameter-name">最短片段（秒）</span><span class="parameter-value"><input id="min-number" class="number-input" type="number" min="0.1" max="10" step="0.1" value="1.9" aria-label="最短片段时长" /></span></label>
+          <input id="min-duration" class="range-input" type="range" min="0.1" max="10" step="0.1" value="1.9" aria-label="最短片段时长" />
+          <div class="range-ends"><span>0.1 秒</span><span>10 秒</span></div>
+          <div class="preset-row"><button id="preset-original" class="button preset-button" type="button">原实现 <b>12 / 0.2</b></button><button id="preset-current" class="button preset-button" type="button">当前方案 <b>15.2 / 1.9</b></button></div>
+          <p class="experiment-note">当前方案用于后续 Demo 接入。</p>
+        </section>
+
+        <section class="saved-block"><div class="section-label"><span>试验记录</span><span id="saved-count" class="saved-count">0 / 6</span></div><button id="record" class="button record-button" type="button" disabled>＋ 记录这组</button><div id="saved-groups" class="saved-groups"></div></section>
+        <footer class="panel-footer">切点来自画面变化分析</footer>
+      </aside>
+
+      <section class="work-area">
+        <div class="preview-grid">
+          <section class="source-preview card">
+            <div class="card-heading"><div><span class="eyebrow">原视频</span><h2 id="video-name">尚未选择视频</h2></div><span class="timecode" id="video-time">00:00.00</span></div>
+            <div class="video-stage" id="video-stage"><div class="empty-video"><span class="empty-glyph">▧</span><strong>选择一个视频开始</strong><span>原片会在这里预览，切点显示在下方时间轴</span></div><video id="source-video" playsinline preload="metadata" hidden></video><span class="stage-corner">SOURCE MONITOR</span></div>
+            <div class="video-controls"><button id="play-toggle" class="icon-button" type="button" aria-label="播放" disabled><span class="play-icon">▶</span></button><div class="scrub-track" id="scrub-track" role="slider" tabindex="0" aria-label="视频播放位置" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><span id="scrub-fill"></span><i id="scrub-marker"></i></div><span class="timecode muted-time" id="video-duration">00:00.00</span></div>
+          </section>
+          <section class="stats-panel" aria-label="切分统计"><div class="stats-heading"><span class="eyebrow">当前切分</span><span id="stats-state" class="stats-state">待分析</span></div><div class="stat-primary"><strong id="shot-count">—</strong><span>片段</span></div><div class="stat-rulers"><div><span>最短</span><b id="stat-min">—</b></div><div><span>中位</span><b id="stat-median">—</b></div><div><span>最长</span><b id="stat-max">—</b></div></div><div class="stat-foot"><span class="tiny-marker"></span><span>小于 1 秒</span><b id="stat-short">—</b></div><button id="export" class="button export-button" type="button" disabled>导出清单 <span>↓</span></button></section>
+        </div>
+
+        <section class="timeline-card card"><div class="card-heading timeline-heading"><div><span class="eyebrow">切点分布</span><h2>时间轴</h2></div><div class="legend"><span><i class="legend-cut"></i>保留切点</span><span><i class="legend-filter"></i>最短时长过滤</span></div></div><div class="timeline-wrap"><div class="ruler-labels" id="ruler-labels"><span>00:00</span><span>—</span><span>—</span><span>—</span><span>—</span></div><div class="timeline-track" id="timeline-track"><div id="timeline-shots" class="timeline-shots"></div><div id="timeline-cuts" class="timeline-cuts"></div><div id="timeline-cursor" class="timeline-cursor"></div><div id="timeline-empty" class="timeline-empty">扫描完成后显示切点与过滤结果</div></div></div></section>
+
+        <section class="clips-section"><div class="clips-heading"><div><span class="eyebrow">逐段检查</span><h2>片段清单 <span id="list-count" class="heading-count">0</span></h2></div><span class="list-hint">选择片段可在原视频定位，播放按钮会生成真实片段</span></div><div id="clips-empty" class="clips-empty">视频扫描完成后，片段会按时间顺序列在这里。</div><div id="clip-list" class="clip-list"></div><button id="load-more" class="button load-more" type="button" hidden>显示更多片段</button></section>
+        <section id="clip-player-card" class="clip-player-card card" hidden><div class="card-heading"><div><span class="eyebrow">真实片段</span><h2 id="clip-title">片段预览</h2></div><a id="clip-download" class="download-link" href="#" download>保存片段 ↓</a></div><video id="clip-video" controls playsinline></video></section>
+      </section>
+    </main>
+  </body>
+</html>
