@@ -98,11 +98,7 @@ export async function renderTask(task: Task, library: Library, media: Media, sig
   filters.push(`[0:v][bg]blend=all_mode=normal:all_opacity=${(0.82 + Math.random() * 0.08).toFixed(2)}[base]`);
   filters.push(`[base][grow]overlay=(W-w)/2:(H-h)/2[b1]`);
   dots.forEach((dot, i) => filters.push(`[b${i + 1}][t${i}]overlay=${dot.x}:${dot.y}[b${i + 2}]`));
-  const zoom = 1.02 + Math.random() * 0.025;
-  const wide = Math.round(1080 * zoom) & ~1, tall = Math.round(1920 * zoom) & ~1;
-  const offsetX = randomInt(wide - 1080 + 1) & ~1, offsetY = randomInt(tall - 1920 + 1) & ~1;
-  const gain = () => (0.99 + Math.random() * 0.02).toFixed(4);
-  let video = `scale=${wide}:${tall},crop=1080:1920:${offsetX}:${offsetY},noise=alls=${(4 + Math.random() * 2).toFixed(1)}:allf=t,colorchannelmixer=rr=${gain()}:gg=${gain()}:bb=${gain()}`;
+  let video = '';
   if (task.settings.subtitles) {
     await fsp.writeFile(path.join(work, 'captions.ass'), assDocument(task, library), 'utf8');
     const fonts = path.join(store.root, '固定素材', '字幕字体');
@@ -113,9 +109,9 @@ export async function renderTask(task: Task, library: Library, media: Media, sig
       await fsp.copyFile(sourceFont, path.join(fonts, 'msyhbd.ttc'));
     }
     const escaped = fonts.replaceAll('\\', '/').replaceAll(':', '\\:').replaceAll("'", "\\'");
-    video += `,ass=filename=captions.ass:fontsdir='${escaped}'`;
+    video = `ass=filename=captions.ass:fontsdir='${escaped}',`;
   }
-  filters.push(`[b4]${video},format=yuv420p[v]`);
+  filters.push(`[b4]${video}format=yuv420p[v]`);
   if (task.settings.bgmId) {
     args.push('-stream_loop', '-1', '-i', source(task.settings.bgmId));
     filters.push(`[4:a]volume=${task.settings.bgmVolume}[music];[1:a][music]amix=inputs=2:duration=first:normalize=0[a]`);
