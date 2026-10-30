@@ -1,21 +1,32 @@
-import { icon, workbenchShell, productionFlow, architectureView, copyView, generationView, generationCandidates, recordsView, libraryView, recordDetailsView, materialPickerView } from './prototype-views.js';
+import { icon, workbenchShell, productionFlow, architectureView, copyView, voicePreparationView, generationView, renderBlocker, recordsView, libraryView, recordDetailsView, materialPickerView } from './prototype-views.js';
 import { bindSortableList } from './sortable.js';
+import { bindParagraphSort } from './prototype-sort.js';
+import { bindHostImageEditor, hostImageEditorView } from './host-image-editor.js';
+import type { ImageDraft } from './host-image-editor.js';
 
 type Stage = 'copy' | 'voice' | 'visual' | 'preview';
 type TaskStatus = 'running' | 'done' | 'failed' | 'stopped' | 'interrupted';
 export interface Template { id: string; name: string; title: string; summary: string; nodes: ScriptNode[]; variableNodeId?: string; }
 export interface ScriptNode { id: string; type: 'host_clip' | 'fixed_narration' | 'generated_narration'; text: string; label?: string; }
 export interface Product { productId: string; name: string; price: string; specification: string; sellingPoints: string; createdAt?: string; }
-export interface Asset { id: string; productId?: string; kind: 'product' | 'source' | 'host' | 'presenter' | 'bgm'; title: string; description?: string; processing?: { stage: 'queued' | 'scanning' | 'splitting' | 'naming' | 'ready' | 'failed' | 'interrupted'; progress: number; message: string; error?: string }; naming?: { status: 'pending' | 'running' | 'ready' | 'failed' | 'uncertain'; error?: string }; status: 'ready' | 'pending' | 'failed' | 'partial' | 'deleted' | 'unavailable'; duration: number; width?: number; height?: number; size?: number; videoStart?: number; binding?: string; processed?: boolean; parentId?: string; error?: string; cuts?: number[]; cleaned?: boolean; url?: string; posterUrl?: string; available?: boolean; }
+export interface Asset { id: string; productId?: string; kind: 'product' | 'source' | 'host' | 'presenter' | 'bgm'; title: string; description?: string; processing?: { stage: 'queued' | 'scanning' | 'splitting' | 'naming' | 'ready' | 'failed' | 'interrupted'; progress: number; message: string; error?: string }; naming?: { status: 'pending' | 'running' | 'ready' | 'failed' | 'uncertain'; error?: string }; status: 'ready' | 'pending' | 'failed' | 'partial' | 'deleted' | 'unavailable'; duration: number; hasVideo?: boolean; videoDuration?: number; width?: number; height?: number; size?: number; videoStart?: number; binding?: string; processed?: boolean; parentId?: string; error?: string; cuts?: number[]; cleaned?: boolean; url?: string; posterUrl?: string; available?: boolean; }
+export interface FixedNarrationVisual { nodeId: string; matchedText: string; placement: 'start' | 'end'; assetId: string | null; duration: number; status: 'ready' | 'missing' | 'unassigned'; }
 export interface Cue { text: string; begin: number; end: number; nodeId?: string; }
 export interface Interval { id: string; nodeIds: string[]; text: string; signature: string; status: 'missing' | 'ready' | 'failed'; confirmed: boolean; audioUrl?: string; duration?: number; cues?: Cue[]; nodeTimes?: { id: string; begin: number; end: number }[]; error?: string; }
 export interface QueueEntry { entryId: string; assetId: string; title: string; duration: number; url?: string; posterUrl?: string; available: boolean; }
 export interface PicturePiece { mode: 'product' | 'host' | 'presenter'; start: number; duration: number; assetId?: string; productAssetId?: string; sourceStart?: number; productStart?: number; }
 export interface Plan { mode: 'auto' | 'manual'; entries: QueueEntry[]; requiredDuration: number; availableDuration: number; valid: boolean; repeated: boolean; warnings: string[]; events: PicturePiece[]; pieces: PicturePiece[]; signature: string; duration: number; }
 export interface Preview { relativePath: string; duration: number; width: number; height: number; fps: number; size: number; signature: string; createdAt: string; url: string; }
-export interface Execution { id: string; kind: 'copy' | 'voice' | 'render'; status: TaskStatus; progress: number; message: string; startedAt: string; finishedAt?: string; }
-export interface Task { id: string; name: string; productId: string; templateId: string; productSnapshot: Product; templateSnapshot: Template; variable: string; example: string; black: Record<string, string>; nodes: ScriptNode[]; confirmedNodes?: ScriptNode[]; stage: Stage; copyConfirmed: boolean; audioConfirmed: boolean; intervals: Interval[]; plan: Plan | null; settings: { subtitles: boolean; bgmId: string | null; bgmVolume: number }; preview: Preview | null; previewStale: boolean; previewChanges?: string[]; completed: boolean; execution: Execution | null; error: string; notice?: string; createdAt: string; updatedAt: string; }
-export interface AppState { configured: boolean; dataRoot: string; defaultDataRoot: string; modelReady: boolean; toolsReady: boolean; templates: Template[]; products: Product[]; assets: Asset[]; tasks: Task[]; bgms: Asset[]; seedAvailable: boolean; activeExecution: ({ taskId: string } & Execution) | null; libraryBusy?: boolean; libraryMessage?: string; materialProcessing?: { settings: { threshold: number; minDurationSec: number }; namingReady: boolean; namingModel: string }; }
+export interface HostImage { relativePath: string; title: string; width: number; height: number; x: number; y: number; scale: number; url?: string; }
+export interface Execution { id: string; kind: 'copy' | 'voice' | 'render' | 'selection'; status: TaskStatus; progress: number; message: string; startedAt: string; finishedAt?: string; }
+export interface ShotSelection {
+  signature: string; slots: { id: string; nodeId: string; intervalId: string; begin: number; end: number; duration: number; text: string }[];
+  fixedVisuals: { nodeId: string; intervalId: string; assetId: string; begin: number; end: number; duration: number; sourceStart: number }[];
+  choices: { slotId: string; nodeId: string; assetIds: string[]; duration: number }[];
+  candidateIds: string[]; warnings: string[]; requiredDuration: number; model?: string; stale?: boolean;
+}
+export interface Task { id: string; name: string; productId: string; templateId: string; productSnapshot: Product; templateSnapshot: Template; variable: string; example: string; black: Record<string, string>; nodes: ScriptNode[]; confirmedNodes?: ScriptNode[]; stage: Stage; copyConfirmed: boolean; audioConfirmed: boolean; intervals: Interval[]; plan: Plan | null; settings: { subtitles: boolean; bgmId: string | null; bgmVolume: number }; preview: Preview | null; previewStale: boolean; previewChanges?: string[]; completed: boolean; videoSubmittedAt?: string | null; hostImage?: HostImage; shotSelection?: ShotSelection; execution: Execution | null; error: string; notice?: string; createdAt: string; updatedAt: string; }
+export interface AppState { configured: boolean; dataRoot: string; defaultDataRoot: string; defaultExportDirectory: string; modelReady: boolean; toolsReady: boolean; templates: Template[]; products: Product[]; assets: Asset[]; tasks: Task[]; bgms: Asset[]; seedAvailable: boolean; activeExecution: ({ taskId: string } & Execution) | null; fixedNarrationVisuals?: FixedNarrationVisual[]; libraryBusy?: boolean; libraryMessage?: string; materialProcessing?: { settings: { threshold: number; minDurationSec: number }; namingReady: boolean; namingModel: string }; }
 interface ApiError { error?: string; message?: string; }
 type Page = 'production' | 'library' | 'records' | 'task' | 'products' | 'publishing';
 interface PrototypeIsland { html(): string; mount(root: HTMLElement, options: {toast:(message:string)=>void;goto:(page:string,productId?:string)=>void}): void; setAccount(value:string): void; }
@@ -28,8 +39,16 @@ let workbenchSetupStep: 'architecture' | 'copy' | 'generation' = 'architecture';
 let workbenchGenerationOpen = false;
 let prototypeSelectionTaskId = '';
 let prototypeMatchRound = 0;
+let selectionStamp = '';
+let selectionDirty = false;
+let selectionSaving = false;
+const selectionSubmitting = new Set<string>();
+const renderSubmitting = new Set<string>();
 let prototypeClipId = '';
-const prototypeNarrations = new Map<string, {name: string; url: string}>();
+const submittingCopyConfirmation = new Set<string>();
+const hostImageRequests = new Map<string, Promise<void>>();
+const hostImageAttempts = new Set<string>();
+let disposeHostImageEditor: (() => void) | null = null;
 let libraryBoard: 'anchor' | 'product' = 'anchor';
 let librarySelectedSources = new Set<string>();
 let libraryProductQuery = '';
@@ -38,21 +57,45 @@ let prototypePicker: {nodeId: string; ids: string[]; mask: boolean} | null = nul
 let modalDecision: ((accepted: boolean) => void) | null = null;
 let anchorFolder = 'all';
 let workbenchNode = '';
+let prototypeEditingRenderId = '';
 const prototypeSelection = new Map<string,string[]>();
 
 const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('页面容器缺失');
 let state: AppState | null = null;
-interface UiPointer { page: Page; taskId: string; }
+interface ProductionPointer { page: 'production' | 'task'; taskId: string; templateId: string; step: 'architecture' | 'copy' | 'generation'; generationOpen: boolean; nodeId: string; clipId: string; selectionTaskId: string; selections: [string, string[]][]; matchRound: number; }
+interface UiPointer { page: Page; taskId: string; dataRoot?: string; production?: ProductionPointer; }
 const UI_POINTER_KEY = 'video-workbench-ui-v1';
 let savedPointer: UiPointer | null = null;
-try { savedPointer = JSON.parse(localStorage.getItem(UI_POINTER_KEY) || 'null') as UiPointer | null; } catch { savedPointer = null; }
-let page: Page = savedPointer && ['task','library','records','products','publishing'].includes(savedPointer.page) ? savedPointer.page : 'production';
+try {
+  const saved: unknown = JSON.parse(localStorage.getItem(UI_POINTER_KEY) || 'null');
+  if (saved && typeof saved === 'object' && 'page' in saved && ['production','task','library','records','products','publishing'].includes(String(saved.page)) && 'taskId' in saved && typeof saved.taskId === 'string') {
+    savedPointer = { page: saved.page as Page, taskId: saved.taskId };
+    if ('dataRoot' in saved && typeof saved.dataRoot === 'string') savedPointer.dataRoot = saved.dataRoot;
+    const production = 'production' in saved ? saved.production : null;
+    if (production && typeof production === 'object' &&
+      'page' in production && ['production','task'].includes(String(production.page)) &&
+      ['taskId','templateId','nodeId','clipId','selectionTaskId'].every(key => typeof (production as Record<string, unknown>)[key] === 'string') &&
+      'step' in production && ['architecture','copy','generation'].includes(String(production.step)) &&
+      'generationOpen' in production && typeof production.generationOpen === 'boolean' &&
+      'matchRound' in production && Number.isSafeInteger(production.matchRound) && Number(production.matchRound) >= 0 &&
+      'selections' in production && Array.isArray(production.selections) && production.selections.every(row => Array.isArray(row) && row.length === 2 && typeof row[0] === 'string' && Array.isArray(row[1]) && row[1].every(id => typeof id === 'string'))) savedPointer.production = production as ProductionPointer;
+  }
+} catch { savedPointer = null; }
+let page: Page = savedPointer?.page || 'production';
 const entryParams = new URLSearchParams(location.search);
 if (['products','collection','library'].includes(entryParams.get('page') || '')) {
   page = entryParams.get('page') === 'collection' ? 'products' : entryParams.get('page') as Page;
 }
-let selectedTaskId = savedPointer?.taskId || '';
+let selectedTaskId = savedPointer?.production?.taskId || savedPointer?.taskId || '';
+let productionPage: ProductionPointer['page'] = savedPointer?.production?.page || (selectedTaskId ? 'task' : 'production');
+let workspaceInitialized = false;
+if (savedPointer?.production) {
+  const workspace = savedPointer.production;
+  workbenchTemplateId = workspace.templateId; workbenchSetupStep = workspace.step; workbenchGenerationOpen = workspace.generationOpen;
+  workbenchNode = workspace.nodeId; prototypeClipId = workspace.clipId; prototypeSelectionTaskId = workspace.selectionTaskId; prototypeMatchRound = workspace.matchRound;
+  // Real selection choices are restored from the server.
+}
 let libraryTab = 'product';
 let libraryMediaType: 'all' | 'video' | 'source' | 'image' | 'sound' = 'all';
 let libraryProductId = entryParams.get('page') === 'library' ? entryParams.get('productId') || 'all' : 'all';
@@ -108,17 +151,36 @@ async function api<T>(url: string, method = 'GET', body?: unknown): Promise<T> {
   return payload as T;
 }
 async function refresh(keepPage = true): Promise<void> {
+  const previousRoot = state?.dataRoot || savedPointer?.dataRoot;
   state = await api<AppState>('/api/state');
+  if (previousRoot && previousRoot !== state.dataRoot) {
+    selectedTaskId = ''; productionPage = 'production'; workbenchTemplateId = ''; workbenchSetupStep = 'architecture'; workbenchGenerationOpen = false;
+    prototypeSelectionTaskId = ''; prototypeSelection.clear(); workbenchNode = ''; prototypeClipId = ''; prototypeMatchRound = 0;
+    if (page === 'task') page = 'production';
+    workspaceInitialized = true; rememberPointer();
+  }
   for(const id of librarySelectedSources){const asset=state.assets.find(item=>item.id===id);if(!asset||asset.processed===true||asset.processing?.stage==='ready')librarySelectedSources.delete(id);}
   for (const asset of state.assets) {
     if (asset.url?.startsWith('/media/asset/') && asset.kind !== 'bgm' && !/\.(png|jpe?g|webp|avif|gif|bmp|tiff?)$/i.test(asset.title)) asset.url += '?browser=1';
   }
   if (selectedTaskId && !state.tasks.some(task => task.id === selectedTaskId)) selectedTaskId = '';
+  if (!workspaceInitialized) {
+    if (!savedPointer?.production && !selectedTaskId) {
+      const draft = state.tasks.find(task => !task.completed && !task.videoSubmittedAt);
+      if (draft) { selectedTaskId = draft.id; productionPage = 'task'; }
+    }
+    if (page === 'production' && productionPage === 'task' && selectedTask()) page = 'task';
+    workspaceInitialized = true;
+  }
   if (!keepPage && page === 'task' && !selectedTaskId) page = 'production';
   if (pendingTaskPatches.size === 0 && draftFlushes.size === 0) render();
   if (state.activeExecution || state.libraryBusy) startPolling(); else stopPolling();
 }
-function rememberPointer(): void { try { localStorage.setItem(UI_POINTER_KEY, JSON.stringify({ page, taskId: selectedTaskId } satisfies UiPointer)); } catch { /* storage may be unavailable */ } }
+function rememberPointer(): void {
+  if (page === 'production' || page === 'task') productionPage = page;
+  const production: ProductionPointer = { page: productionPage, taskId: selectedTaskId, templateId: workbenchTemplateId, step: workbenchSetupStep, generationOpen: workbenchGenerationOpen, nodeId: workbenchNode, clipId: prototypeClipId, selectionTaskId: prototypeSelectionTaskId, selections: [], matchRound: prototypeMatchRound };
+  try { localStorage.setItem(UI_POINTER_KEY, JSON.stringify({ page, taskId: selectedTaskId, dataRoot: state?.dataRoot, production } satisfies UiPointer)); } catch { /* storage may be unavailable */ }
+}
 function startPolling(): void { if (taskPoll !== undefined) return; taskPoll = window.setInterval(() => { void refresh().catch(showError); }, 1100); }
 function stopPolling(): void { if (taskPoll !== undefined) window.clearInterval(taskPoll); taskPoll = undefined; }
 function showToast(message: string, error = false): void {
@@ -194,8 +256,7 @@ function render(): void {
   const island = page === 'products' ? window.EcommerceVideoProducts : page === 'publishing' ? window.EcommerceVideoPublishing : undefined;
   if (island && root.querySelector(`[data-ui-key="prototype:${page}"]`)) return;
   const auditionTask = page === 'task' ? selectedTask() : undefined;
-  if (bgmAudition && (!auditionTask || auditionTask.stage !== 'visual' || auditionTask.id !== bgmAuditionTaskId || auditionTask.settings.bgmId !== bgmAuditionAssetId)) stopBgmAudition();
-  rememberPointer();
+  if (bgmAudition && (!auditionTask || auditionTask.id !== bgmAuditionTaskId || auditionTask.settings.bgmId !== bgmAuditionAssetId || auditionTask.execution?.status === 'running' || auditionTask.completed)) stopBgmAudition();
   if (!state.configured) { patchView(root, renderSetup()); bind(); return; }
   island?.setAccount(page === 'products' ? 'local' : 'local-prototype-ui');
   let content = island ? `<div class="workbench-island" data-ui-key="prototype:${page}">${page === 'products' && collectionLoadError ? `<div class="notice">${esc(collectionLoadError)}</div>` : island.html()}</div>` : page === 'library' ? renderLibrary() : page === 'records' ? renderRecords() : page === 'task' && selectedTask() ? renderTask(selectedTask()!) : renderProduction();
@@ -209,7 +270,47 @@ function render(): void {
     } else void navigate(target as Page).catch(showError);
   }});
   updateBgmAuditionButton();
+  rememberPointer();
+  const imageTask = page === 'task' ? selectedTask() : undefined;
+  if (imageTask && !imageTask.completed && !imageTask.hostImage && !state.activeExecution && root.querySelector('.ec-generation')) {
+    const key = `${state.dataRoot}:${imageTask.id}`;
+    if (!hostImageAttempts.has(key)) { hostImageAttempts.add(key); void prepareHostImage(imageTask).catch(showError); }
+  }
   if (completedRecord) showModal(recordDetailsView(completedRecord));
+}
+async function prepareHostImage(task: Task): Promise<void> {
+  const key = `${state!.dataRoot}:${task.id}`, existing = hostImageRequests.get(key);
+  if (existing) return existing;
+  const job = (async () => { await api(`/api/tasks/${encodeURIComponent(task.id)}/host-image/default`, 'POST', {}); await refresh(); })();
+  hostImageRequests.set(key, job);
+  try { await job; } finally { hostImageRequests.delete(key); }
+}
+async function openHostImageEditor(task: Task): Promise<void> {
+  if (task.completed || task.execution?.status === 'running' || renderSubmitting.has(task.id)) return;
+  await flushTaskDraft(task.id);
+  const pending = hostImageRequests.get(`${state!.dataRoot}:${task.id}`);
+  if (pending) await pending;
+  const current = state!.tasks.find(item=>item.id===task.id);
+  if (!current || selectedTask()?.id!==task.id) return;
+  const images=state!.assets.filter(asset=>asset.kind==='product' && asset.productId===task.productId && asset.available && isImageAsset(asset));
+  const node=current.nodes.find(item=>item.id===workbenchNode && item.type==='host_clip') || current.nodes.find(item=>item.type==='host_clip');
+  const host=state!.assets.find(asset=>asset.available && asset.kind==='host' && asset.binding===node?.id);
+  const image=current.hostImage || {relativePath:'',title:'请选择商品图片',width:1080,height:960,x:.5,y:.5,scale:1,url:''};
+  showModal(hostImageEditorView(image,host,images));
+  const dialog=document.querySelector<HTMLElement>('.host-image-dialog')!;
+  disposeHostImageEditor=bindHostImageEditor(dialog,image,images,async(draft:ImageDraft)=>{
+    let assetId=draft.assetId;
+    if(draft.file){
+      const result=await fetch(`/api/products/${encodeURIComponent(current.productId)}/upload?processed=true&name=${encodeURIComponent(draft.file.name)}`,{method:'POST',body:draft.file});
+      const body=await result.json() as {assets?:Asset[];message?:string};
+      if(!result.ok)throw new Error(body.message || '图片上传失败');
+      const asset=body.assets?.find(item=>item.status==='ready');
+      if(!asset)throw new Error('图片导入失败，请重新选择');
+      assetId=asset.id;
+    }
+    await api(`/api/tasks/${encodeURIComponent(current.id)}/host-image`,'PUT',{...(assetId?{assetId}:{}),x:draft.x,y:draft.y,scale:draft.scale});
+    await refresh();
+  },()=>{closeModal();showToast('已应用于全部主播原声片段');});
 }
 function renderSetup(): string {
   return `<div class="shell"><main class="main" style="grid-column:1/-1"><div class="page" style="max-width:600px;padding-top:15vh"><h1>设置本地工作目录</h1><p class="subhead">素材、文案与生成记录将保存在你选择的目录中，原视频不会被移动或覆盖。</p><div class="card" style="margin-top:24px"><label class="field-label" for="data-root">数据目录</label><input id="data-root" class="input" value="${esc(state!.defaultDataRoot)}"><div class="row" style="justify-content:space-between;margin-top:14px"><span class="section-hint">使用 Videos 下的独立目录</span><button class="button" data-action="choose-folder" data-target="data-root">选择文件夹</button></div><div class="modal-footer"><button class="button primary" data-action="setup">开始使用</button></div></div></div></main></div>`;
@@ -220,12 +321,13 @@ function renderProduction(): string {
 }
 function renderRecords(): string {
   const filters = appliedRecordFilters;
-  const tasks = state!.tasks.filter(task => matchesSearch(filters.keyword, task.name, task.id, task.productId, task.productSnapshot.name, task.templateSnapshot.name)
+  const records = state!.tasks.filter(task => !!task.videoSubmittedAt);
+  const tasks = records.filter(task => matchesSearch(filters.keyword, task.name, task.id, task.productId, task.productSnapshot.name, task.templateSnapshot.name)
     && matchesSearch(filters.taskId, task.id) && matchesSearch(filters.productId, task.productId)
     && (!filters.status || (filters.status === 'incomplete' ? !task.completed : taskFilterStatus(task) === filters.status))
-    && (!filters.from || localDay(task.createdAt) >= filters.from)
-    && (!filters.to || localDay(task.createdAt) <= filters.to)).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt));
-  return recordsView(tasks, recordFilters, state!.tasks.length);
+    && (!filters.from || localDay(task.videoSubmittedAt!) >= filters.from)
+    && (!filters.to || localDay(task.videoSubmittedAt!) <= filters.to)).sort((a,b) => b.updatedAt.localeCompare(a.updatedAt));
+  return recordsView(tasks, recordFilters, records.length);
 }
 function taskRow(task: Task): string {
   const running = task.execution?.status === 'running';
@@ -272,29 +374,37 @@ function libraryAsset(asset: Asset): string {
 }
 
 function renderTask(task: Task): string {
-  const step=!workbenchGenerationOpen && task.stage==='copy'?'copy':'generation';
-  return `<main class="ec-video-production" data-ui-key="task:${esc(task.id)}" aria-label="视频制作">${productionFlow(step,task.completed)}<div class="ec-video-production-content"><section class="ec-video-production-panel" id="ecommerceProductionStage" data-ui-key="stage:${step}:${task.completed}">${task.execution?.status==='running'?`<div class="ec-generation-task workbench-execution" data-ui-key="execution-progress"><strong>${esc(task.execution.message)}</strong><progress max="100" value="${task.execution.progress}" aria-label="生成进度"></progress><span>${Math.floor(task.execution.progress)}%</span></div>`:''}${task.error?`<div class="ec-generation-readiness workbench-error" role="alert">${esc(task.error)}</div>`:''}${task.completed?renderPreviewStage(task):renderStage(task)}</section></div></main>`;
+  const voicePreparing = !task.completed && (submittingCopyConfirmation.has(task.id) || (task.copyConfirmed && !task.audioConfirmed && task.stage === 'voice'));
+  const step = voicePreparing ? 'copy' : !workbenchGenerationOpen && task.stage==='copy'?'copy':'generation';
+  const renderStatus = step === 'generation' && task.execution?.kind === 'render' && prototypeEditingRenderId !== task.execution.id;
+  return `<main class="ec-video-production" data-ui-key="task:${esc(task.id)}" aria-label="视频制作">${productionFlow(step,task.completed || voicePreparing || task.execution?.status === 'running')}<div class="ec-video-production-content"><section class="ec-video-production-panel" id="ecommerceProductionStage" data-ui-key="stage:${step}:${task.completed}">${voicePreparing ? voicePreparationView(task, submittingCopyConfirmation.has(task.id)) : `${!renderStatus&&task.execution?.status==='running'?`<div class="ec-generation-task workbench-execution" data-ui-key="execution-progress"><strong>${esc(task.execution.message)}</strong><progress max="100" value="${task.execution.progress}" aria-label="生成进度"></progress><span>${Math.floor(task.execution.progress)}%</span></div>`:''}${!renderStatus&&task.error?`<div class="ec-generation-readiness workbench-error" role="alert">${esc(task.error)}</div>`:''}${task.completed?renderPreviewStage(task):renderStage(task)}`}</section></div></main>`;
 }
 function renderStage(task: Task): string {
   if (!workbenchGenerationOpen && task.stage === 'copy') return copyView(task, state!, {pending:!!pendingTaskSwitch,busy:taskSwitchBusy,productId:pendingTaskSwitch?.productId});
   preparePrototypeSelection(task);
-  return generationView(task, state!, workbenchNode, prototypeSelection, prototypeClipId, prototypeNarrations.get(workbenchNode));
+  if (!task.nodes.some(node => node.id === workbenchNode)) workbenchNode = task.nodes[0]?.id || '';
+  return generationView(task, state!, workbenchNode, prototypeSelection, prototypeClipId, prototypeEditingRenderId !== task.execution?.id, { busy: selectionSaving || selectionSubmitting.has(task.id) || renderSubmitting.has(task.id), dirty: selectionDirty });
 }
-function preparePrototypeSelection(task: Task, rematch = false): void {
-  const changed = prototypeSelectionTaskId !== task.id;
-  if (!changed && !rematch) return;
-  if (changed) {
-    for (const audio of prototypeNarrations.values()) URL.revokeObjectURL(audio.url);
-    prototypeNarrations.clear(); workbenchNode = ''; prototypeClipId = ''; prototypeMatchRound=0;
+function preparePrototypeSelection(task: Task): void {
+  const stamp = JSON.stringify([task.id, task.shotSelection]);
+  if (prototypeSelectionTaskId !== task.id || selectionStamp !== stamp) {
+    prototypeSelectionTaskId = task.id; selectionStamp = stamp; selectionDirty = false;
+    prototypeSelection.clear();
+    for (const choice of task.shotSelection?.choices || []) prototypeSelection.set(choice.slotId, [...choice.assetIds]);
   }
-  if (rematch) prototypeMatchRound++;
-  prototypeSelectionTaskId = task.id; prototypeSelection.clear();
-  task.nodes.forEach((node, index) => {
-    const assets = generationCandidates(task, state!, node, node.type === 'host_clip');
-    const start = assets.length ? (index + prototypeMatchRound) % assets.length : 0;
-    const ordered = [...assets.slice(start), ...assets.slice(0, start)];
-    prototypeSelection.set(node.id, ordered.slice(0, node.type === 'host_clip' ? 1 : 2).map(a => a.id));
-  });
+}
+async function saveShotChoices(task: Task): Promise<void> {
+  const selection = task.shotSelection;
+  if (!selection || selection.stale || selectionSaving || task.execution?.status === 'running' || renderSubmitting.has(task.id)) return;
+  selectionDirty = true;
+  const choices = selection.slots.map(slot => ({slotId: slot.id, assetIds: [...(prototypeSelection.get(slot.id) || [])]}));
+  const short = selection.slots.find((slot, index) => choices[index].assetIds.reduce((sum, id) => { const asset = state!.assets.find(asset => asset.id === id); return sum + (asset?.videoDuration ?? asset?.duration ?? 0); }, 0) + 1e-6 < slot.duration);
+  if (short) { render(); showToast('区间 ' + short.id + ' 时长不足，需要 ' + short.duration.toFixed(1) + ' 秒；调整尚未保存', true); return; }
+  selectionSaving = true; render();
+  try {
+    await api<Task>('/api/tasks/' + task.id + '/selection', 'PUT', {choices});
+    selectionDirty = false; selectionStamp = ''; await refresh(); showToast('素材调整已保存');
+  } finally { selectionSaving = false; render(); }
 }
 function renderCopyPreview(task: Task, nodes = task.nodes): string {
   const loading = task.execution?.status === 'running' && task.execution.kind === 'copy';
@@ -436,12 +546,6 @@ function bind(): void {
     void api<Task>('/api/tasks', 'POST', {productId:select.value,templateId:workbenchTemplateId}).then(async task=>{selectedTaskId=task.id;workbenchGenerationOpen=false;workbenchNode='';prototypeSelection.clear();page='task';await refresh();window.scrollTo(0,0);}).catch(error=>{select.disabled=false;showError(error);});
   }));
   newElements<HTMLSelectElement>('[data-switch-product]').forEach(select => select.addEventListener('change', () => { const task=selectedTask();if(task)void requestTaskSwitch(select.value,task.templateId,'copy').catch(showError); }));
-  newElements<HTMLInputElement>('[data-prototype-audio-input]').forEach(input=>input.addEventListener('change',()=>{
-    const file=input.files?.[0];if(!file)return;
-    if(!file.type.startsWith('audio/')&&!/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name)){showToast('请选择音频文件',true);return;}
-    const old=prototypeNarrations.get(workbenchNode);if(old)URL.revokeObjectURL(old.url);
-    prototypeNarrations.set(workbenchNode,{name:file.name,url:URL.createObjectURL(file)});render();
-  }));
   newElements<HTMLButtonElement>('[data-library-board]').forEach(button => button.addEventListener('click', () => { libraryBoard=button.dataset.libraryBoard as typeof libraryBoard; render(); }));
   newElements<HTMLButtonElement>('[data-library-folder]').forEach(button => button.addEventListener('click', () => { if(libraryBoard==='anchor')anchorFolder=button.dataset.libraryFolder!;else {if(libraryProductId!==button.dataset.libraryFolder)librarySelectedSources.clear();libraryProductId=button.dataset.libraryFolder!;}render(); }));
   newElements<HTMLInputElement>('[data-source-select]').forEach(input=>input.addEventListener('change',()=>{if(input.checked)librarySelectedSources.add(input.value);else librarySelectedSources.delete(input.value);render();}));
@@ -482,14 +586,26 @@ function bind(): void {
     onBusy: busy => { manualSortBusy = busy; },
     onMove: (from, to) => { const [asset] = manualSelection.splice(from, 1); manualSelection.splice(to, 0, asset); render(); },
   });
+  newElements<HTMLElement>('[data-paragraph-sort]').forEach(list => bindParagraphSort(list, {
+    canSort: () => selectedTask()?.execution?.status !== 'running' && !renderSubmitting.has(selectedTaskId) && !taskSwitchBusy && !selectionSaving && !selectedTask()?.shotSelection?.stale,
+    onBusy: busy => { manualSortBusy = busy; },
+    onMove: (nodeId, from, to) => {
+      const task = selectedTask();
+      const slot = task?.shotSelection?.slots.find(slot => slot.id === nodeId);
+      const ids = prototypeSelection.get(nodeId);
+      if (!task || !slot || task.shotSelection?.stale || !ids || from < 0 || to < 0 || from >= ids.length || to >= ids.length) return;
+      const [asset] = ids.splice(from, 1); ids.splice(to, 0, asset);
+      void saveShotChoices(task).catch(showError);
+    },
+  }));
 }
 async function navigate(target: Page): Promise<void> {
   if(taskSwitchBusy)return;
   pendingTaskSwitch=null;
   workbenchTemplateId=selectedTask()?.templateId || workbenchTemplateId;
   const task = selectedTask(); if (task) await flushTaskDraft(task.id);
-  if (target !== 'task') { page = target; selectedTaskId = ''; }
-  else page = target;
+  if (page === 'production' || page === 'task') productionPage = page;
+  page = target === 'production' && productionPage === 'task' && selectedTask() && !selectedTask()!.completed ? 'task' : target;
   render();
   window.scrollTo(0,0);
 }
@@ -508,6 +624,7 @@ function manualPlanChanged(task: Task): boolean {
 }
 async function goStage(target: Stage): Promise<void> {
   const originalTask = selectedTask(); if (!originalTask) return;
+  if (originalTask.execution?.status === 'running' || submittingCopyConfirmation.has(originalTask.id)) { showToast('任务运行中，请稍候'); return; }
   await flushTaskDraft(originalTask.id);
   const task = selectedTask(); if (!task) return;
   if (target === 'preview' && manualPlanChanged(task)) { showToast('请先保存手动方案，再生成预览', true); return; }
@@ -577,7 +694,7 @@ async function flushTaskDraft(taskId: string): Promise<void> {
   else if (selectedTaskId === taskId) render();
 }
 function saveSettings(input: HTMLInputElement | HTMLSelectElement): void {
-  const task = selectedTask(); if (!task) return;
+  const task = selectedTask(); if (!task || task.completed || task.execution?.status === 'running' || renderSubmitting.has(task.id)) return;
   const settings: Partial<Task['settings']> = {};
   if (input.dataset.setting === 'subtitles' && input instanceof HTMLInputElement) settings.subtitles = input.checked;
   else if (input.dataset.setting === 'bgmId') {
@@ -591,7 +708,11 @@ function saveSettings(input: HTMLInputElement | HTMLSelectElement): void {
     if (label) label.textContent = `音乐音量 · ${Math.round(settings.bgmVolume * 100)}%`;
     if (bgmAudition) bgmAudition.volume = settings.bgmVolume;
   }
+  if (!Object.entries(settings).some(([key, value]) => task.settings[key as keyof Task['settings']] !== value)) return;
+  task.settings = {...task.settings, ...settings};
+  if (task.preview) task.previewStale = true;
   queueTaskPatch(task.id, { settings });
+  if (!(input instanceof HTMLInputElement && input.type === 'range')) render();
 }
 function updateBgmAuditionButton(): void {
   const button = root?.querySelector<HTMLButtonElement>('[data-action="audition-bgm"]');
@@ -619,6 +740,30 @@ async function toggleBgmAudition(): Promise<void> {
 async function handleAction(button: HTMLButtonElement): Promise<void> {
   const action = button.dataset.action; let task = selectedTask();
   if(taskSwitchBusy)return;
+  if(pendingTaskSwitch && ['workbench-stage','new-task','generate-copy','confirm-copy'].includes(action || '')){showToast('请先应用或取消当前切换');return;}
+  if (action === 'confirm-copy' && task) {
+    const candidate = task;
+    if (submittingCopyConfirmation.has(candidate.id)) return;
+    const complete = candidate.nodes.every(node => node.type !== 'generated_narration' || (candidate.black[node.id] || '').trim());
+    if (!complete || candidate.execution?.status === 'running') return showToast('请先完成所有文案并等待当前任务结束', true);
+    submittingCopyConfirmation.add(candidate.id);
+    render();
+    try {
+      await flushTaskDraft(candidate.id);
+      const currentTask = selectedTask();
+      if (!currentTask || currentTask.id !== candidate.id) return;
+      if (currentTask.execution?.status === 'running') return showToast('请等待当前任务结束', true);
+      await mutate(`/api/tasks/${encodeURIComponent(candidate.id)}/copy/confirm`, 'POST', {generateVoice:true}, '文案已确认，正在准备配音');
+      root?.querySelector('.ec-video-production-content')?.scrollTo(0,0);
+    } finally {
+      submittingCopyConfirmation.delete(candidate.id);
+      render();
+    }
+    return;
+  }
+  const voiceRunning = !!task && task.execution?.kind === 'voice' && task.execution.status === 'running';
+  if (action === 'workbench-stage' && (voiceRunning || (!!task && submittingCopyConfirmation.has(task.id)))) return showToast('配音准备中，请稍候');
+  if (['prototype-remove', 'prototype-materials', 'confirm-prototype-materials'].includes(action || '') && (selectionSaving || renderSubmitting.has(selectedTaskId) || task?.execution?.status === 'running' || task?.shotSelection?.stale)) return;
   if(action==='confirm-switch-task' && pendingTaskSwitch){
     const choice=pendingTaskSwitch;if(choice.taskId!==task?.id)return;
     const mode=button.dataset.mode;if(mode!=='new'&&mode!=='overwrite')return;
@@ -627,7 +772,6 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     try{await flushTaskDraft(choice.taskId);await applyTaskSwitch(choice,mode);}finally{taskSwitchBusy=false;controls.forEach(button=>{button.disabled=false;});render();}
     return;
   }
-  if(pendingTaskSwitch && ['workbench-stage','new-task','generate-copy','confirm-copy'].includes(action || '')){showToast('请先应用或取消当前切换');return;}
   if(action==='confirm-modal'){const resolve=modalDecision;modalDecision=null;closeModal();resolve?.(true);return;}
   if (action === 'audition-bgm') return toggleBgmAudition();
   if (task) { await flushTaskDraft(task.id); task = selectedTask(); }
@@ -643,28 +787,54 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     workbenchSetupStep='generation';return render();
   }
   if (action === 'select-shot') { workbenchNode=button.dataset.id!;prototypeClipId='';return render(); }
-  if (action === 'prototype-rematch' && task) {preparePrototypeSelection(task,true);render();return showToast('已更新演示选材，未提交编排或合成');}
-  if (action === 'prototype-auto' && task) {const node=task.nodes.find(n=>n.id===workbenchNode);if(node)prototypeSelection.set(node.id,generationCandidates(task,state!,node).slice(0,2).map(a=>a.id));prototypeClipId='';return render();}
-  if (action === 'prototype-clip') {prototypeClipId=button.dataset.id!;return render();}
+  if (action === 'edit-host-image' && task) return openHostImageEditor(task);
+  if (action === 'prototype-edit' && task) { prototypeEditingRenderId=task.execution?.id || '';return render(); }
+  if (action === 'prototype-rematch' && task) {
+    if (selectionDirty) return showToast('请先补齐时长并保存手动调整', true);
+    if (!task.copyConfirmed || !task.audioConfirmed || state!.activeExecution || task.execution?.status === 'running' || selectionSubmitting.has(task.id) || selectionSaving || renderSubmitting.has(task.id)) return;
+    selectionSubmitting.add(task.id); render();
+    try { await api<Task>('/api/tasks/' + task.id + '/selection', 'POST'); await refresh(); startPolling(); }
+    finally { selectionSubmitting.delete(task.id); render(); }
+    return;
+  }
+  if (action === 'save-shot-choices' && task) return saveShotChoices(task);
+  if (action === 'prototype-clip') {if(button.dataset.nodeId)workbenchNode=task?.shotSelection?.slots.find(slot => slot.id === button.dataset.nodeId)?.nodeId || button.dataset.nodeId;prototypeClipId=button.dataset.id!;return render();}
   if (action === 'prototype-play') {const videos=[...root!.querySelectorAll<HTMLVideoElement>('.ec-generation-player video')];if(videos.every(v=>v.paused))await Promise.all(videos.map(v=>v.play()));else videos.forEach(v=>v.pause());return;}
-  if (action === 'prototype-narration') {root?.querySelector<HTMLInputElement>('[data-prototype-audio-input]')?.click();return;}
-  if (action === 'prototype-narration-clear') {const audio=prototypeNarrations.get(workbenchNode);if(audio)URL.revokeObjectURL(audio.url);prototypeNarrations.delete(workbenchNode);return render();}
-  if (action === 'prototype-remove') { const key=workbenchNode || task?.nodes[0]?.id;const ids=prototypeSelection.get(key!)||[];ids.splice(Number(button.dataset.index),1);prototypeSelection.set(key!,ids);return render(); }
-  if (action === 'prototype-add') { const key=workbenchNode || task?.nodes[0]?.id;if(key)prototypeSelection.set(key,[...(prototypeSelection.get(key)||[]),button.dataset.id!]);closeModal();return render(); }
+  if (action === 'prototype-remove' && task) {
+    const slotId = button.dataset.slotId!;
+    if (!task.shotSelection?.slots.some(slot => slot.id === slotId)) return;
+    const ids = [...(prototypeSelection.get(slotId) || [])]; ids.splice(Number(button.dataset.index), 1);
+    prototypeSelection.set(slotId, ids); return saveShotChoices(task);
+  }
   if (action === 'prototype-materials' && task) {
-    const nodeId=workbenchNode || task.nodes[0].id,mask=button.dataset.mask==='true';
-    const next={nodeId,mask,ids:[...(prototypeSelection.get(nodeId)||[])]};
-    showModal(materialPickerView(task,state!,nodeId,next.ids,mask));prototypePicker=next;return;
+    const slotId = button.dataset.slotId!;
+    const slot = task.shotSelection?.slots.find(slot => slot.id === slotId);
+    if (!slot || task.shotSelection?.stale) return;
+    const next = { nodeId: slotId, mask: false, ids: [...(prototypeSelection.get(slotId) || [])] };
+    showModal(materialPickerView(task, state!, slotId, next.ids, false)); prototypePicker = next; return;
   }
   if(action==='toggle-prototype-material'&&prototypePicker){const id=button.dataset.id!,index=prototypePicker.ids.indexOf(id);if(index>=0)prototypePicker.ids.splice(index,1);else prototypePicker.ids.push(id);const selected=prototypePicker.ids.includes(id);button.textContent=selected?'✓ 已选择':'＋ 选择';button.setAttribute('aria-pressed',String(selected));button.closest('article')?.classList.toggle('is-selected',selected);const count=document.querySelector('[data-picker-count]');if(count)count.textContent=`已选 ${prototypePicker.ids.length} 项`;return;}
-  if(action==='confirm-prototype-materials'&&prototypePicker){prototypeSelection.set(prototypePicker.nodeId,[...prototypePicker.ids]);closeModal();return render();}
+  if (action === 'confirm-prototype-materials' && prototypePicker && task) {
+    const slot = task.shotSelection?.slots.find(slot => slot.id === prototypePicker!.nodeId);
+    if (!slot || task.shotSelection?.stale) return;
+    prototypeSelection.set(slot.id, [...prototypePicker.ids]); workbenchNode = slot.nodeId; prototypeClipId = '';
+    closeModal(); return saveShotChoices(task);
+  }
   if(action==='preview-picker-asset'){const asset=state!.assets.find(a=>a.id===button.dataset.id);if(!asset?.url)return;const dialog=document.createElement('dialog');dialog.className='ec-library-dialog';dialog.innerHTML=`<header><h3>${esc(asset.title)}</h3><button aria-label="关闭预览">×</button></header><video controls playsinline preload="metadata" src="${esc(asset.url)}"></video>`;dialog.querySelector('button')!.addEventListener('click',()=>dialog.close());dialog.addEventListener('close',()=>dialog.remove());dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close();});document.body.append(dialog);dialog.showModal();return;}
   if (action === 'record-details') { const record=state!.tasks.find(item=>item.id===button.dataset.id);if(record)showModal(recordDetailsView(record));return; }
   if (action === 'choose-product-import') {libraryBoard='product';showModal(`<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>选择商品</h2><p class="modal-intro">将视频添加到对应商品的素材目录。</p>${state!.products.map(p=>`<button class="button" data-action="import-videos" data-id="${esc(p.productId)}">${esc(p.name)}</button>`).join('')}</div>`);return;}
 
   if (action === 'add-product') return showModal(productModal());
   if (action === 'edit-product') { const product = state!.products.find(item => item.productId === button.dataset.id); if (product) showModal(productModal(product)); return; }
-  if (action === 'choose-folder') { const kind = 'folder'; const result = await api<{ paths: string[] }>('/api/dialog', 'POST', { kind }); const target = document.getElementById(button.dataset.target || '') as HTMLInputElement | null; if (target && result.paths[0]) target.value = result.paths[0]; return; }
+  if (action === 'choose-folder') {
+    const label = button.textContent; button.disabled = true; button.textContent = '选择中…';
+    try {
+      const result = await api<{ paths: string[] }>('/api/dialog', 'POST', { kind: 'folder' });
+      const target = document.getElementById(button.dataset.target || '') as HTMLInputElement | null;
+      if (target && result.paths[0]) target.value = result.paths[0];
+    } finally { button.disabled = false; button.textContent = label; }
+    return;
+  }
   if (action === 'change-root') return showModal(dataRootModal());
   if (action === 'setup') { const input = document.querySelector<HTMLInputElement>('#data-root'); await mutate('/api/setup', 'POST', { dataRoot: input?.value.trim() || undefined }, '工作目录已保存'); return; }
   if (action === 'seed') { startPolling(); await mutate('/api/seed', 'POST', {}, '示例素材导入完成'); return; }
@@ -679,8 +849,8 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   if (action === 'process-assets') { const ids=(button.dataset.ids || button.dataset.id || '').split(',').filter(Boolean); await processSources(ids); return; }
   if (action === 'retry-asset') { const asset=state!.assets.find(item=>item.id===button.dataset.id); if(asset?.kind==='source'){await processSources([asset.id]);return;} await mutate(`/api/assets/${encodeURIComponent(button.dataset.id || '')}/retry`, 'POST', {}, '已完成重试'); return; }
   if (action === 'delete-asset') { if (!await askConfirmation('移除商品素材', '确认从素材库移除此商品片段？正在合成使用的素材不能删除。', '移除')) return; await mutate(`/api/assets/${encodeURIComponent(button.dataset.id || '')}`, 'DELETE', undefined, '素材记录已更新'); return; }
-  if (action === 'record-open') { closeModal(); selectedTaskId = button.dataset.id || ''; workbenchGenerationOpen=false;workbenchNode='';prototypeSelectionTaskId='';prototypeSelection.clear();page = 'task'; resetManualSelection(selectedTaskId); previewPrompts.delete(selectedTaskId); const record = selectedTask(); if (record?.completed) record.stage = 'preview'; render(); return; }
-  if (action === 'record-export') { const result = await api<{ paths: string[] }>('/api/dialog', 'POST', { kind: 'folder' }); if (!result.paths[0]) return; await mutate(`/api/tasks/${encodeURIComponent(button.dataset.id || '')}/export`, 'POST', { directory: result.paths[0] }, '成片副本已导出'); return; }
+  if (action === 'record-open') { closeModal(); const id = button.dataset.id || ''; if (prototypeSelectionTaskId !== id) {workbenchNode='';prototypeSelectionTaskId='';prototypeSelection.clear();} selectedTaskId = id; workbenchGenerationOpen=false;page = 'task'; resetManualSelection(selectedTaskId); previewPrompts.delete(selectedTaskId); const record = selectedTask(); if (record?.completed) record.stage = 'preview'; render(); return; }
+  if (action === 'record-export') { showModal(exportModal(button.dataset.id || '')); return; }
   if (!task) return;
   if (action === 'pick-materials') return showModal(materialPickerModal(task));
   if (action === 'picker-preview') {
@@ -706,8 +876,14 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     await mutate(`/api/tasks/${encodeURIComponent(task.id)}/copy`, 'POST', {}, '已提交商品文案生成');
     root?.querySelector('[data-copy-preview]')?.scrollIntoView({ block: 'nearest' }); return;
   }
-  if (action === 'confirm-copy') { button.disabled=true; try { await mutate(`/api/tasks/${encodeURIComponent(task.id)}/copy/confirm`, 'POST', {generateVoice:true}, '文案已确认，正在准备配音'); root?.querySelector('.ec-video-production-content')?.scrollTo(0,0); } catch(error) { button.disabled=false; throw error; } return; }
-  if (action === 'generate-voice') { const id = button.dataset.id; await mutate(`/api/tasks/${encodeURIComponent(task.id)}/voice`, 'POST', {autoConfirm:true,...(id?{intervalId:id}:{})}, '已提交配音生成'); return; }
+  if (action === 'generate-voice') {
+    if (submittingCopyConfirmation.has(task.id) || task.execution?.status === 'running') return;
+    const id = button.dataset.id;
+    submittingCopyConfirmation.add(task.id); render();
+    try { await mutate(`/api/tasks/${encodeURIComponent(task.id)}/voice`, 'POST', {autoConfirm:true,...(id?{intervalId:id}:{})}, '已提交配音生成'); }
+    finally { submittingCopyConfirmation.delete(task.id); render(); }
+    return;
+  }
   if (action === 'confirm-voice') { if (task.audioConfirmed) await goStage('visual'); else await mutate(`/api/tasks/${encodeURIComponent(task.id)}/voice/confirm`, 'POST', {}, '配音已确认'); return; }
   if (action === 'auto-plan') { const updated = await api<Task>(`/api/tasks/${encodeURIComponent(task.id)}/plan`, 'POST', {}); state!.tasks = state!.tasks.map(item => item.id === task.id ? updated : item); resetManualSelection(task.id); showToast('随机画面方案已生成'); render(); return; }
   if (action === 'add-manual-asset') { manualSelection.push(button.dataset.id || ''); render(); return; }
@@ -716,29 +892,30 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   if (action === 'save-manual-plan') { await mutate(`/api/tasks/${encodeURIComponent(task.id)}/plan`, 'PUT', { assetIds: manualSelection }, '手动方案已保存'); return; }
   if (action === 'go-preview') return goStage('preview');
   if (action === 'back-visual') { await mutate(`/api/tasks/${encodeURIComponent(task.id)}`, 'PATCH', { stage: 'visual' }); return; }
-  if (action === 'render-task') {
-    if (task.preview) return showRegenerationDialog(task);
-    await mutate(`/api/tasks/${encodeURIComponent(task.id)}/render`, 'POST', {}, '已提交本地视频合成'); return;
-  }
-  if (action === 'confirm-render') {
-    const refill = button.dataset.refill === 'true'; closeModal();
-    await mutate(`/api/tasks/${encodeURIComponent(task.id)}/render`, 'POST', { refill }, '已提交本地视频合成');
-    if (refill) resetManualSelection(task.id);
+  if (action === 'render-task' || action === 'confirm-render') {
+    const blocker = renderBlocker(task, state!, {busy: selectionSaving || selectionSubmitting.has(task.id) || renderSubmitting.has(task.id), dirty: selectionDirty && prototypeSelectionTaskId === task.id}, prototypeSelectionTaskId === task.id ? prototypeSelection : undefined);
+    if (blocker) return showToast(blocker, true);
+    if (action === 'render-task' && task.preview) return showRegenerationDialog(task);
+    if (action === 'confirm-render') closeModal();
+    renderSubmitting.add(task.id); prototypeEditingRenderId = ''; render();
+    try { await mutate(`/api/tasks/${encodeURIComponent(task.id)}/render`, 'POST', {}, '已提交本地视频合成'); }
+    finally { renderSubmitting.delete(task.id); render(); }
     return;
   }
   if (action === 'stop-task') { await mutate(`/api/tasks/${encodeURIComponent(task.id)}/stop`, 'POST', {}, '已请求停止本地合成'); return; }
   if (action === 'complete-task') {
+    if (task.completed || task.previewStale || !task.preview || task.execution?.status === 'running' || selectionDirty || renderSubmitting.has(task.id)) return showToast('请先生成并查看当前有效预览', true);
     showModal(`<div class="modal completion-dialog"><button class="modal-close" data-close-modal aria-label="关闭确认窗口">×</button><h2>确认完成</h2><p class="modal-intro">确认当前有效预览为最终成片？</p><div class="modal-footer"><button class="button" data-close-modal>取消</button><button class="button primary" data-action="confirm-complete-task" data-id="${esc(task.id)}">确认完成</button></div></div>`);
     document.querySelector<HTMLButtonElement>('.completion-dialog .modal-footer [data-close-modal]')?.focus(); return;
   }
   if (action === 'confirm-complete-task') {
-    if (button.disabled || button.dataset.id !== task.id) return;
+    if (button.disabled || button.dataset.id !== task.id || task.previewStale || !task.preview || task.execution?.status === 'running' || selectionDirty) return;
     button.disabled = true;
     try { await mutate(`/api/tasks/${encodeURIComponent(task.id)}/complete`, 'POST', {}, '成片已确认完成'); closeModal(); }
     catch (error) { button.disabled = false; throw error; }
     return;
   }
-  if (action === 'export-preview') { const result = await api<{ paths: string[] }>('/api/dialog', 'POST', { kind: 'folder' }); if (!result.paths[0]) return; await mutate(`/api/tasks/${encodeURIComponent(task.id)}/export`, 'POST', { directory: result.paths[0] }, '成片副本已导出'); return; }
+  if (action === 'export-preview') { showModal(exportModal(task.id)); return; }
 }
 function showModal(content: string): void {
   closeModal();
@@ -754,6 +931,8 @@ function showModal(content: string): void {
   backdrop.querySelector<HTMLInputElement>('[data-picker-search]')?.addEventListener('input', event => { const query = (event.target as HTMLInputElement).value.trim().toLocaleLowerCase(); backdrop.querySelectorAll<HTMLElement>('[data-material-name]').forEach(card => { card.hidden = !card.dataset.materialName!.includes(query); }); });
 }
 function closeModal(): void {
+  if (document.querySelector('.host-image-dialog[aria-busy="true"]')) return;
+  disposeHostImageEditor?.(); disposeHostImageEditor=null;
   const cancellingSwitch=!!pendingTaskSwitch && !!document.querySelector('.task-switch-choice-modal');
   if(cancellingSwitch && taskSwitchBusy)return;
   const resolve=modalDecision;modalDecision=null;resolve?.(false);
@@ -794,8 +973,8 @@ function showTimelinePreview(task: Task, index: number): void {
 function showRegenerationDialog(task: Task): void {
   const stale = task.previewStale;
   const changes = task.previewChanges?.length ? task.previewChanges : ['制作内容或输出设置已修改'];
-  const ready = task.copyConfirmed && task.audioConfirmed && task.plan?.valid && task.execution?.status !== 'running';
-  showModal(`<div class="modal regeneration-dialog"><button class="modal-close" data-close-modal aria-label="关闭重新生成提示">×</button><h2>${stale ? '预览需要重新生成' : '重新生成预览'}</h2>${stale ? `<p class="modal-intro">旧预览尚未包含以下修改：</p><ul class="preview-changes">${changes.map(change => `<li>${esc(change)}</li>`).join('')}</ul>` : '<p class="modal-intro">可以沿用当前画面重新合成，也可以重新随机填充商品片段。</p>'}<p class="section-hint">沿用当前画面会保留素材顺序和配音。重新随机填充会替换当前商品画面方案。</p>${!ready ? '<div class="warning">请先确认文案、配音并补齐画面时长。</div>' : ''}<div class="modal-footer"><button class="button" data-close-modal>暂不生成</button><button class="button" data-action="confirm-render" data-refill="true" ${ready ? '' : 'disabled'}>重新随机填充</button><button class="button primary" data-action="confirm-render" data-refill="false" ${ready ? '' : 'disabled'}>${stale ? '确认重新生成' : '沿用画面重生成'}</button></div></div>`);
+  const blocker = renderBlocker(task, state!, {busy: selectionSaving || selectionSubmitting.has(task.id) || renderSubmitting.has(task.id), dirty: selectionDirty});
+  showModal(`<div class="modal regeneration-dialog"><button class="modal-close" data-close-modal aria-label="关闭重新生成提示">×</button><h2>${stale ? '预览需要重新生成' : '重新生成预览'}</h2>${stale ? `<p class="modal-intro">旧预览尚未包含以下修改：</p><ul class="preview-changes">${changes.map(change => `<li>${esc(change)}</li>`).join('')}</ul>` : '<p class="modal-intro">沿用当前已保存的画面重新合成。</p>'}<p class="section-hint">保留当前素材顺序和配音，仅执行本地合成。需要更换选片时，请返回编辑并单独点击重新匹配。</p>${blocker ? `<div class="warning">${esc(blocker)}</div>` : ''}<div class="modal-footer"><button class="button" data-close-modal>暂不生成</button><button class="button primary" data-action="confirm-render" ${blocker ? 'disabled' : ''}>确认重新生成</button></div></div>`);
 }
 function newTaskModal(): string {
   return `<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>新建视频任务</h2><p class="modal-intro">每个任务会保存商品与模板快照，之后修改商品资料不会影响已有任务。</p><form data-form="new-task"><label class="field-label">选择商品</label><select class="select" name="productId" required>${state!.products.map(product => `<option value="${esc(product.productId)}">${esc(product.name)} · ${readyProductAssets(product.productId).length} 段可用素材</option>`).join('')}</select><label class="field-label">选择模板</label><select class="select" name="templateId" required>${state!.templates.map(template => `<option value="${esc(template.id)}">${esc(template.name)} — ${esc(template.title)}</option>`).join('')}</select>${!state!.products.length ? `<div class="warning">请先添加商品资料并导入素材，再创建视频任务。</div>` : ''}<div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button class="button primary" ${!state!.products.length || !state!.templates.length ? 'disabled' : ''}>创建任务</button></div></form></div>`;
@@ -815,8 +994,9 @@ async function requestTaskSwitch(productId: string, templateId: string, origin: 
   taskSwitchBusy=true;render();
   try{
     await flushTaskDraft(task.id);
-    if(Object.values(selectedTask()!.black).some(text=>text.trim())){
-      showModal(`<div class="modal task-switch-choice-modal"><button type="button" class="modal-close" data-close-modal aria-label="关闭">×</button><h2>选择创建方式</h2><p class="modal-intro">当前已有文案。覆盖会清空当前进度，新建会保留原任务。</p><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button type="button" class="button" data-action="confirm-switch-task" data-mode="overwrite">覆盖当前任务</button><button type="button" class="button primary" data-action="confirm-switch-task" data-mode="new">保留并新建</button></div></div>`);
+    const current=selectedTask()!,submitted=!!current.videoSubmittedAt;
+    if(submitted || Object.values(current.black).some(text=>text.trim())){
+      showModal(`<div class="modal task-switch-choice-modal"><button type="button" class="modal-close" data-close-modal aria-label="关闭">×</button><h2>${submitted ? '选择创建方式' : '确认切换'}</h2><p class="modal-intro">${submitted ? '覆盖会清空当前进度；保留并新建后，原任务可从生成记录继续。' : '切换将覆盖当前草稿，清空已有文案、配音与画面设置。'}</p><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button type="button" class="button ${submitted ? '' : 'primary'}" data-action="confirm-switch-task" data-mode="overwrite">${submitted ? '覆盖当前任务' : '确认覆盖'}</button>${submitted ? '<button type="button" class="button primary" data-action="confirm-switch-task" data-mode="new">保留并新建</button>' : ''}</div></div>`);
       pendingTaskSwitch=choice;document.querySelector<HTMLButtonElement>('.task-switch-choice-modal .modal-footer [data-close-modal]')?.focus();
     }
     else await applyTaskSwitch(choice,'overwrite');
@@ -834,8 +1014,24 @@ async function applyTaskSwitch(choice: PendingTaskSwitch, mode: 'new' | 'overwri
 function dataRootModal(): string {
   return `<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>更换数据目录</h2><p class="modal-intro">已有数据不会自动搬迁。切换后将使用新目录中的工作数据；切换期间不能有任务执行或素材导入。</p><form data-form="change-root"><label class="field-label">当前数据目录</label><div class="path-picker"><input class="input" id="new-data-root" name="dataRoot" value="${esc(state!.dataRoot)}"><button type="button" class="button" data-action="choose-folder" data-target="new-data-root">选择</button></div><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button class="button primary">更换目录</button></div></form></div>`;
 }
+function exportModal(taskId: string): string {
+  return `<div class="modal export-dialog"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>导出副本</h2><form data-form="export" data-id="${esc(taskId)}"><label class="field-label" for="export-directory">保存到</label><div class="path-picker"><input class="input" id="export-directory" name="directory" value="${esc(state!.defaultExportDirectory)}" required><button type="button" class="button" data-action="choose-folder" data-target="export-directory">选择</button></div><p data-export-result role="status" style="overflow-wrap:anywhere"></p><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button type="submit" class="button primary">导出副本</button></div></form></div>`;
+}
 async function submitForm(form: HTMLFormElement): Promise<void> {
   const formName = form.dataset.form || ''; const data = new FormData(form); const value = (name: string): string => String(data.get(name) || '');
+  if (formName === 'export') {
+    if (form.dataset.exporting === 'true') return;
+    const submit = form.querySelector<HTMLButtonElement>('[type="submit"]')!;
+    const result = form.querySelector<HTMLElement>('[data-export-result]')!;
+    form.dataset.exporting = 'true'; submit.disabled = true; submit.textContent = '正在导出…'; result.textContent = '';
+    try {
+      const saved = await api<{path: string}>(`/api/tasks/${encodeURIComponent(form.dataset.id || '')}/export`, 'POST', { directory: value('directory').trim() });
+      result.textContent = `已导出：${saved.path}`; result.className = 'notice';
+      showToast('成片副本已导出');
+    } catch (error) { result.textContent = error instanceof Error ? error.message : '导出失败，请重试'; result.className = 'warning'; }
+    finally { delete form.dataset.exporting; submit.disabled = false; submit.textContent = '导出副本'; }
+    return;
+  }
   if (formName === 'new-task') {
     const task = await api<Task>('/api/tasks', 'POST', { productId: value('productId'), templateId: value('templateId') });
     document.querySelector('.modal-backdrop')?.remove(); selectedTaskId = task.id; page = 'task'; await refresh(); return;

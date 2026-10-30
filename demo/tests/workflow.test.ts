@@ -31,6 +31,59 @@ function asset(store:Store,id:string,duration:number,kind:Asset['kind']='product
 }
 const spokenWords=(text:string):WordTime[]=>[...text].map((char,i)=>({text:char,begin_time:i*100,end_time:(i+1)*100}));
 
+test('AI选片一次安排全片，失败保留旧方案，文案配音变更后失效且不新增生成记录',async t=>{
+  const e=environment(t);asset(e.store,'candidate',8);
+  const task=e.workflow.create('test-product','template-01-insoles');
+  task.templateSnapshot.nodes=[{id:'g',type:'generated_narration',text:''}];task.templateSnapshot.variableNodeId=undefined;task.black={g:'保暖舒适。'};task.nodes=[{id:'g',type:'generated_narration',text:'保暖舒适。'}];task.copyConfirmed=true;task.audioConfirmed=true;
+  task.intervals=[{id:'i',nodeIds:['g'],text:'保暖舒适。',signature:'audio',status:'ready',confirmed:true,duration:3,relativePath:localFile(e.store,path.join('制作任务',task.id,'audio','a.wav')),nodeTimes:[{id:'g',begin:.1,end:2.7}]}];e.store.putTask(task);
+  e.models.ready=()=>true;let calls=0;
+  e.models.selectShots=async input=>{calls++;return{response:{choices:input.slots.map(slot=>({slotId:slot.id,assetIds:[input.candidates[0].id]}))},requestId:'fixture'};};
+  e.workflow.selectShots(task.id);await e.workflow.active!.promise;
+  const saved=e.store.task(task.id)!;assert.equal(calls,1);assert.equal(saved.videoSubmittedAt,null);assert.deepEqual(saved.intervals,task.intervals);assert.equal(e.workflow.publicTask(saved).shotSelection?.stale,false);
+  e.models.selectShots=async()=>{throw new Error('模拟模型失败');};
+  e.workflow.selectShots(task.id);await e.workflow.active!.promise;
+  assert.deepEqual(e.store.task(task.id)!.shotSelection,saved.shotSelection);assert.equal(e.store.task(task.id)!.execution?.status,'failed');
+  const choices=saved.shotSelection!.choices.map(({slotId,assetIds})=>({slotId,assetIds}));
+  const manual=e.workflow.saveShotSelection(task.id,{choices});assert.equal(manual.shotSelection?.mode,'manual');
+  e.workflow.patch(task.id,{black:{g:'新的商品介绍。'}});
+  assert.equal(e.workflow.publicTask(e.workflow.get(task.id)).shotSelection?.stale,true);
+  assert.throws(()=>e.workflow.saveShotSelection(task.id,{choices}),/配音|确认/);
+});
+
+test('主播共用图片独立保存，调整位置保留配音，校验商品归属与完成只读',async t=>{
+  const e=environment(t),video=asset(e.store,'product-video',5),task=e.workflow.create('test-product','template-01-insoles');
+  task.copyConfirmed=true;task.audioConfirmed=true;task.intervals=[{id:'voice',nodeIds:['n'],text:'保暖',signature:'valid',status:'ready',confirmed:true,duration:2}];e.store.putTask(task);
+  let captures=0;e.media.ff=async args=>{captures++;fs.writeFileSync(String(args.at(-1)),'image');return '';};
+  e.media.probe=async()=>({duration:0,width:1080,height:1920,fps:0,hasVideo:true,hasAudio:false,size:5});
+  const first=await e.workflow.setHostImage(task.id,{},true),relative=first.hostImage!.relativePath;
+  assert.notEqual(relative,video.relativePath);assert.equal(captures,1);assert.equal(fs.readFileSync(e.store.path(video.relativePath!),'utf8'),'fixture');
+  await e.workflow.setHostImage(task.id,{},true);assert.equal(captures,1,'再次进入不重复截图');
+  const adjusted=await e.workflow.setHostImage(task.id,{x:.3,y:.8,scale:1.5});
+  assert.equal(adjusted.hostImage!.relativePath,relative);assert.deepEqual(adjusted.intervals,task.intervals);assert.equal(adjusted.audioConfirmed,true);assert.equal(adjusted.videoSubmittedAt,null);
+  assert.equal(e.store.task(task.id)?.hostImage?.y,.8);
+  assert.throws(()=>e.workflow.setHostImage(task.id,{x:NaN}),/参数无效/);
+  const foreign=asset(e.store,'foreign-image',0);foreign.productId='other';foreign.hasVideo=false;e.store.putAsset(foreign);
+  assert.throws(()=>e.workflow.setHostImage(task.id,{assetId:foreign.id}),/当前商品/);
+  assert.throws(()=>e.workflow.render(task.id),/先完成AI匹配/);
+  const completed=e.workflow.get(task.id);completed.completed=true;e.store.putTask(completed);
+  assert.throws(()=>e.workflow.setHostImage(task.id,{x:.2}),/只读/);
+});
+
+test('更换主播图片失败保留原配置，成功后独立于来源资源',async t=>{
+  const e=environment(t),video=asset(e.store,'video',4),image=asset(e.store,'image',0),task=e.workflow.create('test-product','template-02-zipper');
+  image.hasVideo=false;e.store.putAsset(image);
+  e.media.ff=async args=>{fs.writeFileSync(String(args.at(-1)),'jpeg');return '';};
+  e.media.probe=async()=>({duration:0,width:1080,height:1920,fps:0,hasVideo:true,hasAudio:false,size:4});
+  const first=await e.workflow.setHostImage(task.id,{assetId:image.id,x:.2,y:.7,scale:2}),old=first.hostImage!;
+  e.media.ff=async()=>{throw new Error('坏图片');};
+  await assert.rejects(e.workflow.setHostImage(task.id,{assetId:image.id}),/坏图片/);
+  assert.deepEqual(e.store.task(task.id)!.hostImage,old);assert.ok(fs.existsSync(e.store.path(old.relativePath)));
+  e.media.ff=async args=>{fs.writeFileSync(String(args.at(-1)),'replacement');return '';};
+  const next=await e.workflow.setHostImage(task.id,{assetId:image.id});
+  assert.notEqual(next.hostImage!.relativePath,old.relativePath);assert.equal(fs.existsSync(e.store.path(old.relativePath)),false);
+  await e.library.remove(image.id);assert.ok(fs.existsSync(e.store.path(next.hostImage!.relativePath)));assert.ok(fs.existsSync(e.store.path(video.relativePath!)));
+});
+
 test('确认文案后服务端配音，失败保留已成区间；重试仅补失败项，完成不接入旧选材队列',async t=>{
   const e=environment(t);
   const task=e.workflow.create('test-product','template-01-insoles');
@@ -110,6 +163,7 @@ test('确认完成时锁编辑，完成后只读并清理本任务中间文件',
   task.copyConfirmed=true;task.audioConfirmed=true;task.previewStale=false;
   const final=localFile(e.store,path.join('制作任务',task.id,'renders','final','result.mp4'));
   localFile(e.store,path.join('制作任务',task.id,'work','middle.mp4'));localFile(e.store,path.join('制作任务',task.id,'audio','a.wav'));
+  localFile(e.store,path.join('制作任务',task.id,'host-image','image.jpg'));
   task.preview={relativePath:final,duration:1,width:1080,height:1920,fps:30,size:7,signature:'x',createdAt:new Date().toISOString()};
   task.plan={mode:'auto',entries:[],requiredDuration:1,availableDuration:1,valid:true,repeated:false,warnings:[],events:[],pieces:[],signature:'x',duration:1};e.store.putTask(task);
   let release:(value:MediaInfo)=>void=()=>{};
@@ -123,6 +177,7 @@ test('确认完成时锁编辑，完成后只读并清理本任务中间文件',
   assert.ok(fs.existsSync(e.store.path(final)));assert.ok(fs.existsSync(e.store.path(product.relativePath!)));
   assert.equal(fs.existsSync(path.join(e.store.taskDir(task.id),'audio')),false);
   assert.equal(fs.existsSync(path.join(e.store.taskDir(task.id),'work')),false);
+  assert.equal(fs.existsSync(path.join(e.store.taskDir(task.id),'host-image')),false);
   assert.throws(()=>e.workflow.patch(task.id,{example:'已完成不能改'}),/只读/);
   assert.throws(()=>e.workflow.render(task.id,true),/只读/);
 });

@@ -8,12 +8,13 @@ import { appRoot, defaultDataRoot, inside, loadProfile, nativeDialog, saveProfil
 import { Store } from './lib/store.ts';
 import { Media } from './lib/media.ts';
 import { Models } from './lib/models.ts';
-import { Library, seedAvailable, seedLibrary, validateProduct } from './lib/library.ts';
+import { Library, installBuiltinBgms, seedAvailable, seedLibrary, validateProduct } from './lib/library.ts';
 import { Workflow } from './lib/workflow.ts';
 import { templates } from './lib/templates.ts';
 import { AppError } from './lib/types.ts';
 import { ShotNamer } from './lib/material-naming.ts';
 import { forwardCollection } from './lib/collector.ts';
+import { fixedNarrationVisuals } from './lib/fixed-narration-visuals.ts';
 
 const port = Number(process.env.PORT || 4186);
 const defaultRoot = defaultDataRoot();
@@ -22,14 +23,14 @@ profile.dataRoot = process.env.DEMO_DATA_ROOT || profile.dataRoot || defaultRoot
 const media = new Media(profile.ffmpeg, profile.ffprobe);
 const models = new Models(profile);
 const namer = new ShotNamer(profile, fetch, media);
-function createContext(root: string) {
+async function createContext(root: string) {
   const store = new Store(root);
   let workflow: Workflow;
   const library = new Library(store, media, id => !!workflow?.active?.inputIds.has(id), namer);
-  try { workflow = new Workflow(store, library, media, models); return { store, library, workflow }; }
+  try { await installBuiltinBgms(library); workflow = new Workflow(store, library, media, models); return { store, library, workflow }; }
   catch (error) { store.close(); throw error; }
 }
-let { store, library, workflow } = createContext(profile.dataRoot);
+let { store, library, workflow } = await createContext(profile.dataRoot);
 let activeUploads = 0;
 saveProfile(profile);
 
@@ -81,7 +82,7 @@ const server = http.createServer(async (request, response) => {
       if (!store.product(productId)) throw new AppError('商品不存在', 404);
       if (library.busy) throw new AppError('素材处理中，请稍后导入', 409);
       const name = url.searchParams.get('name'), processed = url.searchParams.get('processed');
-      if (!name || name.length > 255 || /[\x00-\x1f<>:"/\\|?*]/.test(name) || !/\.(mp4|mov|mkv|webm|m4v|avi|mts|ts)$/i.test(name)) throw new AppError('请选择有效的视频文件');
+      if (!name || name.length > 255 || /[\x00-\x1f<>:"/\\|?*]/.test(name) || !/\.(mp4|mov|mkv|webm|m4v|avi|mts|ts|png|jpe?g|webp)$/i.test(name)) throw new AppError('请选择有效的视频或图片文件');
       if (processed !== 'true' && processed !== 'false') throw new AppError('请选择原始视频或已处理片段');
       const uploadStore = store, uploadLibrary = library;
       const file = uploadStore.path(path.join('缓存', '导入', Store.id(), name));
@@ -107,8 +108,8 @@ const server = http.createServer(async (request, response) => {
       const data = ['POST','PATCH','PUT'].includes(method) ? await body(request) : {};
       if (parts[1] === 'runtime' && method === 'GET') return json(response, { app: 'vedio-workflow', interfaceVersion: 'online-collection-preview-v5' });
       if (parts[1] === 'state' && method === 'GET') {
-        return json(response, { configured: true, dataRoot: store.root, defaultDataRoot: defaultRoot, modelReady: models.ready(), toolsReady: true, templates,
-          products: store.products(), assets: store.assets().map(asset => library.publicAsset(asset)), tasks: store.tasks().map(task => workflow.publicTask(task)),
+        return json(response, { configured: true, dataRoot: store.root, defaultDataRoot: defaultRoot, defaultExportDirectory: path.dirname(defaultRoot), modelReady: models.ready(), toolsReady: true, templates,
+          products: store.products(), assets: store.assets().map(asset => library.publicAsset(asset)), tasks: store.tasks().map(task => workflow.publicTask(task)), fixedNarrationVisuals: fixedNarrationVisuals(library),
           bgms: store.assets().filter(asset => asset.kind === 'bgm' && library.available(asset)).map(asset => library.publicAsset(asset)), seedAvailable: seedAvailable(),
           activeExecution: workflow.active ? { taskId: workflow.active.task.id, ...workflow.active.task.execution } : null, libraryBusy: library.busy || activeUploads > 0, libraryMessage: library.message || (activeUploads ? '正在读取并导入视频' : ''),
           materialProcessing: { settings: library.processingSettings(), namingReady: namer.ready(), namingModel: namer.model } });
@@ -119,7 +120,7 @@ const server = http.createServer(async (request, response) => {
         const target = data.dataRoot === undefined ? defaultRoot : string(data.dataRoot, '数据目录');
         if (!path.isAbsolute(target) || target === appRoot || inside(appRoot, target)) throw new AppError('请选择独立于代码目录的绝对数据路径');
         await workflow.waitForCleanup(); workflow.idle();
-        const next = createContext(target);
+        const next = await createContext(target);
         try { saveProfile({ ...profile, dataRoot: target }); } catch (error) { await next.workflow.waitForCleanup(); next.store.close(); throw error; }
         const previous = store;
         ({ store, library, workflow } = next); profile.dataRoot = target; previous.close();
@@ -171,7 +172,11 @@ const server = http.createServer(async (request, response) => {
         if (!operation && method === 'GET') return json(response, workflow.publicTask(workflow.get(id)));
         if (!operation && method === 'PATCH') return json(response, workflow.publicTask(workflow.patch(id, data)));
         if (method === 'PUT' && operation === 'plan') return json(response, workflow.publicTask(workflow.plan(id, pathsIds(data.assetIds))));
+        if (method === 'PUT' && operation === 'host-image') return json(response, workflow.publicTask(await workflow.setHostImage(id, data)));
+        if (method === 'PUT' && operation === 'selection') return json(response, workflow.publicTask(workflow.saveShotSelection(id,data)));
         if (method === 'POST') {
+          if (operation === 'selection') return json(response, workflow.publicTask(workflow.selectShots(id)),202);
+          if (operation === 'host-image/default') return json(response, workflow.publicTask(await workflow.setHostImage(id, {}, true)));
           if (operation === 'switch') return json(response, workflow.publicTask(workflow.switch(id,string(data.productId,'商品'),string(data.templateId,'模板'),string(data.mode,'切换方式'))));
           if (operation === 'copy') return json(response, workflow.publicTask(workflow.generateCopy(id)), 202);
           if (operation === 'copy/confirm') {
@@ -208,12 +213,12 @@ const server = http.createServer(async (request, response) => {
     }
     if (parts[0] === 'media' && parts[1] === 'task') {
       const task = workflow.get(parts[2]), kind = parts[3];
-      const relative = kind === 'preview' ? task.preview?.relativePath : kind?.startsWith('audio-') && !task.completed ? task.intervals.find(interval => interval.id === kind.slice(6))?.relativePath : undefined;
+      const relative = kind === 'preview' ? task.preview?.relativePath : kind === 'host-image' ? task.hostImage?.relativePath : kind?.startsWith('audio-') && !task.completed ? task.intervals.find(interval => interval.id === kind.slice(6))?.relativePath : undefined;
       if (!relative || !fs.existsSync(store.path(relative))) throw new AppError('媒体文件不存在或已清理', 404);
       return await sendFile(request, response, store.path(relative));
     }
     const publicDir = path.join(appRoot, 'public');
-    if (['/app.js','/sortable.js','/prototype-views.js'].includes(url.pathname)) {
+    if (['/app.js','/sortable.js','/prototype-views.js','/prototype-sort.js','/host-image-editor.js'].includes(url.pathname)) {
       const sourceFile = url.pathname.slice(1).replace(/\.js$/, '.ts');
       const source = await fsp.readFile(path.join(publicDir, sourceFile), 'utf8');
       response.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
@@ -232,6 +237,7 @@ function pathsIds(value: unknown): string[] { if (!Array.isArray(value) || value
 server.requestTimeout = 20 * 60 * 1000;
 server.listen(port, '127.0.0.1', () => { console.log(`电商视频工作台Demo：http://127.0.0.1:${port}/`); console.log(`数据目录：${store.root}`); });
 async function shutdown() {
+  await workflow.hostImageJob?.catch(error => { console.error('图片保存未完成：', (error as Error).message); });
   await library.stopProcessing();
   if (workflow.active?.kind === 'render') workflow.active.controller.abort();
   if (workflow.active?.promise && workflow.active.kind === 'render') await workflow.active.promise;

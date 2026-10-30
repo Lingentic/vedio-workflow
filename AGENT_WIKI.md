@@ -24,14 +24,19 @@
 | 商品输入、导入、切分、重试、删除 | [server.ts](demo/server.ts) 商品／素材路由；[library.ts](demo/lib/library.ts)：`validateProduct`、`importFiles`、`split`、`retry`、`remove` | API 边界与隔离文件验证；必要时真实 FFmpeg；不碰用户外部原文件 |
 | 商品未处理队列、切分命名与请求恢复 | [素材处理契约](docs/harness/MATERIAL_PROCESSING.md)、[shot-plan.ts](demo/lib/shot-plan.ts)、[material-naming.ts](demo/lib/material-naming.ts)；Library 的 `startProcessing`、`saveCut` | material-processing／material-recovery 聚焦测试；UI 原生上传、全选、设置、取消重试、不确定确认、描述查看 |
 | 新任务、切换、记录、草稿恢复 | [app.ts](demo/public/app.ts)：`renderProduction`、`renderRecords`、`queueTaskPatch`、`flushTaskDraft`；[workflow.ts](demo/lib/workflow.ts)：`create`、`patch`、`switch` | 实际页面与隔离服务；恢复逻辑不等于已存在自动进程测试 |
+| 固定口播画面与空位 | [画面绑定清单](demo/data/fixed-narration-visuals.json)、[绑定解析与导入](demo/lib/fixed-narration-visuals.ts)、[导入命令](demo/scripts/import-fixed-narration.ts)；generationView | 节点和 SHA-256 精确匹配；旧选择与重新匹配不能覆盖；长口播前／后空位及未绑定节点由商品视频补齐 |
 | 固定模板、变量、文案提示词 | [templates.json](demo/data/templates.json)、[copy-prompt.txt](demo/data/copy-prompt.txt)、[templates.ts](demo/lib/templates.ts)、[models.ts](demo/lib/models.ts)：`copy` | 固定节点不可变、响应 ID 校验；通常不需要真实模型请求 |
 | 自动配音、时间戳、字幕切句 | [workflow.ts](demo/lib/workflow.ts)：`confirmCopyAndVoice`、`generateVoice`、`acceptVoice`；[models.ts](demo/lib/models.ts)：`voice`；[alignment.ts](demo/lib/alignment.ts)：`alignAudio` | `workflow.test.ts` 的自动配音、失败重试、时间对应及局部失效；真实配音另授权 |
-| 自动队列、通用主播画面、手选时长 | [plan.ts](demo/lib/plan.ts)：`soundBlocks`、`visualEvents`、`buildPlan`、`fullCues` | `workflow.test.ts` 队列用例；必要时 `preview-rework.test.ts` |
-| 原型选材弹窗与原片预览 | [prototype-views.ts](demo/public/prototype-views.ts)：`materialPickerView`、`generationView`；[app.ts](demo/public/app.ts)：`prototype-materials` 等动作 | 多选、预览后保留选择、取消／应用、Esc；不提交旧 plan／render。旧 `sortable.ts` 不用于此演示 |
+| 声音块、字幕与旧队列兼容 | [plan.ts](demo/lib/plan.ts)：`soundBlocks`、`fullCues`；旧 `buildPlan`／`visualEvents` | 新选片看 render-plan.ts；仅排查旧任务时看随机队列及对应 workflow 用例 |
+| 原型整段素材、弹窗与预览 | [prototype-views.ts](demo/public/prototype-views.ts)：`materialPickerView`、`generationView`；[prototype-sort.ts](demo/public/prototype-sort.ts)；[app.ts](demo/public/app.ts)：`prototype-materials` 等动作 | 整段汇总、同节点指针／键盘排序、锁定蓝色与空位、预览及取消／应用；不提交旧 plan／render。旧 `sortable.ts` 不用于此演示 |
+| 主播下半屏共用图片 | [图片调整组件](demo/public/host-image-editor.ts)、[图片样式](demo/public/host-image.css)；Workflow 的 `setHostImage`，任务 host-image 路由 | 当前商品独立图片区／本地上传、拖动裁满、缩放、取消／应用、全部红色片段共用及刷新恢复；不重配音 |
+| AI选片与手动返工 | [选片规划与校验](demo/lib/shot-selection.ts)、Models.selectShots、Workflow.selectShots／saveShotSelection | `shot-selection.test.ts` 与 workflow 的 AI选片聚焦用例；固定覆盖、停顿、3倍候选、响应校验、旧方案保留、失效、手改和刷新。合成使用 compileSelectionPlan 读取新结果 |
+| 新成片合成与帧边界 | [逐空位时间轴](demo/lib/render-plan.ts)、[FFmpeg合成](demo/lib/renderer.ts)、Workflow.render | `selection-rendering.test.ts` 真实短素材验证图片裁切／渐变、帧数与时长、原声／配音／BGM／字幕、缓存复用及中止；页面验收生成、停止重试、设置返工与确认完成 |
 | 进度更新、页面抖动、播放／输入中断 | [app.ts](demo/public/app.ts)：`patchView`、`newElements`、`refresh` | 连续进度时节点身份／滚动／播放器保持；新结果局部出现、事件不重复；使用隔离数据模拟服务 |
 | 分屏、帧率、闪帧、字幕和 BGM | [renderer.ts](demo/lib/renderer.ts)：`renderTask`、`assDocument`；[media.ts](demo/lib/media.ts)；[plan.ts](demo/lib/plan.ts) | `video-rendering.test.ts`；设置返工再加 `preview-rework.test.ts` |
 | 切分粒度调参实验 | [切分调参台](tools/split-lab/README.md)：独立启动、两参数实时切点、按需片段预览；不接业务库 | `node --test tools/split-lab/lab.test.ts`；实际调参、播放和清单导出 |
 | 预览失效、重生成与完成 | [workflow.ts](demo/lib/workflow.ts)：`previewInputs`、`previewChanges`、`render`、`complete`、`cleanup`；[app.ts](demo/public/app.ts)：`showRegenerationDialog` | `preview-rework.test.ts`；清理改动加 `workflow.test.ts` 完成用例 |
+| 默认配乐、试听与导出副本 | [配乐清单与许可](demo/data/bgm/README.md)、Library.installBuiltinBgms；app.ts 的 `exportModal`、`toggleBgmAudition`；Workflow.export | 重启不重复入库、不改任务选项；试听／音量；站内导出窗口、失败重试、文件副本哈希一致、不覆盖原件 |
 | 数据位置、存储结构、迁移 | [paths.ts](demo/lib/paths.ts)、[store.ts](demo/lib/store.ts)、[types.ts](demo/lib/types.ts) | 先读数据专题；用临时目录验证，不在真实库试迁移 |
 | 服务启动／停止、同源与媒体 Range | [server.ts](demo/server.ts)：启动段、路由边界、`sendFile`、信号处理 | 环境诊断 + 隔离端口／数据目录的服务验证 |
 | 上游素材采集、工作台导入 | [ecom-video-collect/](ecom-video-collect/)：`server/collect_service.py` 搜索／下载／`workbench_import`；`web/` 采集页；`extension/` 商品详情提取 | 双服务联动冒烟 + Python/JS 语法；需外部 ai-reverse 凭证、Chrome 扩展与快分销登录态，非开箱即用 |

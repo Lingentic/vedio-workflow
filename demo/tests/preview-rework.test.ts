@@ -73,6 +73,7 @@ test('文案变化导致确认失效后，即使设置恢复原值也不能恢�
 
 test('render默认保留画面；refill选择auto商品方案且不触发模型', async t => {
   const e = environment(t), task = renderableTask(e), original = task.plan!.entries.map(entry => entry.assetId);
+  assert.equal(task.videoSubmittedAt, null);
   let modelCalls = 0;
   e.models.copy = async () => { modelCalls++; throw new Error('unexpected model call'); };
   e.models.voice = async () => { modelCalls++; throw new Error('unexpected model call'); };
@@ -81,9 +82,12 @@ test('render默认保留画面；refill选择auto商品方案且不触发模型'
   });
 
   e.workflow.render(task.id);
+  const submittedAt = e.workflow.get(task.id).videoSubmittedAt;
+  assert.ok(submittedAt);
   assert.equal(e.workflow.get(task.id).plan?.mode, 'manual');
   assert.deepEqual(e.workflow.get(task.id).plan?.entries.map(entry => entry.assetId), original);
   e.workflow.stop(task.id); await e.workflow.active?.promise;
+  assert.equal(e.workflow.get(task.id).videoSubmittedAt, submittedAt);
 
   e.workflow.render(task.id, true);
   const refilled = e.workflow.get(task.id).plan!;
@@ -91,4 +95,57 @@ test('render默认保留画面；refill选择auto商品方案且不触发模型'
   assert.notDeepEqual(refilled.entries.map(entry => entry.assetId), original);
   e.workflow.stop(task.id); await e.workflow.active?.promise;
   assert.equal(modelCalls, 0);
+  assert.equal(e.workflow.get(task.id).videoSubmittedAt, submittedAt);
+});
+
+test('文案和配音执行不会把草稿加入生成记录；前置拒绝的render也不会提交', async t => {
+  const e = environment(t), task = e.workflow.create('p', 'template-01-insoles');
+  assert.equal(task.videoSubmittedAt, null);
+  e.models.ready = () => true;
+  e.models.copy = async () => { throw new Error('fixture copy failure'); };
+  e.workflow.generateCopy(task.id);
+  await e.workflow.active?.promise;
+  assert.equal(e.workflow.get(task.id).videoSubmittedAt, null);
+
+  task.copyConfirmed = true;
+  task.intervals = intervalsFromNodes([{ id: 'voice', type: 'generated_narration', text: '测试文案' }]);
+  e.store.putTask(task);
+  e.models.voice = async () => { throw new Error('fixture voice failure'); };
+  e.workflow.generateVoice(task.id);
+  await e.workflow.active?.promise;
+  assert.equal(e.workflow.get(task.id).videoSubmittedAt, null);
+
+  assert.throws(() => e.workflow.render(task.id), /请先确认文案、配音并补足画面时长/);
+  assert.equal(e.workflow.get(task.id).videoSubmittedAt, null);
+});
+
+test('切换仅允许已提交任务保留并新建，兼容旧提交证据且覆盖沿用原时间', t => {
+  const e = environment(t), draft = e.workflow.create('p', 'template-01-insoles');
+  delete draft.videoSubmittedAt;
+  e.store.putTask(draft);
+  assert.equal(e.workflow.publicTask(draft).videoSubmittedAt, null);
+  assert.equal(e.store.task(draft.id)?.videoSubmittedAt, undefined);
+  assert.equal(e.workflow.get(draft.id).videoSubmittedAt, null);
+  assert.equal(e.store.task(draft.id)?.videoSubmittedAt, undefined);
+  draft.videoSubmittedAt = null;
+  assert.equal(e.workflow.publicTask(draft).videoSubmittedAt, null);
+  const savedDraft = e.store.task(draft.id);
+  assert.throws(() => e.workflow.switch(draft.id, 'p', 'template-02-zipper', 'new'), /尚未提交生成视频/);
+  assert.equal(e.store.tasks().length, 1);
+  assert.deepEqual(e.store.task(draft.id), savedDraft);
+
+  const rendered = structuredClone(draft);
+  delete rendered.videoSubmittedAt;
+  rendered.id = 'legacy-rendered'; rendered.execution = { id: 'run', kind: 'render', status: 'failed', progress: 0, message: '', startedAt: '2026-01-02T03:04:05.000Z' };
+  e.store.putTask(rendered);
+  assert.equal(e.workflow.publicTask(rendered).videoSubmittedAt, rendered.execution.startedAt);
+  assert.equal(e.workflow.get(rendered.id).videoSubmittedAt, rendered.execution.startedAt);
+  assert.equal(e.store.task(rendered.id)?.videoSubmittedAt, undefined);
+
+  const overwritten = e.workflow.switch(rendered.id, 'p', 'template-01-insoles', 'overwrite');
+  assert.equal(overwritten.videoSubmittedAt, rendered.execution.startedAt);
+  const fresh = e.workflow.switch(overwritten.id, 'p', 'template-01-insoles', 'new');
+  assert.equal(fresh.videoSubmittedAt, null);
+  assert.notEqual(fresh.id, overwritten.id);
+  assert.deepEqual(e.store.task(overwritten.id), overwritten);
 });

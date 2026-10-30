@@ -1,0 +1,41 @@
+[
+  {
+    "nodeId": "t1-b1",
+    "templateId": "template-01-insoles",
+    "matchedText": "老葛真是宠粉宠到姥姥家了，",
+    "placement": "start",
+    "fileName": "老葛真是宠粉宠到姥姥家了.mp4",
+    "sha256": "03ad1f25ff2af7decb55cab35bc4f6a00820d98c63fc8b4eed0ec569ec47486f"
+  },
+  {
+    "nodeId": "t1-b2",
+    "templateId": "template-01-insoles",
+    "matchedText": "原本和厂家谈好卖【自定义文本】的，",
+    "placement": "start",
+    "fileName": "原本和厂商谈好卖[自定义文本]的-口播2.83秒.mp4",
+    "sha256": "e0cb61435fe8c319b9a2c9f750e003469280e3c54812da5b27e9742d1017a03f"
+  },
+  {
+    "nodeId": "t1-b3",
+    "templateId": "template-01-insoles",
+    "matchedText": "老葛听完瞬间感动哭了",
+    "placement": "end",
+    "fileName": "老葛听完瞬间感动哭了.mp4",
+    "sha256": "722573bae3130e45e3479d0c586db8364d3a5afc769dbb9cf41dfdd90615f7d6"
+  },
+  {
+    "nodeId": "t2-b1",
+    "templateId": "template-02-zipper",
+    "matchedText": "老葛属实太有实力了，为了给八零八家人选一份实用贴心的小礼物，居然自己出钱补贴，",
+    "placement": "start",
+    "fileName": "老葛属实太有实力了，为了给八零八家人选一份实用贴心的小礼物，居然自己出钱补贴.mp4",
+    "sha256": "650fa4a7061a46592c77d52a418ed88d6b006d1710474f1bbcb58414b25a88da"
+  },
+  {
+    "nodeId": "t2-b2",
+    "templateId": "template-02-zipper",
+    "matchedText": "眼看这价格不抢真要错过了，我也赶紧给家里安排上，",
+    "placement": "start",
+    "fileName": null
+  }
+]

@@ -1,4 +1,3 @@
-import { randomInt } from 'node:crypto';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -31,6 +30,9 @@ export function assDocument(task: Task, library: Library): string {
 export async function renderTask(task: Task, library: Library, media: Media, signal: AbortSignal, onProgress: (progress: number, message: string) => void): Promise<{ preview: Preview; base: { relativePath: string; planSignature: string } }> {
   if (!task.plan?.valid) throw new Error('请先补齐商品画面时长');
   const store = library.store, plan = task.plan;
+  const selectionPlan = !!task.shotSelection;
+  const blocks = soundBlocks(task, library);
+  if (signal.aborted) throw new DOMException('生成已停止', 'AbortError');
   const runId = Store.id(), work = path.join(store.taskDir(task.id), 'work', runId), out = path.join(store.taskDir(task.id), 'renders', runId);
   await fsp.mkdir(work, { recursive: true }); await fsp.mkdir(out, { recursive: true });
   const source = (id: string | undefined): string => {
@@ -38,7 +40,39 @@ export async function renderTask(task: Task, library: Library, media: Media, sig
     if (!asset || !library.available(asset)) throw new Error('素材已删除或暂不可用，请返回画面检查');
     return store.path(asset.relativePath!);
   };
-  const pictureSignature = signature({ renderer: 'video-frames-v2', plan: plan.signature });
+  // Inspect the actual streams before a cached picture can conceal a short source.
+  const videoInfo = new Map<string, Awaited<ReturnType<Media['probe']>>>();
+  if (selectionPlan) {
+    const ids = new Set([...plan.entries.map(entry => entry.assetId), ...plan.pieces.flatMap(piece => [piece.assetId, piece.productAssetId].filter((id): id is string => !!id))]);
+    for (const id of ids) {
+      if (signal.aborted) throw new DOMException('生成已停止', 'AbortError');
+      const info = await media.probe(source(id));
+      if (!info.hasVideo || !info.videoDuration) throw new Error(`素材没有有效视频画面：${store.asset(id)!.title}`);
+      videoInfo.set(id, info);
+    }
+    for (const piece of plan.pieces) {
+      const id = piece.mode === 'product' ? piece.productAssetId! : piece.assetId!;
+      const start = piece.mode === 'product' ? piece.productStart || 0 : piece.sourceStart || 0;
+      const frames = Math.round((piece.start + piece.duration) * 30) - Math.round(piece.start * 30);
+      const available = videoInfo.get(id)!.videoDuration! - start;
+      // AAC can end after the last picture. Only the actual quantized output
+      // matters; fit's tpad may supply at most one additional output frame.
+      if (frames > 0 && (available <= 0 || frames / 30 > available + 1 / 30 + 1e-6)) throw new Error(`素材实际画面时长不足：${store.asset(id)!.title}`);
+    }
+    for (const block of blocks) {
+      if (signal.aborted) throw new DOMException('生成已停止', 'AbortError');
+      const input = block.kind === 'host' ? source(block.asset!.id) : store.path(block.interval!.relativePath!);
+      const audio = JSON.parse(await media.run(media.ffprobe, ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=duration:format=duration', '-of', 'json', input], { signal })) as { streams: { duration?: string }[]; format?: { duration?: string } };
+      const duration = Number(audio.streams[0]?.duration ?? audio.format?.duration);
+      if (!audio.streams.length || !Number.isFinite(duration) || Math.abs(duration - block.duration) > .05) throw new Error('真实配音或主播原声音轨无效，或时长与已确认记录不符');
+    }
+    if (blocks.some(block => block.kind === 'host')) {
+      if (!task.hostImage) throw new Error('请先保存主播下半屏商品图片');
+      const image = JSON.parse(await media.run(media.ffprobe, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'json', store.path(task.hostImage.relativePath)], { signal })) as { streams: { width: number; height: number }[] };
+      if (image.streams[0]?.width !== task.hostImage.width || image.streams[0]?.height !== task.hostImage.height) throw new Error('商品图片尺寸与保存配置不一致，请重新保存图片');
+    }
+  }
+  const pictureSignature = signature({ renderer: selectionPlan ? 'selection-image-v1' : 'video-frames-v2', plan: plan.signature, ...(selectionPlan ? { hostImage: task.hostImage } : {}) });
   let picture = task.renderBase && task.renderBase.planSignature === pictureSignature && fs.existsSync(store.path(task.renderBase.relativePath)) ? store.path(task.renderBase.relativePath) : '';
   if (!picture) {
     const files: string[] = [];
@@ -50,14 +84,20 @@ export async function renderTask(task: Task, library: Library, media: Media, sig
       const filename = `piece-${String(index).padStart(4, '0')}.mp4`, target = path.join(work, filename);
       const args = ['-n'];
       let filters: string;
-      if (piece.mode === 'host') {
+      if (piece.mode === 'host' && selectionPlan) {
+        const image = task.hostImage!;
+        const ratio = Math.max(1080 / image.width, 960 / image.height) * image.scale;
+        const width = Math.ceil(image.width * ratio / 2) * 2, height = Math.ceil(image.height * ratio / 2) * 2;
+        args.push('-ss', number((piece.sourceStart || 0) + (videoInfo.get(piece.assetId!)?.videoStart || 0)), '-i', source(piece.assetId), '-loop', '1', '-i', store.path(image.relativePath));
+        filters = `[0:v]${fit(1080,1920)},split=2[ht][hf];[ht]crop=1080:960:0:0[top];[hf]crop=1080:120:0:960,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*(1-Y/120)'[fade];[1:v]fps=30,scale=${width}:${height},crop=1080:960:(iw-1080)*${number(image.x)}:(ih-960)*${number(image.y)},setsar=1,pad=1080:1920:0:960:black[bottom];[bottom][top]overlay=0:0:shortest=1[base];[base][fade]overlay=0:960:shortest=1,format=yuv420p[v]`;
+      } else if (piece.mode === 'host') {
         const product = store.asset(piece.productAssetId!);
-        args.push('-ss', number(piece.sourceStart || 0), '-i', source(piece.assetId), '-ss', number((piece.productStart || 0) + product!.videoStart!), '-i', source(piece.productAssetId));
+        args.push('-ss', number(piece.sourceStart || 0), '-i', source(piece.assetId), '-ss', number((piece.productStart || 0) + (product!.videoStart || 0)), '-i', source(piece.productAssetId));
         filters = `[0:v]${fit(1080,1920)},split=2[ht][hf];[ht]crop=1080:1080:0:0[top];[hf]crop=1080:120:0:1080,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*(1-Y/120)'[fade];[1:v]${fit(1080,840)},pad=1080:1920:0:1080:black[bottom];[bottom][top]overlay=0:0:shortest=1[base];[base][fade]overlay=0:1080:shortest=1,format=yuv420p[v]`;
       } else {
         const assetId = piece.mode === 'presenter' ? piece.assetId : piece.productAssetId;
         const start = piece.mode === 'presenter' ? piece.sourceStart || 0 : piece.productStart || 0;
-        args.push('-ss', number(start + store.asset(assetId!)!.videoStart!), '-i', source(assetId));
+        args.push('-ss', number(start + (videoInfo.get(assetId!)?.videoStart ?? store.asset(assetId!)!.videoStart ?? 0)), '-i', source(assetId));
         filters = `[0:v]${fit(1080,1920)},format=yuv420p[v]`;
       }
       onProgress(3 + index / plan.pieces.length * 64, `正在整理画面 ${index + 1}/${plan.pieces.length}`);
@@ -71,7 +111,7 @@ export async function renderTask(task: Task, library: Library, media: Media, sig
     await media.ff(['-n', '-f', 'concat', '-safe', '0', '-i', 'picture-list.txt', '-an', '-c:v', 'copy', '-movflags', '+faststart', 'picture.mp4'], { signal, cwd: work });
   } else onProgress(66, '复用已确认画面和素材顺序');
 
-  const blocks = soundBlocks(task, library), audioFiles: string[] = [];
+  const audioFiles: string[] = [];
   for (let index = 0; index < blocks.length; index++) {
     const block = blocks[index], filename = `voice-${index}.wav`;
     const input = block.kind === 'host' ? source(block.asset!.id) : store.path(block.interval!.relativePath!);
@@ -83,27 +123,6 @@ export async function renderTask(task: Task, library: Library, media: Media, sig
   await media.ff(['-n', '-f', 'concat', '-safe', '0', '-i', 'voice-list.txt', '-c:a', 'copy', 'narration.wav'], { signal, cwd: work });
   const args = ['-n', '-i', picture, '-i', 'narration.wav'];
   const filters: string[] = [];
-  const channel = () => (120 + randomInt(136)).toString(16).padStart(2, '0');
-  await media.ff(['-y', '-f', 'lavfi', '-i', `color=c=0x${channel()}${channel()}${channel()}:s=512x512:d=0.1,format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='255*clip(1-hypot(X-256,Y-256)/256,0,1)'`, '-frames:v', '1', 'mark-blob.png'], { signal, cwd: work });
-  const color = () => `0x${randomInt(0x1000000).toString(16).padStart(6, '0')}`;
-  const dim = () => (0.01 + Math.random() * 0.015).toFixed(3);
-  args.push('-f', 'lavfi', '-t', number(plan.duration), '-i', `gradients=s=1080x1920:nb_colors=3:c0=${color()}:c1=${color()}:c2=${color()}:seed=${randomInt(4294967295)}:speed=0.015`);
-  args.push('-loop', '1', '-t', number(plan.duration), '-i', 'mark-blob.png');
-  args.push('-f', 'lavfi', '-t', number(plan.duration), '-i', `life=size=270x480:rate=${2 + randomInt(8)}:random_fill_ratio=${(0.3 + Math.random() * 0.4).toFixed(2)}:random_seed=${randomInt(4294967295)}`);
-  args.push('-f', 'lavfi', '-t', number(plan.duration), '-i', `cellauto=size=270x480:rate=${15 + randomInt(15)}:rule=${randomInt(255)}:random_fill_ratio=${(0.3 + Math.random() * 0.4).toFixed(2)}:random_seed=${randomInt(4294967295)}`);
-  filters.push(
-    `[2:v]fps=30,scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,format=rgba,colorchannelmixer=aa=${dim()}[bg]`,
-    `[3:v]split=4[g1][g2][g3][g4]`,
-    `[g1]scale=w='max(16,trunc(512*(0.01+3.99*t/${number(plan.duration)})/2)*2)':h=-2:eval=frame,format=rgba,colorchannelmixer=aa=${dim()}[grow]`,
-    `[4:v]fps=30,scale=1080:1920,format=rgba,colorchannelmixer=aa=${dim()}[mv1]`,
-    `[5:v]fps=30,scale=1080:1920,format=rgba,colorchannelmixer=aa=${dim()}[mv2]`,
-  );
-  const dots = [1, 2, 3].map(() => ({ size: 40 + randomInt(33), hue: [randomInt(120), randomInt(120), randomInt(120)].map(v => (100 + v) / 255), alpha: dim(), x: 40 + randomInt(960), y: 60 + randomInt(1700), dx: 15 + randomInt(30), dy: 15 + randomInt(30), fx: (2 + randomInt(8)) / 100, fy: (2 + randomInt(8)) / 100 }));
-  dots.forEach((dot, i) => filters.push(`[g${i + 2}]scale=${dot.size}:-2,format=rgba,colorchannelmixer=rr=${dot.hue[0].toFixed(2)}:gg=${dot.hue[1].toFixed(2)}:bb=${dot.hue[2].toFixed(2)}:aa=${dot.alpha}[t${i}]`));
-  filters.push(`[0:v][bg]overlay=0:0[base]`);
-  filters.push(`[base][grow]overlay=(W-w)/2:(H-h)/2[b1]`);
-  filters.push(`[b1][mv1]overlay=0:0[b2]`, `[b2][mv2]overlay=0:0[b3]`);
-  dots.forEach((dot, i) => filters.push(`[b${i + 3}][t${i}]overlay=x='${dot.x}+${dot.dx}*sin(6.283*${dot.fx.toFixed(3)}*t)':y='${dot.y}+${dot.dy}*cos(6.283*${dot.fy.toFixed(3)}*t)'[b${i + 4}]`));
   let video = '';
   if (task.settings.subtitles) {
     await fsp.writeFile(path.join(work, 'captions.ass'), assDocument(task, library), 'utf8');
@@ -117,17 +136,18 @@ export async function renderTask(task: Task, library: Library, media: Media, sig
     const escaped = fonts.replaceAll('\\', '/').replaceAll(':', '\\:').replaceAll("'", "\\'");
     video = `ass=filename=captions.ass:fontsdir='${escaped}',`;
   }
-  filters.push(`[b6]${video}format=yuv420p[v]`);
+  filters.push(`[0:v]${video}format=yuv420p[v]`);
   if (task.settings.bgmId) {
+    const musicInput = args.filter(value => value === '-i').length;
     args.push('-stream_loop', '-1', '-i', source(task.settings.bgmId));
-    filters.push(`[6:a]volume=${task.settings.bgmVolume}[music];[1:a][music]amix=inputs=2:duration=first:normalize=0[a]`);
+    filters.push(`[${musicInput}:a]volume=${task.settings.bgmVolume}[music];[1:a][music]amix=inputs=2:duration=first:normalize=0[a]`);
   }
   args.push('-filter_complex_threads', '2', '-filter_complex', filters.join(';'));
-  args.push('-map', '[v]', '-map', task.settings.bgmId ? '[a]' : '1:a:0', ...codec, '-c:a', 'aac', '-b:a', '192k', '-t', number(plan.duration), '-movflags', '+faststart', '-progress', 'pipe:1', path.join(out, 'result.mp4'));
+  args.push('-map', '[v]', '-map', task.settings.bgmId ? '[a]' : '1:a:0', ...codec, '-c:a', 'aac', '-b:a', '192k', '-frames:v', String(Math.round(plan.duration * 30)), '-t', number(plan.duration), '-movflags', '+faststart', '-progress', 'pipe:1', path.join(out, 'result.mp4'));
   onProgress(80, '正在合成字幕和背景音乐');
   await media.ff(args, { signal, cwd: work, onProgress: seconds => onProgress(80 + Math.min(18, seconds / plan.duration * 18), '正在合成字幕和背景音乐') });
   const output = path.join(out, 'result.mp4'), info = await media.probe(output);
-  if (info.width !== 1080 || info.height !== 1920 || Math.abs(info.fps - 30) > .001 || !info.hasAudio || Math.abs(info.duration - plan.duration) > .15) throw new Error('成片规格或时长校验未通过，已保留原预览');
+  if (info.videoFrames !== Math.round(plan.duration * 30) || info.width !== 1080 || info.height !== 1920 || Math.abs(info.fps - 30) > .001 || !info.hasAudio || Math.abs(info.duration - plan.duration) > .15) throw new Error('成片规格或时长校验未通过，已保留原预览');
   onProgress(99, '正在检查成片是否可完整播放');
   await media.ff(['-xerror', '-i', output, '-f', 'null', '-'], { signal });
   return {

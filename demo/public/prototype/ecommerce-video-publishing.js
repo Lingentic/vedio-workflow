@@ -31,6 +31,7 @@
     { key: 'dup', label: '同素材重复度', hard: false, desc: '同商品多号发布需错开素材顺序与封面帧' },
     { key: 'weight', label: '账号权重匹配', hard: true, desc: '账号环境异常或登录态失效时不入队' },
   ];
+  const PLATFORM_MARK = { 快手: '快', 抖音: '抖', TikTok: 'T' };
 
   const seedAccounts = () => [
     { id: 'acc-01', platform: '快手', name: '老葛严选01', uid: 'laoge_xs01', status: 'ok', fingerprint: '独立设备指纹 · 已启用', proxy: '112.65.**.18:8123', speed: 186, cookie: '本地加密 Cookie · 有效', note: '独立环境已启用', checked: '2026-10-22 08:30' },
@@ -51,12 +52,13 @@
 
   /* ---------- 状态 ---------- */
   const blankFilters = () => ({ account: '', from: '', to: '', status: '', q: '' });
-  const blank = () => ({ accounts: seedAccounts(), tasks: seedTasks(), filters: blankFilters(), applied: blankFilters(), selected: [], dialog: null, confirm: null, menu: null, offline: false, checking: false, adding: null, report: null, timedDraft: null });
+  const blank = () => ({ accounts: seedAccounts(), tasks: seedTasks(), filters: blankFilters(), applied: blankFilters(), selected: [], dialog: null, confirm: null, menu: null, offline: false, checking: false, adding: null, report: null, timedDraft: null, publishDraft: null });
 
   let state = blank();
   let timers = [];
   let ticker = null;
   let api = {};
+  let currentAccountId = '';
 
   const accountScope = window.EcommerceVideoAccountScope.create({
     storeKey: STORE_KEY, createState: blank, getState: () => state,
@@ -73,7 +75,6 @@
 
   /* ---------- 工具 ---------- */
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const icon = name => `<svg class="workbench-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="/icons.svg#${name}"></use></svg>`;
   const money = value => `¥${Number(value || 0).toFixed(2)}`;
   const later = (fn, ms) => { const t = setTimeout(accountScope.guard(fn), ms); timers.push(t); return t; };
   const clearTimers = () => { timers.forEach(id => { clearTimeout(id); clearInterval(id); }); timers = []; };
@@ -111,7 +112,7 @@
     const tasks = state.tasks.filter(task => task.accountId === acc.id);
     const counts = { queued: tasks.filter(t => t.status === 'queued' || t.status === 'publishing').length, ok: tasks.filter(t => t.status === 'published' || t.status === 'reviewing').length, bad: tasks.filter(t => t.status === 'failed' || t.status === 'precheck' || t.status === 'blocked' || t.status === 'missed').length };
     return `<article class="ec-led-account${acc.status === 'warn' ? ' is-warn' : ''}${acc.status === 'danger' ? ' is-danger' : ''}">
-      <header><i>${icon('user')}</i><div><strong title="${esc(acc.name)}">${esc(acc.name)}</strong><small>${esc(acc.platform)} · @${esc(acc.uid)}</small></div><span class="is-tail">${accountTag(acc)}</span></header>
+      <header><i>${PLATFORM_MARK[acc.platform] || '账'}</i><div><strong title="${esc(acc.name)}">${esc(acc.name)}</strong><small>${esc(acc.platform)} · @${esc(acc.uid)}</small></div><span class="is-tail">${accountTag(acc)}</span></header>
       <div class="ec-led-env">
         <div><span>设备指纹</span><b class="${acc.status === 'danger' ? 'is-danger' : 'is-ok'}">${esc(acc.fingerprint)}</b></div>
         <div><span>代理 IP</span><b class="${acc.proxy === '未配置' || acc.speed > 500 ? 'is-warn' : 'is-ok'}">${esc(acc.proxy)} · <span class="is-num">${acc.speed}ms</span></b></div>
@@ -129,7 +130,7 @@
   };
 
   const accountsSection = () => `<div class="ec-led-card">
-      <header><b><i>${icon('user')}</i>账号环境</b><small>每账号独立设备指纹 + 代理 IP + 本地加密 Cookie，异常项标色；异常账号在发布选号中置灰</small>
+      <header><b><i>环</i>账号环境</b><small>每账号独立设备指纹 + 代理 IP + 本地加密 Cookie，异常项标色；异常账号在发布选号中置灰</small>
         <span class="is-tail"><button type="button" class="ec-led-btn ec-led-btn--sm" data-pub="check-all" ${state.checking || !state.accounts.length ? 'disabled' : ''}>${state.checking ? '<span class="ec-led-spinner" style="width:13px;height:13px;border-width:2px"></span> 体检中…' : '♥ 批量体检'}</button><button type="button" class="ec-led-btn ec-led-btn--sm ec-led-btn--primary" data-pub="add-account">＋ 添加账号</button></span>
       </header>
       <div class="ec-led-card-body"><div class="ec-led-accounts">
@@ -185,8 +186,8 @@
       return `<tr class="${state.selected.includes(task.id) ? 'is-selected' : ''}">
       <td class="is-check"><input type="checkbox" data-pub="select" data-id="${task.id}" ${state.selected.includes(task.id) ? 'checked' : ''} ${canResubmit(task) ? '' : 'disabled title="发布成功 / 发布中的任务不可重新提交"'} aria-label="选择 ${esc(task.id)}"></td>
       <td class="is-num"><b>${esc(task.id)}</b></td>
-      <td class="is-num">${esc(task.recordId)}<small class="ec-led-hint" style="display:block;margin-top:3px">${esc(task.duration)}</small></td>
-      <td><div class="ec-led-cell-product"><span class="ec-led-thumb">${icon('user')}</span><span><strong>${esc(acc?.name || '—')}</strong><small>${esc(acc?.platform || '')} · ${acc?.status === 'danger' ? '环境异常' : acc?.status === 'warn' ? 'IP弱' : '环境就绪'}</small></span></div></td>
+      <td class="is-num">${esc(task.recordId)}<small class="ec-led-hint" style="display:block;margin-top:3px">${esc(task.duration)}${task.resultKind === 'demo' ? ' · 飞书成片示例' : ''}</small></td>
+      <td><div class="ec-led-cell-product"><span class="ec-led-thumb">${PLATFORM_MARK[acc?.platform] || '账'}</span><span><strong>${esc(acc?.name || '—')}</strong><small>${esc(acc?.platform || '')} · ${acc?.status === 'danger' ? '环境异常' : acc?.status === 'warn' ? 'IP弱' : '环境就绪'}</small></span></div></td>
       <td>${infoCell(task)}<small class="ec-led-hint" style="display:block;margin-top:4px" title="${esc(task.title)}">${esc(task.title)}</small></td>
       <td>${progressCell(task)}</td>
       <td class="is-num">${task.actual ? esc(task.actual) : '<span class="ec-led-hint">—</span>'}</td>
@@ -197,7 +198,7 @@
     </tr>`;
     }).join('')}</tbody></table></div>`;
 
-  const emptyState = () => `<div class="ec-led-empty"><i>${icon('publish')}</i><h3>暂无发布任务</h3><p>从「生成记录」勾选「已完成」的成片点「批量提交发布」，任务会在这里执行过审预检后入队；也可以在此新建定时发布任务。</p><div><button type="button" class="ec-led-btn ec-led-btn--primary" data-pub="goto-records">去生成记录挑成片</button><button type="button" class="ec-led-btn" data-pub="new-timed">＋ 新建定时任务</button></div></div>`;
+  const emptyState = () => `<div class="ec-led-empty"><i>发</i><h3>暂无发布任务</h3><p>从「生成记录」勾选「已完成」的成片点「批量提交发布」，任务会在这里执行过审预检后入队；也可以在此新建定时发布任务。</p><div><button type="button" class="ec-led-btn ec-led-btn--primary" data-pub="goto-records">去生成记录挑成片</button><button type="button" class="ec-led-btn" data-pub="new-timed">＋ 新建定时任务</button></div></div>`;
 
   /* ---------- 弹窗 ---------- */
   const precheckReport = () => {
@@ -234,6 +235,7 @@
             <div class="ec-led-info-row"><dt>任务ID / 记录</dt><dd class="is-num">${esc(task.id)} ← 生成记录 ${esc(task.recordId)}</dd></div>
             <div class="ec-led-info-row"><dt>商品</dt><dd>${esc(task.product.name)}（<span class="is-num">${money(task.product.price)}</span> · ${esc(task.product.platformId)}）</dd></div>
             <div class="ec-led-info-row"><dt>成片时长</dt><dd class="is-num">${esc(task.duration)}</dd></div>
+            ${task.resultKind === 'demo' ? '<div class="ec-led-info-row"><dt>视频类型</dt><dd>飞书成片示例，保留原文案与配音</dd></div>' : ''}
             <div class="ec-led-info-row"><dt>计划 / 实际</dt><dd class="is-num">${esc(task.planned)}${task.actual ? ` → ${esc(task.actual)}` : ' → 未发布'}</dd></div>
             <div class="ec-led-info-row"><dt>重提次数</dt><dd class="is-num">${task.resubmits} 次（尝试 ${task.attempts} 次，连续失败 ≥${MAX_RETRY} 次自动出队）</dd></div>
           </dl>
@@ -271,7 +273,7 @@
       <header><div><h2 id="pubAddTitle">添加账号</h2><p>选择平台后扫码绑定，成功后在本地创建独立隔离环境（独立设备指纹 + 代理 IP + 本地加密 Cookie）。</p></div><button type="button" data-pub="dismiss" aria-label="关闭">×</button></header>
       <div class="ec-led-dialog-body">
         <div class="ec-led-split-label"><i>1</i>选择平台</div>
-        <div class="ec-led-accounts" style="grid-template-columns:repeat(3,minmax(0,1fr))">${['快手', '抖音', 'TikTok'].map(p => `<button type="button" class="ec-led-btn${draft.platform === p ? ' ec-led-btn--primary' : ''}" data-pub="pick-platform" data-value="${p}">${icon('user')} ${p}</button>`).join('')}</div>
+        <div class="ec-led-accounts" style="grid-template-columns:repeat(3,minmax(0,1fr))">${['快手', '抖音', 'TikTok'].map(p => `<button type="button" class="ec-led-btn${draft.platform === p ? ' ec-led-btn--primary' : ''}" data-pub="pick-platform" data-value="${p}">${PLATFORM_MARK[p]} ${p}</button>`).join('')}</div>
         <div class="ec-led-split-label" style="margin-top:18px"><i>2</i>扫码绑定<small>${draft.scanning ? '等待手机确认…' : '点击下方按钮模拟扫码结果'}</small></div>
         <div class="ec-led-qr"><div class="ec-led-qr-frame">${draft.scanning ? '<span class="ec-led-spinner" style="border-color:rgba(255,255,255,.4);border-top-color:#fff"></span>' : `<span>${esc(draft.platform)} 扫码登录</span>`}</div>
           <p class="ec-led-hint" style="line-height:1.7;text-align:center">${esc(draft.note || '扫码成功后账号卡片标注「独立环境已启用」；扫码失败可重试，不影响已有账号。')}</p>
@@ -310,6 +312,25 @@
     </div></div>`;
   };
 
+  const preparedRecord = id => (window.EcommerceVideoRecords?.rows?.() || []).find(row => row.id === id && row.taskStatus === 'done' && typeof row.url === 'string' && row.url.trim()) || null;
+  const publishDraftValid = draft => Boolean(draft && preparedRecord(draft.recordId) && account(draft.accountId) && account(draft.accountId).status !== 'danger' && draft.title.trim() && draft.title.length <= 120 && (draft.mode === 'now' || draft.mode === 'timed' && Date.parse(draft.when) > Date.now()));
+
+  const publishDialog = () => {
+    const draft = state.publishDraft;
+    const row = preparedRecord(draft.recordId);
+    return `<div class="ec-led-backdrop" role="presentation"><section class="ec-led-dialog ec-led-dialog--mid" role="dialog" aria-modal="true" aria-labelledby="pubPrepareTitle">
+      <header><div><h2 id="pubPrepareTitle">发布设置</h2><p>确认发布账号、标题与发布时间。</p></div><button type="button" data-pub="dismiss" aria-label="关闭发布设置">×</button></header>
+      <div class="ec-led-dialog-body">${row ? `<div class="ec-led-env" style="margin-bottom:18px"><div><span>本次成片</span><b>${esc(row.name)}</b></div><div><span>生成记录</span><b>${esc(row.id)}</b></div><div><span>时长</span><b>${esc(row.duration)}</b></div>${row.resultKind === 'demo' ? '<div><span>视频类型</span><b>飞书成片示例，保留原文案与配音</b></div>' : ''}</div>` : '<p class="ec-led-hint" role="alert">本次成片暂不可用，请返回视频制作重新生成。</p>'}
+      <div class="ec-led-filters">
+        <div class="ec-led-field"><label for="pubPrepareAccount">发布账号</label><select id="pubPrepareAccount" class="ec-led-control" data-pub="prepare-account"><option value="">请选择发布账号</option>${state.accounts.map(acc => `<option value="${esc(acc.id)}"${draft.accountId === acc.id ? ' selected' : ''}${acc.status === 'danger' ? ' disabled' : ''}>${esc(acc.name)}（${esc(acc.platform)}）${acc.status === 'danger' ? ' · 异常不可选' : acc.status === 'warn' ? ' · IP弱' : ''}</option>`).join('')}</select></div>
+        <div class="ec-led-field ec-led-field--search"><label for="pubPrepareTitleInput">发布标题</label><input id="pubPrepareTitleInput" class="ec-led-control" data-pub="prepare-title" maxlength="120" value="${esc(draft.title)}" placeholder="填写发布标题"></div>
+        <div class="ec-led-field"><label for="pubPrepareMode">发布时间</label><select id="pubPrepareMode" class="ec-led-control" data-pub="prepare-mode"><option value="now"${draft.mode === 'now' ? ' selected' : ''}>立即发布</option><option value="timed"${draft.mode === 'timed' ? ' selected' : ''}>定时发布</option></select></div>
+        ${draft.mode === 'timed' ? `<div class="ec-led-field"><label for="pubPrepareWhen">选择时间</label><input id="pubPrepareWhen" class="ec-led-control" type="datetime-local" data-pub="prepare-when" value="${esc(draft.when)}"></div>` : ''}
+      </div>${draft.mode === 'timed' && !(Date.parse(draft.when) > Date.now()) ? '<p class="ec-led-hint" style="margin-top:12px;color:var(--led-danger)">发布时间需晚于当前时间。</p>' : ''}</div>
+      <footer><button type="button" class="ec-led-btn" data-pub="dismiss">取消</button><span class="is-spacer"></span><button type="button" class="ec-led-btn ec-led-btn--primary" data-pub="prepare-submit"${publishDraftValid(draft) ? '' : ' disabled'}>确认提交发布</button></footer>
+    </section></div>`;
+  };
+
   const confirmDialog = () => {
     const c = state.confirm;
     return `<div class="ec-led-backdrop" role="presentation"><div class="ec-led-dialog ec-led-dialog--narrow" role="dialog" aria-modal="true" aria-labelledby="pubConfirmTitle">
@@ -332,7 +353,7 @@
       ${accountsSection()}
       ${filterCard()}
       <div class="ec-led-card">
-        <header><b><i>${icon('publish')}</i>发布任务列表</b><small>共 ${rows.length} 条记录 · 同账号并发 ${ACCOUNT_CONCURRENCY} / 全局并发 ${GLOBAL_CONCURRENCY}</small>
+        <header><b><i>发</i>发布任务列表</b><small>共 ${rows.length} 条记录 · 同账号并发 ${ACCOUNT_CONCURRENCY} / 全局并发 ${GLOBAL_CONCURRENCY}</small>
           <span class="is-tail">
             <button type="button" class="ec-led-btn ec-led-btn--sm ec-led-btn--primary" data-pub="batch-resubmit" ${state.selected.length ? '' : 'disabled'} title="${state.selected.length ? '按原参数批量重新提交并记录重提次数' : '勾选失败 / 待审 / 预检未过 / 阻塞 / 错失的记录后可点'}">批量重新提交 (${state.selected.length})</button>
             <button type="button" class="ec-led-btn ec-led-btn--sm" data-pub="refresh">⟳ 刷新</button>
@@ -345,10 +366,11 @@
     ${state.dialog?.kind === 'detail' ? detailDialog() : ''}
     ${state.adding ? addAccountDialog() : ''}
     ${state.timedDraft ? timedDialog() : ''}
+    ${state.publishDraft ? publishDialog() : ''}
     ${state.confirm ? confirmDialog() : ''}`;
   };
 
-  const head = (count, counts) => `<div class="ec-led-head"><div><h1><i>${icon('publish')}</i>发布中心</h1><p>工作流第 4 步：多账号隔离环境批量发布 + 定时无人值守 + 发布台账。账号环境在本模块内维护。</p></div>
+  const head = (count, counts) => `<div class="ec-led-head"><div><h1><i>发</i>发布中心</h1><p>工作流第 4 步：多账号隔离环境批量发布 + 定时无人值守 + 发布台账。账号环境在本模块内维护。</p></div>
     <div class="ec-led-head-actions">
       <span class="ec-led-count is-num">共 ${count} 条 · 排队 ${counts.queued} · 发布中 ${counts.publishing} · 待处理 ${counts.failed}</span>
       <button type="button" class="ec-led-btn" data-pub="new-timed">＋ 新建定时任务</button>
@@ -396,6 +418,7 @@
 
   const dismissTop = () => {
     if (state.confirm) { state.confirm = null; return paint(); }
+    if (state.publishDraft) { state.publishDraft = null; return paint(); }
     if (state.timedDraft) { state.timedDraft = null; return paint(); }
     if (state.adding) { state.adding = null; return paint(); }
     if (state.report) { state.report = null; return paint(); }
@@ -439,7 +462,8 @@
         publishing.push(task);
         dirty = true;
       });
-      if (dirty) { persist(); if (document.querySelector('.ec-video-publishing')) paint(); }
+      // Keep the form DOM and focus intact while the user is configuring this result.
+      if (dirty) { persist(); if (!state.publishDraft && document.querySelector('.ec-video-publishing')) paint(); }
     }), TICK);
     timers.push(ticker);
   };
@@ -522,7 +546,8 @@
     if (action === 'search') { state.applied = { ...state.filters }; paint(); return; }
     if (action === 'reset-filters') { state.filters = blankFilters(); state.applied = blankFilters(); paint(); return; }
     if (action === 'refresh') { paint(); toast(`已刷新 ${filtered().length} 条发布任务`); return; }
-    if (action === 'dismiss') { state.dialog = null; state.adding = null; state.report = null; state.timedDraft = null; paint(); return; }
+    if (action === 'dismiss') { state.dialog = null; state.adding = null; state.report = null; state.timedDraft = null; state.publishDraft = null; paint(); return; }
+    if (action === 'prepare-submit') { submitPrepared(); return; }
     if (action === 'dismiss-confirm') { state.confirm = null; paint(); return; }
     if (action === 'do-confirm') { const c = state.confirm; state.confirm = null; c?.run?.(); return paint(); }
     if (action === 'detail') { state.menu = null; state.dialog = { kind: 'detail', id }; paint(); return; }
@@ -626,6 +651,7 @@
     if (action === 'scan-fail') { state.adding.scanning = false; state.adding.note = '扫码失败：未收到手机端确认，可重试；已有账号与环境不受影响。'; paint(); return; }
     if (action === 'new-timed') {
       const soon = new Date(Date.now() + 5 * 60000);
+      state.publishDraft = null;
       state.timedDraft = { accountId: (state.accounts.find(acc => acc.status === 'ok') || state.accounts[0])?.id || '', recordId: '', when: localStamp(soon) };
       paint();
       return;
@@ -668,6 +694,12 @@
     const key = event.target.dataset?.pubFilter;
     if (key) state.filters[key] = event.target.value;
     if (event.target.dataset?.pub === 'pick-when' && state.timedDraft) { state.timedDraft.when = event.target.value; return paintKeepingFocus(); }
+    if (event.target.dataset?.pub === 'prepare-title' && state.publishDraft) {
+      state.publishDraft.title = String(event.target.value || '').slice(0, 120);
+      const submit = document.querySelector('[data-pub="prepare-submit"]');
+      if (submit) submit.disabled = !publishDraftValid(state.publishDraft);
+      return;
+    }
   };
 
   const onChange = event => {
@@ -675,6 +707,10 @@
     if (key) { state.filters[key] = event.target.value; return paint(); }
     if (event.target.dataset?.pub === 'pick-account' && state.timedDraft) { state.timedDraft.accountId = event.target.value; return paint(); }
     if (event.target.dataset?.pub === 'pick-record' && state.timedDraft) { state.timedDraft.recordId = event.target.value; return paint(); }
+    if (state.publishDraft) {
+      const field = { 'prepare-account': 'accountId', 'prepare-mode': 'mode', 'prepare-when': 'when' }[event.target.dataset?.pub];
+      if (field) { state.publishDraft[field] = event.target.value; return paint(); }
+    }
     if (event.target.dataset?.pub === 'select') {
       const id = event.target.dataset.id;
       const task = find(id);
@@ -694,14 +730,15 @@
     const report = { created: now(), items: [], enqueued: 0, blocked: 0 };
     records.forEach((record, index) => {
       const acc = state.accounts.find(item => item.name === record.account) || state.accounts[index % state.accounts.length] || state.accounts[0];
-      const payload = { ...record, title: `${record.name.slice(0, 18)} #老葛严选` };
+      const payload = { ...record, title: String(record.title || `${record.name.slice(0, 18)} #老葛严选`).trim().slice(0, 120) };
       const result = runPrecheck(payload, acc);
       const id = nextTaskId();
+      const plannedAt = Date.parse(record.plannedAt) > Date.now() ? record.plannedAt : null;
       const task = {
         id, recordId: record.recordId, accountId: acc.id, status: result.hardFailed ? 'precheck' : 'queued', progress: 0,
-        actual: null, planned: '立即发布', created: now(),
+        actual: null, planned: plannedAt ? localStamp(new Date(plannedAt)).replace('T', ' ') : '立即发布', created: now(),
         product: { name: record.name, price: record.price, productId: record.productId, platformId: record.platformId, cat: record.cat },
-        duration: record.duration, title: payload.title, attempts: 0, resubmits: 0, timed: false,
+        duration: record.duration, resultKind: record.resultKind || '', title: payload.title, attempts: 0, resubmits: 0, timed: Boolean(plannedAt), ...(plannedAt ? { plannedAt } : {}),
         reason: result.hardFailed ? `硬性项未过：${result.notes.filter(note => note.includes('硬性')).join('；')}` : (result.softWarn ? result.notes.join('；') : null),
         raw: null, precheck: result.checks,
       };
@@ -715,11 +752,45 @@
     return records.length;
   };
 
+  const prepare = value => {
+    if (!currentAccountId) return false;
+    const id = typeof value === 'string' ? value : value?.id || value?.recordId;
+    const row = preparedRecord(id);
+    if (!row) return false;
+    if (state.publishDraft?.recordId !== id) state.publishDraft = {
+      recordId: id,
+      accountId: state.accounts.find(acc => acc.status === 'ok')?.id || state.accounts.find(acc => acc.status !== 'danger')?.id || '',
+      title: `${row.name.slice(0, 18)} #老葛严选`, mode: 'now', when: localStamp(new Date(Date.now() + 5 * 60000)),
+    };
+    state.dialog = null; state.confirm = null; state.report = null; state.timedDraft = null; state.adding = null; state.menu = null;
+    if (document.querySelector('.ec-video-publishing')) paint();
+    return true;
+  };
+
+  const submitPrepared = () => {
+    const draft = state.publishDraft;
+    if (!publishDraftValid(draft)) { toast('请确认成片、发布账号、标题与发布时间'); return; }
+    const row = preparedRecord(draft.recordId);
+    const acc = account(draft.accountId);
+    state.publishDraft = null;
+    const created = ingest([{ ...row, recordId: row.id, account: acc.name, title: draft.title, ...(draft.mode === 'timed' ? { plannedAt: draft.when } : {}) }]);
+    if (created) window.EcommerceVideoRecords?.markSubmitted?.(row.id);
+    toast('已提交发布设置，进入发布预检流程');
+  };
+
+  const setAccount = value => {
+    const id = typeof value === 'string' ? value : '';
+    const changed = accountScope.setAccount(id);
+    currentAccountId = id;
+    return changed;
+  };
+
   window.EcommerceVideoPublishing = {
-    setAccount: accountScope.setAccount,
+    setAccount,
     html,
     mount,
     ingest,
+    prepare,
     setOffline: value => { state.offline = Boolean(value); if (document.querySelector('.ec-video-publishing')) paint(); },
     tasks: () => state.tasks,
     accounts: () => state.accounts,

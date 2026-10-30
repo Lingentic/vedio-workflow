@@ -9,7 +9,7 @@
 | Product | `productId`；名称、价格、规格、卖点 | 库中编辑不自动写入已建立任务的 `productSnapshot`。 |
 | Asset | `id`；kind、status、相对文件路径、媒体信息、productId 或固定 binding | 原始源与产出片段是不同记录；删除记录与文件清理可处于不同状态。 |
 | 商品素材处理 | source 的 `processing/naming/splitSettings/cuts/outputs`；child 的 `parentId/sourceRange/title/description/processed` | 子片段 ID 与来源先事务保存；命名成功后才发布为已处理，失败不清理恢复材料。见 [切分与命名](MATERIAL_PROCESSING.md)。 |
-| Task | `id`；商品／模板快照、文案、区间、方案、设置、预览、确认／完成状态 | 一个任务一条记录，覆盖当前进度，不自动保存多轮生成历史。 |
+| Task | `id`；商品／模板快照、文案、区间、方案、设置、预览、确认／完成状态 | 所有阶段均持久化同一任务；`videoSubmittedAt=null` 为制作草稿，不显示在生成记录。首次受理 render 后写入该时间并显示记录，重试等不新增。覆盖当前进度，不自动保存多轮生成历史。 |
 | Execution | `id`、`kind=copy/voice/render`、status、progress | 属于任务的一次执行；`done` 仅是该步骤成功。 |
 | Interval | 稳定区间 ID、nodeIds、text、signature、音频、字句和节点时间 | 复用要求 ID／签名匹配、ready 且文件仍存在；confirmed 另决定是否已经完成音频确认。 |
 | QueueEntry | `entryId` 与 `assetId` | 同一片段可在清单出现多次，不能用 assetId 当作唯一清单条目。 |
@@ -30,6 +30,8 @@ SQLite 位于 `数据记录/app.sqlite`，开启 WAL。当前仅有 `products`�
 
 应用默认根目录取当前运行电脑的 Windows Videos 已知文件夹。`DEMO_DATA_ROOT` 可覆盖，`DEMO_PROFILE_DIR` 指定机器配置目录；不要在源码中写死用户名或在测试中复用用户的数据库。
 
+固定口播的逻辑清单在 `demo/data/fixed-narration-visuals.json`，不包含用户视频。托管视频继续使用 presenter Asset，通过 binding 节点和 sourceHash 同时匹配，`GET /api/state.fixedNarrationVisuals` 返回真实可用 ID；显式未指定的节点不得用旧 presenter 兜底。前端旧草稿选择和重新匹配不影响固定绑定。import-fixed-narration 命令先核对全批文件哈希，再复制入库；重复导入复用相同版本 ID，不改任务或触发模型。
+
 ## 三套正交状态
 
 | 状态 | 取值 | 含义 |
@@ -38,7 +40,8 @@ SQLite 位于 `数据记录/app.sqlite`，开启 WAL。当前仅有 `products`�
 | `task.execution.status` | running / done / failed / stopped / interrupted | 最近一次制作执行的状态，不代表最终完成。 |
 | `task.completed` | false / true | 用户是否确认有效成片完成；true 后参数只读。导出不改变它。 |
 
-- 创建：`stage=copy`、两个确认标志 false、completed false。
+- 创建：`stage=copy`、两个确认标志 false、completed false、`videoSubmittedAt=null`。内部 Task 持久化与生成记录展示是两个概念；文案、配音不改变视频提交时间。
+- 首次通过前置校验、受理 render 时写入 `videoSubmittedAt`；前置拒绝不写。停止、失败、恢复、重试、同 ID 覆盖均保留首次时间；新建任务为 null。旧对象缺字段时只在返回对象中按 preview／completed／render 执行证据推断，不为读取写库；无证据返回 null，显式 null 不推断。
 - 确认文案：固定当前节点；按区间 ID、文字／声音签名、音频是否仍存在决定复用或缺失；失效后续画面，进入配音。
 - 新 UI 确认文案后自动配音：成功区间逐个保存；失败留在同一条记录，手动重试仅补未就绪区间。全部音频、节点时间和字幕有效后自动确认并进入 visual，不建立旧队列。文案不变且声音均可复用时直接进入，不重新付费调用。
 - 旧 `voice/confirm` 接口仍会生成／重建方案，仅用于保留的后端流程，当前原型接入页不调用。
@@ -57,7 +60,12 @@ SQLite 位于 `数据记录/app.sqlite`，开启 WAL。当前仅有 `products`�
 | 入选商品片段删除／不可用 | 文案、配音；已完成的独立成片 | 相关未完成任务的画面有效性与预览；不足时要求修复画面 |
 | 库中商品资料修改 | 既有任务快照 | 新任务使用新资料；不静默重写旧任务 |
 
-新视频生成页的素材选择只在页面内存中演示，刷新或换任务后不作为已保存进度；实际选材持久化待重构。旧方案记录保留但不自动转为新 UI 的逐段选择。HTTP PATCH 的文案草稿仍合并字段、串行发送，不能改回互相覆盖的并发保存。
+新视频生成页的当前任务、模板、步骤和浏览节点保存于同源 localStorage，切走模块及刷新后恢复；服务端仍保存真正的文案和配音。服务端保存成功的选片；前端仅暂存未保存的手改，新生成调用 render 编译已保存的 shotSelection，不提交旧 plan 随机队列；换数据目录不沿用另一目录的页面草稿。视频生成页的本地配音导入入口已移除，不创建临时试听 Blob。旧方案记录保留但不自动转为新 UI 的逐段选择。HTTP PATCH 的文案草稿仍合并字段、串行发送，不能改回互相覆盖的并发保存。
+
+主播下半屏图片例外地保存为真实 Task.hostImage：独立 JPEG 位于 `制作任务/<id>/host-image/`，记录来源显示名、尺寸、裁切位置与缩放。默认截图／选择素材时生成任务副本，原资源不变；调整位置不重做图片，换图成功落盘并保存记录后才清理本任务旧副本。编辑窗口内换图、拖动与缩放仅修改暂存，取消不写入；本地上传只在应用时归入当前商品，再复制为任务图片。仅使旧成片预览失效，保留文案、配音和记录标记；切换商品／模板重建草稿时不沿用图片配置。当前新选片渲染器读取此图片与取景参数；确认完成后图片随本任务中间文件清理，参数快照保留。
+
+工作台只保留最近使用的一份草稿定位，不展示已有任务板块或历史草稿列表。兼容已有库时不批量删除旧 Task 或媒体；未提交视频的旧任务不计入生成记录。已有定位优先；无定位时恢复库中最近更新的未提交草稿。
+未提交视频的草稿切换商品／模板时只能覆盖同一任务，不能保留并另建；已有文案需用户确认覆盖。只有已有 `videoSubmittedAt` 的可编辑任务支持保留并新建，旧任务继续从生成记录访问。取消不改数据库。
 
 ## 运行、恢复与停止
 

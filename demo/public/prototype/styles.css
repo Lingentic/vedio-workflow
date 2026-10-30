@@ -4523,11 +4523,7 @@ button:focus-visible, a:focus-visible { outline: var(--client-layout-2) solid va
 .video-remake-library-audio-note { display: block; padding: var(--client-space-8) var(--client-space-12); border-radius: var(--client-radius-medium); color: #725c9f; background: #f5f1fc; font-size: var(--client-font-size-caption); text-align: center; }
 
 .video-asset-library-page { min-width: 0; min-height: 0; overflow: auto; margin: var(--client-space-22); padding: var(--client-layout-28); border: var(--client-layout-1) solid #e0e2e7; border-radius: var(--client-radius-card); background: #fff; box-shadow: 0 12px 32px rgba(28,31,38,.055); }
-.video-asset-library-page > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--client-layout-24); }
-.video-asset-library-page > header > span { max-width: var(--client-layout-720); }
-.video-asset-library-page > header > span > small { display: inline-flex; padding: var(--client-space-4) var(--client-space-8); border-radius: var(--client-primary-radius); color: #4b6200; background: var(--remake-lime); font-size: var(--client-font-size-caption); font-weight: 850; }
-.video-asset-library-page > header h1 { margin: var(--client-space-12) 0 var(--client-space-8); font-size: var(--client-font-size-home); line-height: 1.15; letter-spacing: normal; }
-.video-asset-library-page > header p { margin: 0; color: var(--client-text-muted); font-size: var(--client-font-size-small); line-height: 1.7; }
+.video-asset-library-page > header { display: flex; align-items: flex-start; justify-content: flex-end; gap: var(--client-layout-24); }
 .video-asset-library-page > header > div { display: flex; align-items: center; gap: var(--client-space-8); }
 .video-asset-library-page > header label { height: var(--client-layout-42); display: flex; align-items: center; padding: 0 var(--client-space-16); border: var(--client-layout-1) solid #d9dce2; border-radius: var(--client-radius-medium); color: #5c616a; background: #fff; cursor: pointer; font-size: var(--client-font-size-caption); font-weight: 750; white-space: nowrap; }
 .video-asset-library-page > header label.primary { color: #fff; border-color: #6f4bc5; background: #6f4bc5; box-shadow: 0 8px 18px rgba(93,61,176,.18); }

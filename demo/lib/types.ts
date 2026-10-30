@@ -26,6 +26,10 @@ export interface Asset {
 export interface WordTime { text: string; begin_time: number; end_time: number; begin_index?: number; end_index?: number; }
 export interface Cue { text: string; begin: number; end: number; nodeId?: string; }
 export interface NodeTime { id: string; begin: number; end: number; }
+export interface FixedNarrationVisual {
+  nodeId: string; matchedText: string; placement: 'start' | 'end';
+  assetId: string | null; duration: number; status: 'ready' | 'missing' | 'unassigned';
+}
 export interface Interval {
   id: string; nodeIds: string[]; text: string; signature: string;
   status: 'missing' | 'ready' | 'failed'; confirmed: boolean;
@@ -45,15 +49,19 @@ export interface Plan {
   pieces: PicturePiece[]; signature: string; duration: number;
 }
 export interface OutputSettings { subtitles: boolean; bgmId: string | null; bgmVolume: number; }
-export interface PreviewInputs { settings: OutputSettings; planSignature: string; scriptSignature: string; audioSignature: string; }
+export interface HostImage { relativePath: string; title: string; width: number; height: number; x: number; y: number; scale: number; url?: string; }
+export interface PreviewInputs { settings: OutputSettings; planSignature: string; scriptSignature: string; audioSignature: string; hostImageSignature?: string; shotSelectionSignature?: string; }
 export interface Preview { relativePath: string; duration: number; width: number; height: number; fps: number; size: number; signature: string; createdAt: string; inputs?: PreviewInputs; url?: string; }
-export interface Execution { id: string; kind: 'copy' | 'voice' | 'render'; status: 'running' | 'done' | 'failed' | 'stopped' | 'interrupted'; progress: number; message: string; startedAt: string; finishedAt?: string; }
+export interface Execution { id: string; kind: 'copy' | 'voice' | 'selection' | 'render'; status: 'running' | 'done' | 'failed' | 'stopped' | 'interrupted'; progress: number; message: string; startedAt: string; finishedAt?: string; }
 export interface Task {
   id: string; name: string; productId: string; templateId: string; productSnapshot: Product;
   templateSnapshot: Template; variable: string; example: string; black: Record<string, string>;
   nodes: ScriptNode[]; confirmedNodes?: ScriptNode[]; stage: 'copy' | 'voice' | 'visual' | 'preview';
   copyConfirmed: boolean; audioConfirmed: boolean; intervals: Interval[]; plan: Plan | null;
   settings: OutputSettings; preview: Preview | null; previewStale: boolean; completed: boolean;
+  videoSubmittedAt?: string | null;
+  hostImage?: HostImage;
+  shotSelection?: import('./shot-selection.ts').ShotSelection & {model?:string;requestId?:string;usage?:unknown;contextSignature?:string;stale?:boolean;mode?:'manual'};
   execution: Execution | null; error: string; notice?: string; createdAt: string; updatedAt: string;
   renderBase?: { relativePath: string; planSignature: string }; lightTimeline?: Cue[];
   cleanup?: { status: 'pending' | 'done' | 'failed'; error?: string; at?: string };

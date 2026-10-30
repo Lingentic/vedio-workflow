@@ -323,10 +323,22 @@ export async function seedLibrary(library: Library, seedRoot = originalRoot()) {
       library.message = `正在导入固定画面 ${binding}`;
       await library.importOne(path.join(roots[rootIndex], '老葛素材', ...(kind === 'host' ? ['5s'] : []), file), undefined, kind, binding);
     }
-    for (const file of ['Carefree.mp3', 'Carefree-10s-48k.wav']) {
-      const bgm = path.resolve(import.meta.dirname, '../../../video-agent/experiments/ecommerce-bgm-swap-20261013/assets', file);
-      if (fs.existsSync(bgm) && !library.store.assets().some(asset => asset.kind === 'bgm' && asset.sourcePath === bgm)) await library.importOne(bgm, undefined, 'bgm');
-    }
   } finally { library.busy = false; library.message = ''; }
   library.store.setting('seededAt', new Date().toISOString());
+}
+
+/** Each data directory gets its own managed copy; user BGM and task settings stay unchanged. */
+export async function installBuiltinBgms(library: Library) {
+  const tracks: { id: string; file: string; title: string }[] = JSON.parse(await fsp.readFile(new URL('../data/bgm/tracks.json', import.meta.url), 'utf8'));
+  for (const track of tracks) {
+    const binding = `builtin-bgm:${track.id}`;
+    const existing = library.store.assets().find(asset => asset.kind === 'bgm' && asset.binding === binding);
+    if (existing && (existing.status === 'deleted' || library.available(existing))) continue;
+    const source = path.resolve(import.meta.dirname, '../data/bgm', track.file);
+    if (existing) { existing.sourcePath = source; library.store.putAsset(existing); }
+    const imported = existing ? await library.retry(existing.id) : await library.importOne(source, undefined, 'bgm', binding);
+    if (imported.status !== 'ready') throw new Error(`内置配乐「${track.title}」导入失败：${imported.error}`);
+    imported.title = track.title;
+    library.store.putAsset(imported);
+  }
 }
