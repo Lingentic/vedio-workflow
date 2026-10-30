@@ -8,11 +8,13 @@ import type { ScriptNode, WordTime } from './types.ts';
 interface ProviderEvent { code?: string; message?: string; request_id?: string; usage?: { characters?: number }; output?: { type?: string; finish_reason?: string; audio?: { data?: string; url?: string }; sentence?: { words?: WordTime[] } }; }
 export class Models {
   key: string;
+  baseUrl: string;
   constructor(profile: Profile) {
     const envFile = profile.credentialsFile || path.resolve(import.meta.dirname, '../../../video-agent/Kling-H3路线B-Electron交付包-20260904/module/.env');
     const env = fs.existsSync(envFile) ? fs.readFileSync(envFile, 'utf8') : '';
     const value = (name: string) => env.match(new RegExp(`^\\s*${name}\\s*=\\s*(.*?)\\s*$`, 'm'))?.[1]?.replace(/^(['"])(.*)\1$/, '$2') || '';
     this.key = process.env.DASHSCOPE_API_KEY || process.env.BAILIAN_API_KEY || value('DASHSCOPE_API_KEY') || value('BAILIAN_API_KEY');
+    this.baseUrl = (process.env.DASHSCOPE_BASE_URL || process.env.BAILIAN_BASE_URL || value('DASHSCOPE_BASE_URL') || value('BAILIAN_BASE_URL') || 'https://dashscope.aliyuncs.com').replace(/\/+$/, '').replace(/\/compatible-mode\/v1$/, '');
   }
   ready() { return !!this.key; }
   safe(text: string) { return (this.key ? text.replaceAll(this.key, '[密钥已隐藏]') : text).replace(/https?:\/\/\S+/g, '[服务地址]'); }
@@ -22,7 +24,7 @@ export class Models {
     const fixed = nodes.filter(node => node.type !== 'generated_narration').reduce((sum, node) => sum + count(node.text), 0);
     const budget = example.trim() ? `有范例，整篇参考约 ${count(example)} 字；固定内容 ${fixed} 字，待生成内容围绕剩余篇幅安排。` : `无范例，整篇目标190～410字，固定内容 ${fixed} 字，待生成总预算约 ${Math.max(0,190-fixed)}～${Math.max(0,410-fixed)} 字。`;
     const prompt = copyPrompt.replace('{{template_nodes}}', JSON.stringify(nodes, null, 2)).replace('{{selling_points}}', sellingPoints).replace('{{reference_example}}', example || '（未提供）').replace('{{固定内容总字数及待生成内容的总字数预算}}', budget);
-    const response = await fetch('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', {
+    const response = await fetch(`${this.baseUrl}/compatible-mode/v1/chat/completions`, {
       method: 'POST', headers: { Authorization: `Bearer ${this.key}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(180000),
       body: JSON.stringify({ model: 'qwen3.7-plus', enable_thinking: false, response_format: { type: 'json_object' }, temperature: 0.8, messages: [{ role: 'user', content: prompt }] }),
     });
@@ -34,7 +36,7 @@ export class Models {
   }
   async voice(text: string): Promise<{ audio: Buffer; words: WordTime[]; requestId: string; billedCharacters?: number }> {
     if (!this.key) throw new Error('未找到阿里云调用配置，请检查本机服务配置');
-    const response = await fetch('https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer', {
+    const response = await fetch(`${this.baseUrl}/api/v1/services/audio/tts/SpeechSynthesizer`, {
       method: 'POST', headers: { Authorization: `Bearer ${this.key}`, 'Content-Type': 'application/json', 'X-DashScope-SSE': 'enable' },
       signal: AbortSignal.timeout(180000), body: JSON.stringify({ ...voiceConfig, input: { ...voiceConfig.input, text } }),
     });

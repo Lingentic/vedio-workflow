@@ -36,6 +36,34 @@ export class Media {
     });
   }
   ff(args: string[], options: RunOptions = {}) { return this.run(this.ffmpeg, ['-nostdin', '-hide_banner', '-loglevel', 'error', ...args], options); }
+  private browserPreviews = new Map<string, Promise<string>>();
+  async browserPreview(source: string, cacheDir: string): Promise<string> {
+    const stat = await fsp.stat(source);
+    const key = createHash('sha256').update(JSON.stringify([source, stat.size, stat.mtimeMs])).digest('hex');
+    const target = path.join(cacheDir, key + '.mp4');
+    const pending = this.browserPreviews.get(target);
+    if (pending) return pending;
+    const prepare = async () => {
+      if (fs.existsSync(target) && (await fsp.stat(target)).size > 0) return target;
+      const signal = AbortSignal.timeout(180000);
+      const probe = JSON.parse(await this.run(this.ffprobe, ['-v', 'error', '-show_entries', 'stream=codec_type,codec_name,pix_fmt', '-of', 'json', source], { signal })) as {
+        streams: { codec_type: string; codec_name: string; pix_fmt?: string }[];
+      };
+      const video = probe.streams.find(stream => stream.codec_type === 'video');
+      if (!video) throw new Error('该素材没有可预览的视频画面');
+      if (path.extname(source).toLowerCase() === '.mp4' && video.codec_name === 'h264' && video.pix_fmt === 'yuv420p' && probe.streams.filter(stream => stream.codec_type === 'audio').every(stream => stream.codec_name === 'aac')) return source;
+      await fsp.mkdir(cacheDir, { recursive: true });
+      const temporary = target + '.part';
+      try {
+        await this.ff(['-y', '-i', source, '-map', '0:v:0', '-map', '0:a:0?', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', '-threads', '2', '-f', 'mp4', temporary], { signal });
+        await fsp.rename(temporary, target);
+        return target;
+      } finally { await fsp.rm(temporary, { force: true }); }
+    };
+    const promise = prepare();
+    this.browserPreviews.set(target, promise);
+    try { return await promise; } finally { this.browserPreviews.delete(target); }
+  }
   async probe(file: string): Promise<MediaInfo> {
     const result = JSON.parse(await this.run(this.ffprobe, ['-v', 'error', '-show_entries', 'stream=codec_type,width,height,r_frame_rate,duration,start_time,nb_frames:format=duration,size,start_time', '-of', 'json', file])) as {
       streams: { codec_type: string; width?: number; height?: number; r_frame_rate?: string; duration?: string; start_time?: string; nb_frames?: string }[];

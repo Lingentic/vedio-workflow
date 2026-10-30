@@ -263,7 +263,7 @@ export class Workflow {
     } else this.rebuildPlan(task);
     if (!task.plan!.valid) { this.store.putTask(task); throw new AppError('当前素材不可用或时长不足，请检查画面'); }
     return this.start(task, 'render', async job => {
-      const videoAssets = this.store.assets().filter(asset => this.library.available(asset) &&
+      const videoAssets = this.store.assets().filter(asset => asset.hasVideo !== false && Number.isFinite(asset.duration) && asset.duration > 0 && this.library.available(asset) &&
         ((asset.kind === 'product' && asset.productId === task.productId) || (asset.kind === 'presenter' && task.nodes.some(node => node.id === asset.binding))));
       for (const asset of videoAssets) job.inputIds.add(asset.id);
       for (const asset of videoAssets) if (asset.videoDuration === undefined || asset.videoStart === undefined) {

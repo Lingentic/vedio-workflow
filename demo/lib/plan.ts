@@ -59,7 +59,7 @@ export function buildPlan(task: Task, library: Library, manualIds?: string[], re
   const candidates = library.ready(task.productId);
   let repeated = false;
   let selected: (Asset | null)[] = [];
-  if (manualIds) selected = manualIds.map(id => library.store.asset(id)).map(asset => asset?.kind === 'product' && asset.productId === task.productId && library.available(asset) ? asset : null);
+  if (manualIds) selected = manualIds.map(id => candidates.find(asset => asset.id === id) || null);
   else if (candidates.length) {
     const retained = retainAutoIds?.map(id => candidates.find(asset => asset.id === id)).filter((asset): asset is Asset => !!asset) || [];
     selected.push(...retained);

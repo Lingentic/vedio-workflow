@@ -60,7 +60,7 @@ export class Library {
     if (!ids.length) throw new AppError('请先选择待处理原视频');
     const sources = [...new Set(ids)].map(id => {
       const asset = this.store.asset(id);
-      if (!asset || asset.productId !== productId || asset.kind !== 'source' || asset.status === 'deleted' || asset.cleaned || asset.processed) throw new AppError('只能处理当前商品下尚未完成的原视频');
+      if (!asset || asset.productId !== productId || asset.kind !== 'source' || asset.hasVideo === false || asset.status === 'deleted' || asset.cleaned || asset.processed) throw new AppError('只能处理当前商品下尚未完成的原视频');
       if (asset.naming?.status === 'uncertain' && !confirmUncertain) throw new AppError('上次命名结果不确定，继续可能再次计费，请先确认', 409);
       return asset;
     });
@@ -89,19 +89,21 @@ export class Library {
     const status = asset.status === 'ready' && !this.fileAvailable(asset) && !asset.cleaned ? 'unavailable' : asset.status;
     return { ...asset, status, available, url: asset.relativePath ? `/media/asset/${asset.id}` : undefined, posterUrl: asset.posterPath ? `/poster/${asset.id}` : undefined };
   }
-  ready(productId: string): Asset[] { return this.store.assets(productId).filter(asset => asset.kind === 'product' && this.available(asset)); }
+  ready(productId: string): Asset[] { return this.store.assets(productId).filter(asset => asset.kind === 'product' && asset.hasVideo !== false && Number.isFinite(asset.duration) && asset.duration > 0 && this.available(asset)); }
   async importOne(source: string, productId?: string, kind: Asset['kind'] = 'product', binding?: string): Promise<Asset> {
     if (!path.isAbsolute(source)) throw new AppError('请选择本地视频文件的绝对路径');
+    const isImage = /\.(png|jpe?g|webp|avif|gif|bmp|tiff?)$/i.test(source);
+    if (isImage && kind === 'source') kind = 'product';
     const id = Store.id();
     const relativeDir = kind === 'product' || kind === 'source' ? path.join('商品素材', 'product-' + signature(productId).slice(0, 16), id) : path.join('固定素材', id);
     const dir = this.store.path(relativeDir);
     const asset: Asset = { id, productId, kind, title: path.basename(source), status: 'pending', duration: 0, sourcePath: source, binding, processed: kind !== 'source', createdAt: new Date().toISOString() };
     this.store.putAsset(asset);
     try {
-      const info = assetMediaInfo(kind, await this.media.probe(source));
-      if (kind !== 'bgm' && !info.hasVideo) throw new Error('所选文件没有可用视频画面');
-      if (kind === 'host' && !info.hasAudio) throw new Error('主播原片没有原声音轨');
-      if (kind === 'bgm' && !info.hasAudio) throw new Error('配乐文件没有声音');
+      const info: Partial<MediaInfo> = isImage ? { hasVideo: false, hasAudio: false } : assetMediaInfo(kind, await this.media.probe(source));
+      if (!isImage && kind !== 'bgm' && !info.hasVideo) throw new Error('所选文件没有可用视频画面');
+      if (!isImage && kind === 'host' && !info.hasAudio) throw new Error('主播原片没有原声音轨');
+      if (!isImage && kind === 'bgm' && !info.hasAudio) throw new Error('配乐文件没有声音');
       await fsp.mkdir(dir, { recursive: true });
       const ext = path.extname(source).toLowerCase();
       const target = path.join(dir, 'original' + ext);
@@ -130,7 +132,7 @@ export class Library {
       for (let i = 0; i < files.length; i++) {
         this.message = `正在处理第 ${i + 1}/${files.length} 个文件`;
         const asset = await this.importOne(files[i], productId, processed ? 'product' : 'source');
-        asset.processed = processed; this.store.putAsset(asset);
+        asset.processed = asset.hasVideo === false ? true : processed; this.store.putAsset(asset);
         results.push(this.store.asset(asset.id)!);
       }
       return results;

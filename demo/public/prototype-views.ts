@@ -6,7 +6,7 @@ const esc = (value: unknown): string => String(value ?? '').replace(/[&<>"']/g, 
 const clock = (value = 0): string => `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, '0')}`;
 const seconds = (value = 0): string => `${value.toFixed(1)} 秒`;
 const date = (value: string): string => new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-const imageAsset = (asset: Asset): boolean => /\.(png|jpe?g|webp|avif|gif|bmp)$/i.test(asset.title);
+const imageAsset = (asset: Asset): boolean => /\.(png|jpe?g|webp|avif|gif|bmp|tiff?)$/i.test(asset.title);
 const assetType = (asset: Asset): string => imageAsset(asset) ? 'image' : asset.kind === 'bgm' ? 'sound' : asset.kind === 'source' ? 'source' : 'video';
 const kindLabel = (asset: Asset): string => ({ image: '图片', sound: '声音', source: '原始视频', video: '视频切片' })[assetType(asset)]!;
 const taskStatus = (task: Task): string => task.completed ? '已完成' : task.execution?.status === 'running' ? '生成中' : task.error ? '生成失败' : '未完成';
@@ -41,7 +41,7 @@ export function workbenchShell(active: string, content: string, dataRoot: string
   const modules = [['products', 'product', '商品获取'], ['production', 'video', '视频制作'], ['records', 'records', '生成记录'], ['publishing', 'publish', '发布中心'], ['materials', 'library', '素材中心']];
   const label = modules.find(([id]) => id === selected)?.[2] || '视频制作';
   return `<section class="video-remake-screen ecommerce-video-workspace" aria-label="电商AI视频工作流">
-    <header class="video-remake-topbar"><div class="workbench-tools"><button type="button" class="ec-led-btn ec-led-btn--sm" data-action="change-root" title="${esc(dataRoot)}">数据目录</button>${['products', 'publishing'].includes(selected) ? '<span class="workbench-demo-label">原型演示 · 未接入后端</span>' : ''}</div><span class="video-remake-brand"><i class="agent-brand-mark"><img class="zup-logo-shape zup-brand-image" src="/prototype/assets/zhangyu-logo.png" alt="" draggable="false"></i><span><strong>电商AI视频工作流</strong><small>${label}</small></span></span></header>
+    <header class="video-remake-topbar"><div class="workbench-tools"><button type="button" class="ec-led-btn ec-led-btn--sm" data-action="change-root" title="${esc(dataRoot)}">数据目录</button>${selected === 'publishing' ? '<span class="workbench-demo-label">原型演示 · 未接入后端</span>' : ''}</div><span class="video-remake-brand"><i class="agent-brand-mark"><img class="zup-logo-shape zup-brand-image" src="/prototype/assets/zhangyu-logo.png" alt="" draggable="false"></i><span><strong>电商AI视频工作流</strong><small>${label}</small></span></span></header>
     <div class="video-studio-shell"><aside class="ec-video-navigation"><header>工作流程</header><nav aria-label="电商视频工作流模块">${modules.map(([id, mark, title]) => `<button type="button" class="${selected === id ? 'active' : ''}" data-page="${id === 'materials' ? 'library' : id}" aria-label="${title}" aria-pressed="${selected === id}"><i aria-hidden="true">${icon(String(mark))}</i><span><strong>${title}</strong></span></button>`).join('')}</nav></aside>${content}</div></section>`;
 }
 export function productionFlow(step: WorkbenchStep, locked = false): string {

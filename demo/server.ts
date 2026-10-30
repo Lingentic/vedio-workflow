@@ -13,6 +13,7 @@ import { Workflow } from './lib/workflow.ts';
 import { templates } from './lib/templates.ts';
 import { AppError } from './lib/types.ts';
 import { ShotNamer } from './lib/material-naming.ts';
+import { forwardCollection } from './lib/collector.ts';
 
 const port = Number(process.env.PORT || 4186);
 const defaultRoot = defaultDataRoot();
@@ -93,8 +94,18 @@ const server = http.createServer(async (request, response) => {
         return json(response, { assets: assets.map(asset => uploadLibrary.publicAsset(asset)) }, 201);
       } finally { activeUploads--; await fsp.rm(file, { force: true }); }
     }
+    if ((parts[0] === 'api' && parts[1] === 'collect') || parts[0] === 'collect-media') {
+      await forwardCollection(request, response, url); return;
+    }
+    if (parts[0] === 'collect' && ['GET', 'HEAD'].includes(method)) {
+      const webRoot = path.resolve(appRoot, '../ecom-video-collect/web');
+      const file = path.resolve(webRoot, ...parts.slice(1));
+      if (!inside(webRoot, file) || !['.js', '.css'].includes(path.extname(file))) throw new AppError('采集页面资源不存在', 404);
+      return await sendFile(request, response, file);
+    }
     if (parts[0] === 'api') {
       const data = ['POST','PATCH','PUT'].includes(method) ? await body(request) : {};
+      if (parts[1] === 'runtime' && method === 'GET') return json(response, { app: 'vedio-workflow', interfaceVersion: 'online-collection-preview-v5' });
       if (parts[1] === 'state' && method === 'GET') {
         return json(response, { configured: true, dataRoot: store.root, defaultDataRoot: defaultRoot, modelReady: models.ready(), toolsReady: true, templates,
           products: store.products(), assets: store.assets().map(asset => library.publicAsset(asset)), tasks: store.tasks().map(task => workflow.publicTask(task)),
@@ -190,7 +201,10 @@ const server = http.createServer(async (request, response) => {
       if (!asset || asset.status === 'deleted') throw new AppError('素材不存在或已删除', 404);
       const relative = parts[0] === 'poster' ? asset.posterPath : asset.relativePath;
       if (!relative || !fs.existsSync(store.path(relative))) throw new AppError('素材文件暂不可用', 404);
-      return await sendFile(request, response, store.path(relative));
+      const source = store.path(relative);
+      const file = parts[0] === 'media' && url.searchParams.get('browser') === '1'
+        ? await media.browserPreview(source, store.path(path.join('缓存', '素材预览'))) : source;
+      return await sendFile(request, response, file);
     }
     if (parts[0] === 'media' && parts[1] === 'task') {
       const task = workflow.get(parts[2]), kind = parts[3];

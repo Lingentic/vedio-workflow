@@ -18,8 +18,8 @@ export interface Task { id: string; name: string; productId: string; templateId:
 export interface AppState { configured: boolean; dataRoot: string; defaultDataRoot: string; modelReady: boolean; toolsReady: boolean; templates: Template[]; products: Product[]; assets: Asset[]; tasks: Task[]; bgms: Asset[]; seedAvailable: boolean; activeExecution: ({ taskId: string } & Execution) | null; libraryBusy?: boolean; libraryMessage?: string; materialProcessing?: { settings: { threshold: number; minDurationSec: number }; namingReady: boolean; namingModel: string }; }
 interface ApiError { error?: string; message?: string; }
 type Page = 'production' | 'library' | 'records' | 'task' | 'products' | 'publishing';
-interface PrototypeIsland { html(): string; mount(root: HTMLElement, options: {toast:(message:string)=>void;goto:(page:string)=>void}): void; setAccount(value:string): void; }
-declare global { interface Window { EcommerceVideoProducts: PrototypeIsland; EcommerceVideoPublishing: PrototypeIsland; } }
+interface PrototypeIsland { html(): string; mount(root: HTMLElement, options: {toast:(message:string)=>void;goto:(page:string,productId?:string)=>void}): void; setAccount(value:string): void; }
+declare global { interface Window { EcommerceVideoProducts: PrototypeIsland; EcommerceVideoPublishing: PrototypeIsland; CollectApi: {migrateLegacyStorage(): Promise<void>}; } }
 let workbenchTemplateId = '';
 let workbenchSetupStep: 'architecture' | 'copy' | 'generation' = 'architecture';
 let workbenchGenerationOpen = false;
@@ -45,10 +45,15 @@ const UI_POINTER_KEY = 'video-workbench-ui-v1';
 let savedPointer: UiPointer | null = null;
 try { savedPointer = JSON.parse(localStorage.getItem(UI_POINTER_KEY) || 'null') as UiPointer | null; } catch { savedPointer = null; }
 let page: Page = savedPointer && ['task','library','records','products','publishing'].includes(savedPointer.page) ? savedPointer.page : 'production';
+const entryParams = new URLSearchParams(location.search);
+if (['products','collection','library'].includes(entryParams.get('page') || '')) {
+  page = entryParams.get('page') === 'collection' ? 'products' : entryParams.get('page') as Page;
+}
 let selectedTaskId = savedPointer?.taskId || '';
 let libraryTab = 'product';
 let libraryMediaType: 'all' | 'video' | 'source' | 'image' | 'sound' = 'all';
-let libraryProductId = 'all';
+let libraryProductId = entryParams.get('page') === 'library' ? entryParams.get('productId') || 'all' : 'all';
+if (page === 'library' && entryParams.get('page') === 'library') libraryBoard = 'product';
 let libraryPickerListeners: AbortController | undefined;
 let libraryPickerElement: HTMLElement | undefined;
 const boundElements = new WeakSet<HTMLElement>();
@@ -102,6 +107,9 @@ async function api<T>(url: string, method = 'GET', body?: unknown): Promise<T> {
 async function refresh(keepPage = true): Promise<void> {
   state = await api<AppState>('/api/state');
   for(const id of librarySelectedSources){const asset=state.assets.find(item=>item.id===id);if(!asset||asset.processed===true||asset.processing?.stage==='ready')librarySelectedSources.delete(id);}
+  for (const asset of state.assets) {
+    if (asset.url?.startsWith('/media/asset/') && asset.kind !== 'bgm' && !/\.(png|jpe?g|webp|avif|gif|bmp|tiff?)$/i.test(asset.title)) asset.url += '?browser=1';
+  }
   if (selectedTaskId && !state.tasks.some(task => task.id === selectedTaskId)) selectedTaskId = '';
   if (!keepPage && page === 'task' && !selectedTaskId) page = 'production';
   if (pendingTaskPatches.size === 0 && draftFlushes.size === 0) render();
@@ -171,6 +179,11 @@ function patchView(container: HTMLElement, markup: string): void {
   };
   children(container, template.content);
 }
+let collectionLoadError = '';
+try {
+  if (!window.EcommerceVideoProducts || !window.CollectApi) throw new Error('商品获取组件未加载，请重启工作台服务后刷新页面。');
+  await window.CollectApi.migrateLegacyStorage();
+} catch (error) { collectionLoadError = error instanceof Error ? error.message : String(error); }
 function render(): void {
   if (!state || !root || manualSortBusy) return;
   const completedRecord = page === 'task' && selectedTask()?.completed ? selectedTask() : undefined;
@@ -181,12 +194,17 @@ function render(): void {
   if (bgmAudition && (!auditionTask || auditionTask.stage !== 'visual' || auditionTask.id !== bgmAuditionTaskId || auditionTask.settings.bgmId !== bgmAuditionAssetId)) stopBgmAudition();
   rememberPointer();
   if (!state.configured) { patchView(root, renderSetup()); bind(); return; }
-  island?.setAccount('local-prototype-ui');
-  let content = island ? `<div class="workbench-island" data-ui-key="prototype:${page}">${island.html()}</div>` : page === 'library' ? renderLibrary() : page === 'records' ? renderRecords() : page === 'task' && selectedTask() ? renderTask(selectedTask()!) : renderProduction();
+  island?.setAccount(page === 'products' ? 'local' : 'local-prototype-ui');
+  let content = island ? `<div class="workbench-island" data-ui-key="prototype:${page}">${page === 'products' && collectionLoadError ? `<div class="notice">${esc(collectionLoadError)}</div>` : island.html()}</div>` : page === 'library' ? renderLibrary() : page === 'records' ? renderRecords() : page === 'task' && selectedTask() ? renderTask(selectedTask()!) : renderProduction();
   if (page === 'task' && !selectedTask()) page = 'production';
   patchView(root, shell(content));
   bind();
-  island?.mount(root, {toast:showToast,goto:target=>{void navigate((target==='materials'?'library':target) as Page).catch(showError);}});
+  if (!(page === 'products' && collectionLoadError)) island?.mount(root, {toast:showToast,goto:(target,productId)=>{
+    if (target === 'library' || target === 'materials') {
+      libraryBoard = 'product'; libraryProductId = productId || 'all';
+      void refresh().then(() => navigate('library')).catch(showError);
+    } else void navigate(target as Page).catch(showError);
+  }});
   updateBgmAuditionButton();
   if (completedRecord) showModal(recordDetailsView(completedRecord));
 }

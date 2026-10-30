@@ -29,6 +29,8 @@ test('视频起始时间非零、音轨比画面长时，按真实视频时长�
     // A legacy asset records container duration and lacks video-stream metadata.
     store.putAsset({ id, productId: 'frames-product', kind: 'product', title: `${id}.mp4`, relativePath, status: 'ready', duration: info.duration, createdAt: new Date().toISOString() });
   }
+  fs.writeFileSync(store.path('商品图片.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a9WQAAAAASUVORK5CYII=', 'base64'));
+  store.putAsset({ id: 'image', productId: 'frames-product', kind: 'product', title: '商品图片.png', relativePath: '商品图片.png', status: 'ready', hasVideo: false, duration: 0, processed: true, createdAt: new Date().toISOString() });
   const task = workflow.create('frames-product', 'template-01-insoles');
   const node = { id: 'g', type: 'generated_narration' as const, text: '测试口播。' };
   task.templateSnapshot.nodes = [node]; task.templateSnapshot.variableNodeId = undefined; task.black = { g: node.text }; task.nodes = [node];

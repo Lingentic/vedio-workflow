@@ -73,6 +73,25 @@ test('红色下半屏和AI商品全屏共用游标，通用主播期间暂停；
   assert.equal(buildPlan(task,e.library,['A']).valid,false);
   const manual=buildPlan(task,e.library,['A','A','A']);assert.equal(manual.valid,true);assert.equal(manual.entries.length,3);assert.equal(manual.warnings.length,0);
 });
+test('图片可预览但不能进入自动或手动画面队列，旧视频缺少 hasVideo 仍可用',t=>{
+  const e=environment(t);
+  const image=asset(e.store,'image',0);image.hasVideo=false;image.title='商品图.png';image.relativePath=localFile(e.store,path.join('商品素材','商品图.png'));e.store.putAsset(image);
+  const positiveImage=asset(e.store,'image-with-duration',4);positiveImage.hasVideo=false;e.store.putAsset(positiveImage);
+  const zeroVideo=asset(e.store,'zero-video',0);zeroVideo.hasVideo=true;e.store.putAsset(zeroVideo);
+  const task=e.workflow.create('test-product','template-01-insoles');
+  task.nodes=[{id:'n',type:'generated_narration',text:'商品介绍'}];task.intervals=intervalsFromNodes(task.nodes);
+  Object.assign(task.intervals[0],{status:'ready',duration:3,relativePath:localFile(e.store,path.join('制作任务',task.id,'audio','a.wav'))});
+  assert.equal(e.library.publicAsset(image).available,true,'图片保持预览可用');
+  assert.deepEqual(e.library.ready('test-product'),[]);
+  const empty=buildPlan(task,e.library);assert.equal(empty.valid,false);assert.equal(empty.entries.length,0);assert.match(empty.warnings[0],/没有可用片段/);
+  const invalid=buildPlan(task,e.library,[image.id,positiveImage.id,zeroVideo.id]);assert.equal(invalid.valid,false);assert.ok(invalid.entries.every(entry=>!entry.available&&entry.duration===0));
+  const video=asset(e.store,'legacy-video',4);assert.equal(video.hasVideo,undefined);
+  assert.deepEqual(e.library.ready('test-product').map(item=>item.id),[video.id]);
+  const mixed=buildPlan(task,e.library);assert.equal(mixed.valid,true);assert.ok(mixed.entries.every(entry=>entry.assetId===video.id));assert.ok(mixed.pieces.every(piece=>piece.productAssetId===video.id));
+  assert.equal(buildPlan(task,e.library,[image.id,video.id]).valid,false);
+  assert.equal(buildPlan(task,e.library,[video.id]).valid,true);
+});
+
 test('只改一个黑色节点，只使所属连续口播区间失效，其他音频继续复用',t=>{
   const e=environment(t);let task=e.workflow.create('test-product','template-01-insoles');
   const black=Object.fromEntries(task.templateSnapshot.nodes.filter(node=>node.type==='generated_narration').map(node=>[node.id,'这款柔软舒适。']));
