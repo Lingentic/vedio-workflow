@@ -513,3 +513,12 @@ select.ec-prod-control { appearance: none; padding-right: 28px; background-image
 .ec-prod-stream-status { display:block; min-height:16px; line-height:16px; font-size:11px; color:var(--prod-muted); }
 .ec-prod-lightbox:fullscreen { width:100vw; max-height:100dvh; border-radius:0; }
 @media(max-width:560px) { .ec-prod-online-controls { flex-wrap:wrap; } .ec-prod-online-controls input { min-width:45%; } }
+
+.ec-prod-material-filters { display:flex; gap:8px; flex-wrap:wrap; margin:12px 0; }
+.ec-prod-material-filters button { padding:7px 11px; border:1px solid #e3e0ea; border-radius:8px; background:#fff; color:var(--prod-muted); cursor:pointer; }
+.ec-prod-material-filters button.is-active { background:#eee7ff; border-color:#d2bfff; color:#7047d9; }
+.ec-prod-material-filters span { margin-left:4px; font-variant-numeric:tabular-nums; }
+.ec-prod-membership { display:inline-block; align-self:start; font-size:11px; padding:3px 6px; border-radius:5px; color:#8d6930; background:#fff4dd; }
+.ec-prod-membership.is-imported { color:#28735c; background:#e8f5ee; }
+.ec-prod-media-ops { flex-wrap:wrap; }
+.ec-prod-media-ops .ec-prod-import-one { color:#7047d9; }

@@ -10,6 +10,7 @@
   /* ---------- 素材状态机（PRD §3.1 在本模块侧可达的子集） ---------- */
   const STATUS = {
     pending: { label: '待爬取', tone: 'neutral' },
+    awaitingImport: { label: '待入库', tone: 'warn' },
     crawling: { label: '爬取中', tone: 'working' },
     ready: { label: '素材就绪', tone: 'ok' },
     crawlFailed: { label: '爬取失败', tone: 'danger' },
@@ -34,12 +35,18 @@
   ];
 
   const newZone = () => ({ running: false, paused: false, errors: {}, pending: 0, queue: [], requestId: 0, results: [], failed: [], attempts: {}, plan: [], cursor: 0, epoch: 0, pace: null, record: null });
-  const newCrawl = () => ({ channels: [CRAWL_CHANNELS[0]], zones: { video: newZone(), image: newZone() }, taken: new Set(), epoch: 0, open: new Set() });
+  const newCrawl = () => ({ channels: [...CRAWL_CHANNELS], zones: { video: newZone(), image: newZone() }, taken: new Set(), epoch: 0, open: new Set() });
   const crawlBusy = crawl => Object.values(crawl.zones).some(zone => zone.running);
+  const materialStatus = (item, assets = item.assets || {}) => {
+    const groups = ['main', 'video', 'image'].map(key => assets[key] || []);
+    if (groups.some(rows => rows.some(row => row.workbench))) return 'ready';
+    if (groups.some(rows => rows.length) || item.collectedImages?.length || (item.crawls || []).some(record => record.video?.length || record.image?.length)) return 'awaitingImport';
+    return item.status === 'crawlFailed' ? 'crawlFailed' : 'pending';
+  };
   /* ---------- 种子数据（单一列表，不区分我的 / 全部） ---------- */
   const seedItems = () => [];
   const blankFilters = () => ({ q: '', cat: '', platform: '', status: '' });
-  const blank = () => ({ filters: blankFilters(), items: seedItems(), dialog: null, detailId: null, detailPanel: 'info', recordOpen: null, supplementId: null, preview: null, leaveConfirm: null, draft: null });
+  const blank = () => ({ filters: blankFilters(), items: seedItems(), dialog: null, detailId: null, detailPanel: 'info', materialFilters: { video: 'all', image: 'all' }, recordOpen: null, supplementId: null, preview: null, leaveConfirm: null, draft: null });
   let state = blank();
   let timers = [];
   let api = {};
@@ -52,7 +59,7 @@
         const assets = item.assets || item.materialDetails || { main: [], video: [], image: [] };
         for (const kind of ['main','video','image']) assets[kind] = (Array.isArray(assets[kind]) ? assets[kind] : []).map(row => ({ ...row, kind: kind === 'video' ? 'video' : 'image' }));
         const materials = { main: assets.main.length, video: assets.video.filter(row => !row.disabled).length, image: assets.image.filter(row => !row.disabled).length };
-        const status = ['crawling','ready'].includes(item.status) ? (materials.video + materials.image + materials.main ? 'ready' : 'pending') : item.status;
+        const status = ['crawling','ready','pending','awaitingImport','crawlFailed'].includes(item.status) ? materialStatus(item, assets) : item.status;
         return { ...item, assets, materials, status, collectedImages: item.collectedImages || [], crawls: (item.crawls || []).map(record => ['running','paused'].includes(record.status) ? { ...record, status: 'interrupted', pending: 0 } : record) };
       });
       return fresh;
@@ -376,18 +383,24 @@
   /* 基本信息里的素材墙 = 爬到的全部（含没归入的）＋ 详情页增补进来的本地素材；归入过的才谈得上禁用 */
   const crawledOf = (item, kind) => {
     const rows = new Map();
-    for (const record of item.crawls || []) for (const row of record[kind] || []) {
-      const full = { ...row, kind, origin: row.channel || row.from || record.channel || "联网爬取", inPool: false, assetIndex: -1 };
+    const candidate = (row, origin) => {
+      const full = { ...row, kind, origin, inPool: false, assetIndex: -1 };
       rows.set(mediaKey(full), full);
-    }
-    (item.assets?.[kind] || []).forEach((row, assetIndex) => {
-      const full = { ...row, kind, origin: row.from || row.channel || "归档素材", inPool: true, assetIndex, disabled: Boolean(row.disabled) };
-      rows.set(mediaKey(full), { ...rows.get(mediaKey(full)), ...full });
+    };
+    if (kind === 'image') (item.collectedImages || []).forEach(row => candidate(row, '商品图集'));
+    for (const record of item.crawls || []) for (const row of record[kind] || []) candidate(row, row.channel || row.from || record.channel || '联网爬取');
+    for (const group of kind === 'image' ? ['main', 'image'] : ['video']) (item.assets?.[group] || []).forEach((row, assetIndex) => {
+      const full = { ...row, kind, origin: row.from || row.channel || '归档素材', inPool: true, assetGroup: group, assetIndex, disabled: Boolean(row.disabled) };
+      const previous = rows.get(mediaKey(full));
+      rows.set(mediaKey(full), previous?.workbench && !full.workbench ? { ...full, ...previous } : { ...previous, ...full });
     });
     return [...rows.values()];
   };
-  /* 素材墙上的单张卡：禁用是真实开关（灰显、可恢复、计入黑段缺料） */
-  const mediaCard = (item, kind, row) => `<article class="ec-prod-media${row.disabled ? ' is-off' : ''}"><button type="button" class="ec-prod-media-frame" data-lp="stored-preview" data-id="${esc(item.id)}" data-kind="${kind}" data-media-key="${esc(mediaKey(row))}">${row.src ? `<img src="${esc(mediaSrc(row))}" alt="">` : ''}<span class="ec-prod-tag">${kind === 'video' ? '视频' : '图片'}</span>${kind === 'video' ? '<span class="ec-prod-play">▶</span>' : ''}${row.duration ? `<span class="ec-prod-dur">${row.duration}s</span>` : ''}</button><div class="ec-prod-media-body"><strong>${esc(row.name)}</strong><small>来源 ${esc(row.origin || row.from || row.channel || '采集')} · ${row.workbench ? '已同步工作台' : row.inPool ? '待同步工作台' : '候选素材'}</small></div><div class="ec-prod-media-ops"><button type="button" data-lp="stored-preview" data-id="${esc(item.id)}" data-kind="${kind}" data-media-key="${esc(mediaKey(row))}">预览</button>${row.inPool ? `<button type="button" data-lp="${row.disabled ? 'media-enable' : 'media-disable'}" data-id="${esc(item.id)}" data-kind="${kind}" data-index="${row.assetIndex ?? 0}">${row.disabled ? '恢复同步' : '暂停同步'}</button>` : ''}</div></article>`;
+  const mediaCard = (item, kind, row) => {
+    const busy = pushing.has(item.id);
+    const rowBusy = busy && (pushing.get(item.id) === true || pushing.get(item.id) === mediaKey(row));
+    return `<article class="ec-prod-media${row.disabled ? ' is-off' : ''}" data-ui-key="detail-media:${esc(kind + ':' + mediaKey(row))}"><button type="button" class="ec-prod-media-frame" data-lp="stored-preview" data-id="${esc(item.id)}" data-kind="${kind}" data-media-key="${esc(mediaKey(row))}">${row.src ? `<img src="${esc(mediaSrc(row))}" alt="">` : ''}<span class="ec-prod-tag">${kind === 'video' ? '视频' : '图片'}</span>${kind === 'video' ? '<span class="ec-prod-play">▶</span>' : ''}${row.duration ? `<span class="ec-prod-dur">${row.duration}s</span>` : ''}</button><div class="ec-prod-media-body"><strong>${esc(row.name)}</strong><span class="ec-prod-membership${row.workbench ? ' is-imported' : ''}">${row.workbench ? '已归入素材中心' : '未归入素材中心'}</span><small>来源 ${esc(row.origin || row.from || row.channel || '采集')}${row.workbenchError ? ` · 入库失败：${esc(row.workbenchError)}` : ''}</small></div><div class="ec-prod-media-ops"><button type="button" data-lp="stored-preview" data-id="${esc(item.id)}" data-kind="${kind}" data-media-key="${esc(mediaKey(row))}">预览</button>${!row.workbench ? `<button type="button" class="ec-prod-import-one" data-lp="stored-import" data-id="${esc(item.id)}" data-kind="${kind}" data-media-key="${esc(mediaKey(row))}" ${busy ? 'disabled' : ''}>${rowBusy ? '正在归入…' : row.workbenchError ? '重试归入素材中心' : '归入素材中心'}</button>` : ''}${row.inPool ? `<button type="button" data-lp="${row.disabled ? 'media-enable' : 'media-disable'}" data-id="${esc(item.id)}" data-kind="${row.assetGroup || kind}" data-index="${row.assetIndex}" ${busy ? 'disabled' : ''}>${row.disabled ? '恢复同步' : '暂停同步'}</button>` : ''}</div></article>`;
+  };
   const ingestFiles = (kind, item) => {
     if (item) openWorkbench(item);
     toast("请在工作台素材库中使用“添加视频”增补本地素材");
@@ -435,9 +448,14 @@
       </div>
       ${['video', 'image'].map(kind => {
         const list = crawledOf(item, kind);
-        return `<section class="ec-prod-media-group">
-        <header><i>${kind === 'video' ? '▶' : '⛰'}</i><b>${kind === 'video' ? '视频素材' : '图片素材'} <span>(${list.length})</span></b><small class="ec-prod-hint">联网爬到的都在这 · 已归入 ${list.filter(row => row.inPool).length}</small></header>
-        ${list.length ? `<div class="ec-prod-media-grid${kind === 'video' ? ' ec-prod-media-grid--video' : ''}">${list.map(row => mediaCard(item, kind, row)).join('')}</div>` : `<div class="ec-prod-hint" style="padding:18px 0">还没有${kind === 'video' ? '视频' : '图片'}素材${kind === 'video' ? '' : ''}；到「联网爬取」tab 再爬一次补齐。</div>`}
+        const filter = state.materialFilters?.[kind] || 'all';
+        const imported = list.filter(row => row.workbench).length;
+        const shown = list.filter(row => filter === 'all' || (filter === 'imported' ? row.workbench : !row.workbench));
+        const options = [['all', '全部', list.length], ['imported', '已归入素材中心', imported], ['pending', '未归入素材中心', list.length - imported]];
+        return `<section class="ec-prod-media-group" data-ui-key="detail-group:${kind}">
+        <header><i>${kind === 'video' ? '▶' : '⛰'}</i><b>${kind === 'video' ? '视频素材' : '图片素材'} <span>(${list.length})</span></b></header>
+        <div class="ec-prod-material-filters" role="group" aria-label="${kind === 'video' ? '视频' : '图片'}归入状态">${options.map(([value, label, count]) => `<button type="button" data-lp="material-filter" data-kind="${kind}" data-value="${value}" aria-pressed="${filter === value}" class="${filter === value ? 'is-active' : ''}">${label} <span>${count}</span></button>`).join('')}</div>
+        ${shown.length ? `<div class="ec-prod-media-grid${kind === 'video' ? ' ec-prod-media-grid--video' : ''}">${shown.map(row => mediaCard(item, kind, row)).join('')}</div>` : `<div class="ec-prod-hint" style="padding:18px 0">${list.length ? '这个分组暂无素材' : `还没有${kind === 'video' ? '视频' : '图片'}素材，可到「联网爬取」获取候选。`}</div>`}
       </section>`;
       }).join('')}`;
   /* 离开录入前的确认：文案照产品要求，确认后就关页面 + 提示保存成功 */
@@ -697,7 +715,7 @@
       const owner = ownerOf(crawl);
       if (owner) {
         owner.updated = today();
-        if (!crawlBusy(crawl)) owner.status = poolTotal(owner) ? 'ready' : 'pending';
+        if (!crawlBusy(crawl)) owner.status = materialStatus(owner);
         persist();
       }
     }
@@ -811,34 +829,48 @@
     paintKeepingFocus();
     toast(`正在重试 ${channels.join('、')} 的${zoneKey === 'video' ? '视频' : '图片'}候选…`);
   };
-  const pushToWorkbench = async (item, manual) => {
+  const pushToWorkbench = async (item, manual, onlyKey = null) => {
     if (!item || pushing.has(item.id)) return;
     const rows = [];
+    const importedKeys = new Set();
+    for (const group of ['main','video','image']) for (const row of item.assets?.[group] || []) {
+      if (row.workbench) importedKeys.add(mediaKey({ ...row, kind: group === 'video' ? 'video' : 'image' }));
+    }
+    const selectedKeys = new Set();
     for (const group of ['main','video','image']) (item.assets?.[group] || []).forEach((row, index) => {
-      if (!row.disabled && !row.workbench) rows.push({ row, key: `${group}:${index}`, kind: group === 'video' ? 'video' : 'image' });
+      const kind = group === 'video' ? 'video' : 'image';
+      const key = mediaKey({ ...row, kind });
+      if (!row.disabled && !row.workbench && !importedKeys.has(key) && !selectedKeys.has(key) && (!onlyKey || (group === onlyKey.group && key === onlyKey.key))) {
+        rows.push({ row, key: `${group}:${index}`, kind }); selectedKeys.add(key);
+      }
     });
-    if (manual && !rows.length) { toast('归档素材已同步，可到工作台素材库查看'); return; }
-    pushing.set(item.id, true); paint();
+    if (manual && !rows.length) { toast(Object.values(item.assets || {}).some(rows => rows.some(row => row.workbench)) ? '已归入的素材均已同步，可到素材中心查看' : '请先选择候选素材归入素材中心'); return; }
+    pushing.set(item.id, onlyKey?.key || true); paint();
     try {
       const result = await window.CollectApi.importProduct({
         product: { productId: String(item.kuaishouId || item.id), name: item.name || '', price: String(item.price ?? ''), specification: item.spec || '', sellingPoints: item.highlight || '' },
         materials: rows.map(({ row, key, kind }) => ({ ...row, key, kind, assetId: row.workbenchAssetId || '' })),
       });
       let ready = 0;
-      for (const imported of result.imported || []) {
-        const original = rows.find(row => row.key === imported.key)?.row;
-        if (!original) continue;
-        if (imported.status === 'ready') { original.workbench = true; original.workbenchAssetId = imported.assetId; original.local = imported.local || original.local; delete original.workbenchError; ready += 1; }
-        else { original.workbench = false; original.workbenchError = imported.error || '入库未成功'; }
+      for (const { row: original, key } of rows) {
+        const imported = result.imported?.find(row => row.key === key);
+        const skipped = result.skipped?.find(row => row.key === key);
+        if (imported?.local) original.local = imported.local;
+        if (imported?.status === 'ready') { original.workbench = true; original.workbenchAssetId = imported.assetId; delete original.workbenchError; ready += 1; }
+        else { original.workbench = false; original.workbenchError = imported?.error || skipped?.reason || '入库未成功'; }
       }
       const failed = rows.length - ready;
-      const error = result.skipped?.[0]?.reason || result.imported?.find(row => row.status !== 'ready')?.error || '';
+      const error = rows.find(({ row }) => !row.workbench)?.row.workbenchError || '';
       item.lastSync = { at: stamp(), ready, failed, error };
-      persist(); toast(`素材库同步：成功 ${ready} 项${failed ? `，未同步 ${failed} 项：${error}` : ''}`);
+      persist(); toast(rows.length ? `素材库同步：成功 ${ready} 项${failed ? `，未同步 ${failed} 项：${error}` : ''}` : materialStatus(item) === 'awaitingImport' ? '商品资料已保存，候选素材待选择入库' : '商品资料已保存，可继续爬取素材');
     } catch (error) {
+      for (const { row } of rows) row.workbenchError = error.message;
       item.lastSync = { at: stamp(), ready: 0, failed: rows.length, error: error.message };
       persist(); toast(`同步失败：${error.message}；商品与归档素材已保留，可重试`);
-    } finally { pushing.delete(item.id); paint(); }
+    } finally {
+      if (!['generating','review','done'].includes(item.status)) item.status = crawlBusy(crawlFor(item)) ? 'crawling' : materialStatus(item);
+      persist(); pushing.delete(item.id); paint();
+    }
   };
   const previewRow = async (row, kind, host) => {
     const previewId = uid('preview');
@@ -993,6 +1025,25 @@
     if (action === 'ext-help') { toast('Chrome 扩展管理：开启开发者模式 → 加载已解压的扩展 → 选择 ecom-video-collect/extension，并登录快分销。'); return; }
     if (action === 'push-workbench') { pushToWorkbench(item, true); return; }
     if (action === 'open-workbench') { openWorkbench(item); return; }
+    if (action === 'material-filter') {
+      state.materialFilters ||= { video: 'all', image: 'all' };
+      state.materialFilters[trigger.dataset.kind] = trigger.dataset.value;
+      paint(); return;
+    }
+    if (action === 'stored-import') {
+      if (!item || pushing.has(item.id)) return;
+      const kind = trigger.dataset.kind;
+      const key = trigger.dataset.mediaKey;
+      const row = crawledOf(item, kind).find(row => mediaKey(row) === key);
+      if (!row || row.workbench) return;
+      const pool = ensureAssets(item);
+      if (!row.inPool) takeRow(item, pool, kind, row);
+      const target = pool[row.assetGroup || kind].find(row => mediaKey({ ...row, kind }) === key);
+      if (target) target.disabled = false;
+      crawlFor(item).taken.add(key);
+      syncMaterials(item); item.updated = today(); persist();
+      pushToWorkbench(item, false, { key, group: row.assetGroup || kind }); return;
+    }
     if (action === 'stored-preview') {
       const kind = trigger.dataset.kind;
       const row = crawledOf(item, kind).find(row => mediaKey(row) === trigger.dataset.mediaKey);
@@ -1081,7 +1132,7 @@
       if (had) toast('已取消：这次填的资料和爬到的素材都没有保留');
       return;
     }
-    if (action === 'open-detail') { state.detailId = id; state.detailPanel = 'info'; state.recordOpen = null; paint(); return; }
+    if (action === 'open-detail') { state.materialFilters = { video: 'all', image: 'all' }; state.detailId = id; state.detailPanel = 'info'; state.recordOpen = null; paint(); return; }
     if (action === 'close-detail') { state.detailId = null; state.recordOpen = null; paint(); return; }
     if (action === 'collect') {
       const d = state.draft;
@@ -1127,7 +1178,7 @@
         id: uid('p'), kuaishouId: d.kuaishouId.trim(), name: d.name.trim(), cat: d.cat, price: Number(d.price), spec: d.spec.trim(),
         comm: Number(d.comm), cma: Number((Number(d.price) * Number(d.comm) / 100).toFixed(2)), gen: 0, platform: PLATFORMS.includes(d.platform) ? d.platform : '快手',
         /* 没爬完就确认 → 列表状态栏直接显示「爬取中」，跑完再自动落定 */
-        status: running && crawlBusy(running) ? 'crawling' : (materialTotal({ materials }) ? 'ready' : 'pending'),
+        status: running && crawlBusy(running) ? 'crawling' : materialStatus(d, d.pool),
         updated: today(), highlight: d.highlight.trim(), negatives: d.negatives.trim(),
         collectedImages: d.collectedImages || [], collectSource: d.collectSource || '', materials, assets: { main: [...d.pool.main], video: [...d.pool.video], image: [...d.pool.image] }, crawls: [...d.crawls],
       };
