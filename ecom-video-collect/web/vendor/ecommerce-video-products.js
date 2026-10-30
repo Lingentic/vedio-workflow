@@ -391,7 +391,8 @@
     for (const record of item.crawls || []) for (const row of record[kind] || []) candidate(row, row.channel || row.from || record.channel || '联网爬取');
     for (const group of kind === 'image' ? ['main', 'image'] : ['video']) (item.assets?.[group] || []).forEach((row, assetIndex) => {
       const full = { ...row, kind, origin: row.from || row.channel || '归档素材', inPool: true, assetGroup: group, assetIndex, disabled: Boolean(row.disabled) };
-      rows.set(mediaKey(full), { ...rows.get(mediaKey(full)), ...full });
+      const previous = rows.get(mediaKey(full));
+      rows.set(mediaKey(full), previous?.workbench && !full.workbench ? { ...full, ...previous } : { ...previous, ...full });
     });
     return [...rows.values()];
   };
@@ -831,8 +832,17 @@
   const pushToWorkbench = async (item, manual, onlyKey = null) => {
     if (!item || pushing.has(item.id)) return;
     const rows = [];
+    const importedKeys = new Set();
+    for (const group of ['main','video','image']) for (const row of item.assets?.[group] || []) {
+      if (row.workbench) importedKeys.add(mediaKey({ ...row, kind: group === 'video' ? 'video' : 'image' }));
+    }
+    const selectedKeys = new Set();
     for (const group of ['main','video','image']) (item.assets?.[group] || []).forEach((row, index) => {
-      if (!row.disabled && !row.workbench && (!onlyKey || (group === onlyKey.group && mediaKey({ ...row, kind: group === 'video' ? 'video' : 'image' }) === onlyKey.key))) rows.push({ row, key: `${group}:${index}`, kind: group === 'video' ? 'video' : 'image' });
+      const kind = group === 'video' ? 'video' : 'image';
+      const key = mediaKey({ ...row, kind });
+      if (!row.disabled && !row.workbench && !importedKeys.has(key) && !selectedKeys.has(key) && (!onlyKey || (group === onlyKey.group && key === onlyKey.key))) {
+        rows.push({ row, key: `${group}:${index}`, kind }); selectedKeys.add(key);
+      }
     });
     if (manual && !rows.length) { toast(Object.values(item.assets || {}).some(rows => rows.some(row => row.workbench)) ? '已归入的素材均已同步，可到素材中心查看' : '请先选择候选素材归入素材中心'); return; }
     pushing.set(item.id, onlyKey?.key || true); paint();
@@ -842,17 +852,19 @@
         materials: rows.map(({ row, key, kind }) => ({ ...row, key, kind, assetId: row.workbenchAssetId || '' })),
       });
       let ready = 0;
-      for (const imported of result.imported || []) {
-        const original = rows.find(row => row.key === imported.key)?.row;
-        if (!original) continue;
-        if (imported.status === 'ready') { original.workbench = true; original.workbenchAssetId = imported.assetId; original.local = imported.local || original.local; delete original.workbenchError; ready += 1; }
-        else { original.workbench = false; original.workbenchError = imported.error || '入库未成功'; }
+      for (const { row: original, key } of rows) {
+        const imported = result.imported?.find(row => row.key === key);
+        const skipped = result.skipped?.find(row => row.key === key);
+        if (imported?.local) original.local = imported.local;
+        if (imported?.status === 'ready') { original.workbench = true; original.workbenchAssetId = imported.assetId; delete original.workbenchError; ready += 1; }
+        else { original.workbench = false; original.workbenchError = imported?.error || skipped?.reason || '入库未成功'; }
       }
       const failed = rows.length - ready;
-      const error = result.skipped?.[0]?.reason || result.imported?.find(row => row.status !== 'ready')?.error || '';
+      const error = rows.find(({ row }) => !row.workbench)?.row.workbenchError || '';
       item.lastSync = { at: stamp(), ready, failed, error };
       persist(); toast(rows.length ? `素材库同步：成功 ${ready} 项${failed ? `，未同步 ${failed} 项：${error}` : ''}` : materialStatus(item) === 'awaitingImport' ? '商品资料已保存，候选素材待选择入库' : '商品资料已保存，可继续爬取素材');
     } catch (error) {
+      for (const { row } of rows) row.workbenchError = error.message;
       item.lastSync = { at: stamp(), ready: 0, failed: rows.length, error: error.message };
       persist(); toast(`同步失败：${error.message}；商品与归档素材已保留，可重试`);
     } finally {
