@@ -20,6 +20,9 @@ interface ApiError { error?: string; message?: string; }
 type Page = 'production' | 'library' | 'records' | 'task' | 'products' | 'publishing';
 interface PrototypeIsland { html(): string; mount(root: HTMLElement, options: {toast:(message:string)=>void;goto:(page:string,productId?:string)=>void}): void; setAccount(value:string): void; }
 declare global { interface Window { EcommerceVideoProducts: PrototypeIsland; EcommerceVideoPublishing: PrototypeIsland; CollectApi: {migrateLegacyStorage(): Promise<void>}; } }
+interface PendingTaskSwitch { taskId: string; productId: string; templateId: string; origin: 'architecture' | 'copy'; }
+let pendingTaskSwitch: PendingTaskSwitch | null = null;
+let taskSwitchBusy = false;
 let workbenchTemplateId = '';
 let workbenchSetupStep: 'architecture' | 'copy' | 'generation' = 'architecture';
 let workbenchGenerationOpen = false;
@@ -213,7 +216,7 @@ function renderSetup(): string {
 }
 function renderProduction(): string {
   if (!workbenchTemplateId) workbenchTemplateId = state!.templates[0]?.id || '';
-  return architectureView(state!.templates, workbenchTemplateId, workbenchSetupStep, state!.products);
+  return architectureView(state!.templates, workbenchTemplateId, workbenchSetupStep, state!.products, {pending:!!pendingTaskSwitch,busy:taskSwitchBusy});
 }
 function renderRecords(): string {
   const filters = appliedRecordFilters;
@@ -273,7 +276,7 @@ function renderTask(task: Task): string {
   return `<main class="ec-video-production" data-ui-key="task:${esc(task.id)}" aria-label="视频制作">${productionFlow(step,task.completed)}<div class="ec-video-production-content"><section class="ec-video-production-panel" id="ecommerceProductionStage" data-ui-key="stage:${step}:${task.completed}">${task.execution?.status==='running'?`<div class="ec-generation-task workbench-execution" data-ui-key="execution-progress"><strong>${esc(task.execution.message)}</strong><progress max="100" value="${task.execution.progress}" aria-label="生成进度"></progress><span>${Math.floor(task.execution.progress)}%</span></div>`:''}${task.error?`<div class="ec-generation-readiness workbench-error" role="alert">${esc(task.error)}</div>`:''}${task.completed?renderPreviewStage(task):renderStage(task)}</section></div></main>`;
 }
 function renderStage(task: Task): string {
-  if (!workbenchGenerationOpen && task.stage === 'copy') return copyView(task, state!);
+  if (!workbenchGenerationOpen && task.stage === 'copy') return copyView(task, state!, {pending:!!pendingTaskSwitch,busy:taskSwitchBusy,productId:pendingTaskSwitch?.productId});
   preparePrototypeSelection(task);
   return generationView(task, state!, workbenchNode, prototypeSelection, prototypeClipId, prototypeNarrations.get(workbenchNode));
 }
@@ -427,12 +430,12 @@ function newElements<T extends HTMLElement>(selector: string): T[] {
 function bind(): void {
   if (!root) return;
   newElements<HTMLElement>('[data-page]').forEach(element => element.addEventListener('click', () => { void navigate(element.dataset.page as Page).catch(showError); }));
-  newElements<HTMLSelectElement>('[data-architecture-template]').forEach(select => select.addEventListener('change', () => { workbenchTemplateId = select.value; render(); }));
+  newElements<HTMLSelectElement>('[data-architecture-template]').forEach(select => select.addEventListener('change', () => { const templateId=select.value;workbenchTemplateId=templateId;const task=selectedTask();if(task)void requestTaskSwitch(task.productId,templateId,'architecture').catch(showError);else render(); }));
   newElements<HTMLSelectElement>('[data-create-product]').forEach(select => select.addEventListener('change', () => {
     if (!select.value) return; select.disabled = true;
     void api<Task>('/api/tasks', 'POST', {productId:select.value,templateId:workbenchTemplateId}).then(async task=>{selectedTaskId=task.id;workbenchGenerationOpen=false;workbenchNode='';prototypeSelection.clear();page='task';await refresh();window.scrollTo(0,0);}).catch(error=>{select.disabled=false;showError(error);});
   }));
-  newElements<HTMLSelectElement>('[data-switch-product]').forEach(select => select.addEventListener('change', () => { const task=selectedTask(); if (!task) return; const productId=select.value; select.value=task.productId; showModal(switchModal(task, productId)); }));
+  newElements<HTMLSelectElement>('[data-switch-product]').forEach(select => select.addEventListener('change', () => { const task=selectedTask();if(task)void requestTaskSwitch(select.value,task.templateId,'copy').catch(showError); }));
   newElements<HTMLInputElement>('[data-prototype-audio-input]').forEach(input=>input.addEventListener('change',()=>{
     const file=input.files?.[0];if(!file)return;
     if(!file.type.startsWith('audio/')&&!/\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name)){showToast('请选择音频文件',true);return;}
@@ -481,6 +484,9 @@ function bind(): void {
   });
 }
 async function navigate(target: Page): Promise<void> {
+  if(taskSwitchBusy)return;
+  pendingTaskSwitch=null;
+  workbenchTemplateId=selectedTask()?.templateId || workbenchTemplateId;
   const task = selectedTask(); if (task) await flushTaskDraft(task.id);
   if (target !== 'task') { page = target; selectedTaskId = ''; }
   else page = target;
@@ -612,6 +618,16 @@ async function toggleBgmAudition(): Promise<void> {
 }
 async function handleAction(button: HTMLButtonElement): Promise<void> {
   const action = button.dataset.action; let task = selectedTask();
+  if(taskSwitchBusy)return;
+  if(action==='confirm-switch-task' && pendingTaskSwitch){
+    const choice=pendingTaskSwitch;if(choice.taskId!==task?.id)return;
+    const mode=button.dataset.mode;if(mode!=='new'&&mode!=='overwrite')return;
+    taskSwitchBusy=true;render();
+    const controls=[...document.querySelectorAll<HTMLButtonElement>('.task-switch-choice-modal button')];controls.forEach(button=>{button.disabled=true;});
+    try{await flushTaskDraft(choice.taskId);await applyTaskSwitch(choice,mode);}finally{taskSwitchBusy=false;controls.forEach(button=>{button.disabled=false;});render();}
+    return;
+  }
+  if(pendingTaskSwitch && ['workbench-stage','new-task','generate-copy','confirm-copy'].includes(action || '')){showToast('请先应用或取消当前切换');return;}
   if(action==='confirm-modal'){const resolve=modalDecision;modalDecision=null;closeModal();resolve?.(true);return;}
   if (action === 'audition-bgm') return toggleBgmAudition();
   if (task) { await flushTaskDraft(task.id); task = selectedTask(); }
@@ -622,7 +638,7 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
     if (state!.activeExecution) return showToast('配音正在生成，请稍候');
     const step=button.dataset.step;
     if (step==='architecture') { workbenchGenerationOpen=false;workbenchTemplateId=task?.templateId || workbenchTemplateId;page='production';workbenchSetupStep='architecture';return render(); }
-    if (step==='copy') { if(task) { if(page==='production' && workbenchTemplateId && workbenchTemplateId!==task.templateId)return showModal(switchModal(task,task.productId,workbenchTemplateId));page='task';return goStage('copy'); } workbenchSetupStep='copy';return render(); }
+    if (step==='copy') { if(task) { page='task';return goStage('copy'); } workbenchSetupStep='copy';return render(); }
     if (task && (page==='task'||task.templateId===workbenchTemplateId)) {page='task';workbenchGenerationOpen=true;render();root?.querySelector('.ec-video-production-content')?.scrollTo(0,0);return;}
     workbenchSetupStep='generation';return render();
   }
@@ -665,12 +681,7 @@ async function handleAction(button: HTMLButtonElement): Promise<void> {
   if (action === 'delete-asset') { if (!await askConfirmation('移除商品素材', '确认从素材库移除此商品片段？正在合成使用的素材不能删除。', '移除')) return; await mutate(`/api/assets/${encodeURIComponent(button.dataset.id || '')}`, 'DELETE', undefined, '素材记录已更新'); return; }
   if (action === 'record-open') { closeModal(); selectedTaskId = button.dataset.id || ''; workbenchGenerationOpen=false;workbenchNode='';prototypeSelectionTaskId='';prototypeSelection.clear();page = 'task'; resetManualSelection(selectedTaskId); previewPrompts.delete(selectedTaskId); const record = selectedTask(); if (record?.completed) record.stage = 'preview'; render(); return; }
   if (action === 'record-export') { const result = await api<{ paths: string[] }>('/api/dialog', 'POST', { kind: 'folder' }); if (!result.paths[0]) return; await mutate(`/api/tasks/${encodeURIComponent(button.dataset.id || '')}/export`, 'POST', { directory: result.paths[0] }, '成片副本已导出'); return; }
-  if (action === 'switch-task' && task) return showModal(switchModal(task, button.dataset.productId, button.dataset.templateId));
   if (!task) return;
-  if (action === 'confirm-switch-task') {
-    if (button.disabled || button.dataset.id !== task.id) return;
-    await applyTaskSwitch(task.id, button.dataset.productId!, button.dataset.templateId!, button.dataset.mode as 'new' | 'overwrite'); return;
-  }
   if (action === 'pick-materials') return showModal(materialPickerModal(task));
   if (action === 'picker-preview') {
     const asset = readyProductAssets(task.productId).find(item => item.id === button.dataset.id);
@@ -743,10 +754,13 @@ function showModal(content: string): void {
   backdrop.querySelector<HTMLInputElement>('[data-picker-search]')?.addEventListener('input', event => { const query = (event.target as HTMLInputElement).value.trim().toLocaleLowerCase(); backdrop.querySelectorAll<HTMLElement>('[data-material-name]').forEach(card => { card.hidden = !card.dataset.materialName!.includes(query); }); });
 }
 function closeModal(): void {
+  const cancellingSwitch=!!pendingTaskSwitch && !!document.querySelector('.task-switch-choice-modal');
+  if(cancellingSwitch && taskSwitchBusy)return;
   const resolve=modalDecision;modalDecision=null;resolve?.(false);
   prototypePicker=null;document.querySelectorAll<HTMLDialogElement>('.ec-library-dialog').forEach(dialog=>dialog.close());
   const completion = document.querySelector('.completion-dialog');
   document.querySelectorAll<HTMLMediaElement>('.modal-backdrop video,.modal-backdrop audio').forEach(media => media.pause()); document.querySelector('.modal-backdrop')?.remove();
+  if(cancellingSwitch){pendingTaskSwitch=null;workbenchTemplateId=selectedTask()?.templateId || workbenchTemplateId;render();}
   if (completion) root?.querySelector<HTMLButtonElement>('[data-action="complete-task"]')?.focus({ preventScroll: true });
 }
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && !document.querySelector('.ec-library-dialog[open]')) closeModal(); });
@@ -793,16 +807,29 @@ function importModal(productId: string): string {
   const product = state!.products.find(item => item.productId === productId);
   return `<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>导入商品视频</h2><p class="modal-intro">添加到「${esc(product?.name || '')}」。原始视频导入后可切分并命名。</p><form data-form="import" data-id="${esc(productId)}"><label class="field-label">素材类型</label><select class="select" name="processed"><option value="false">原始视频</option><option value="true">视频切片 · 直接入库</option></select><label class="field-label">选择视频</label><input class="input" type="file" name="videos" accept="video/*,.mp4,.mov,.mkv,.webm,.avi" multiple><div class="section-hint" data-video-count>尚未选择</div><div class="section-hint" data-video-names style="margin-top:7px"></div><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button class="button primary">开始导入</button></div></form></div>`;
 }
-function switchModal(task: Task, productId = task.productId, templateId = task.templateId): string {
-  return `<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>切换商品或模板</h2><form data-form="switch-task" data-id="${esc(task.id)}"><label class="field-label">商品</label><select class="select" name="productId">${state!.products.map(item => `<option value="${esc(item.productId)}" ${item.productId === productId ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select><label class="field-label">模板</label><select class="select" name="templateId">${state!.templates.map(item => `<option value="${esc(item.id)}" ${item.id === templateId ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button type="submit" class="button primary">应用</button></div></form></div>`;
+async function requestTaskSwitch(productId: string, templateId: string, origin: PendingTaskSwitch['origin']): Promise<void> {
+  const task=selectedTask();
+  if(!task || taskSwitchBusy || task.completed || state!.activeExecution)return;
+  if(task.productId===productId && task.templateId===templateId)return;
+  const choice={taskId:task.id,productId,templateId,origin};
+  taskSwitchBusy=true;render();
+  try{
+    await flushTaskDraft(task.id);
+    if(Object.values(selectedTask()!.black).some(text=>text.trim())){
+      showModal(`<div class="modal task-switch-choice-modal"><button type="button" class="modal-close" data-close-modal aria-label="关闭">×</button><h2>选择创建方式</h2><p class="modal-intro">当前已有文案。覆盖会清空当前进度，新建会保留原任务。</p><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button type="button" class="button" data-action="confirm-switch-task" data-mode="overwrite">覆盖当前任务</button><button type="button" class="button primary" data-action="confirm-switch-task" data-mode="new">保留并新建</button></div></div>`);
+      pendingTaskSwitch=choice;document.querySelector<HTMLButtonElement>('.task-switch-choice-modal .modal-footer [data-close-modal]')?.focus();
+    }
+    else await applyTaskSwitch(choice,'overwrite');
+  }catch(error){workbenchTemplateId=task.templateId;throw error;}
+  finally{taskSwitchBusy=false;render();}
 }
-async function applyTaskSwitch(taskId: string, productId: string, templateId: string, mode: 'new' | 'overwrite'): Promise<void> {
-  const controls = [...document.querySelectorAll<HTMLButtonElement>('.modal-footer button')];
-  controls.forEach(button => { button.disabled = true; });
-  try {
-    const task = await api<Task>(`/api/tasks/${encodeURIComponent(taskId)}/switch`, 'POST', { productId, templateId, mode });
-    closeModal(); selectedTaskId = task.id; workbenchNode=''; prototypeSelection.clear(); workbenchTemplateId=task.templateId; manualSelectionTaskId = ''; manualSelection = []; page = 'task'; await refresh();
-  } catch (error) { controls.forEach(button => { button.disabled = false; }); throw error; }
+async function applyTaskSwitch(choice: PendingTaskSwitch, mode: 'new' | 'overwrite'): Promise<void> {
+  const task=await api<Task>(`/api/tasks/${encodeURIComponent(choice.taskId)}/switch`,'POST',{productId:choice.productId,templateId:choice.templateId,mode});
+  state!.tasks=[...state!.tasks.filter(item=>item.id!==task.id),task];
+  pendingTaskSwitch=null;closeModal();selectedTaskId=task.id;workbenchNode='';prototypeClipId='';prototypeSelectionTaskId='';prototypeSelection.clear();
+  workbenchTemplateId=task.templateId;workbenchGenerationOpen=false;manualSelectionTaskId='';manualSelection=[];
+  page=choice.origin==='architecture'?'production':'task';workbenchSetupStep=choice.origin==='architecture'?'architecture':'copy';
+  await refresh();
 }
 function dataRootModal(): string {
   return `<div class="modal"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>更换数据目录</h2><p class="modal-intro">已有数据不会自动搬迁。切换后将使用新目录中的工作数据；切换期间不能有任务执行或素材导入。</p><form data-form="change-root"><label class="field-label">当前数据目录</label><div class="path-picker"><input class="input" id="new-data-root" name="dataRoot" value="${esc(state!.dataRoot)}"><button type="button" class="button" data-action="choose-folder" data-target="new-data-root">选择</button></div><div class="modal-footer"><button type="button" class="button" data-close-modal>取消</button><button class="button primary">更换目录</button></div></form></div>`;
@@ -837,17 +864,6 @@ async function submitForm(form: HTMLFormElement): Promise<void> {
     const threshold=Number(value('threshold')),minDurationSec=Number(value('minDurationSec'));
     if(!Number.isFinite(threshold)||threshold<0.1||threshold>100||!Number.isFinite(minDurationSec)||minDurationSec<0.1||minDurationSec>10){showToast('请检查切分阈值和最短时长范围',true);return;}
     try{await api('/api/library/processing-settings','PUT',{threshold,minDurationSec});await refresh();showToast('切分设置已保存');}catch(error){showToast(error instanceof Error?error.message:'保存切分设置失败',true);}return;
-  }
-  if (formName === 'switch-task') {
-    const taskId = form.dataset.id!; await flushTaskDraft(taskId);
-    const current = state!.tasks.find(item => item.id === taskId)!;
-    const productId = value('productId'), templateId = value('templateId');
-    if (productId === current.productId && templateId === current.templateId) { closeModal(); return; }
-    if (Object.values(current.black).some(text => text.trim())) {
-      const attributes = `data-id="${esc(taskId)}" data-product-id="${esc(productId)}" data-template-id="${esc(templateId)}"`;
-      showModal(`<div class="modal switch-choice"><button class="modal-close" data-close-modal aria-label="关闭">×</button><h2>选择创建方式</h2><p class="modal-intro">当前任务已有文案。新建会保留当前任务，覆盖会清空当前进度。</p><div class="modal-footer"><button class="button" data-action="switch-task" ${attributes}>返回</button><button class="button danger" data-action="confirm-switch-task" data-mode="overwrite" ${attributes}>覆盖当前任务</button><button class="button primary" data-action="confirm-switch-task" data-mode="new" ${attributes}>新建任务</button></div></div>`); return;
-    }
-    await applyTaskSwitch(taskId, productId, templateId, 'overwrite'); return;
   }
   if (formName === 'change-root') {
     if (state!.activeExecution || state!.libraryBusy) { showToast('任务或素材正在处理中，暂不能更换目录。', true); return; }

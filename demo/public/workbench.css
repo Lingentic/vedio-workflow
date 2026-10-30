@@ -58,6 +58,9 @@ body[data-app="video-studio"] .modal-backdrop>.modal{background:#fff;color:#2c29
 @media(prefers-reduced-motion:reduce){.ec-library-description summary>.workbench-icon{transition:none}}
 
 /* Keep native select semantics while styling its top-layer option list. */
+.task-switch-choice-modal{width:min(460px,100%)}
+.task-switch-choice-modal .modal-footer{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.task-switch-choice-modal .modal-footer .button{min-height:36px;padding:0 12px;font-size:12px}
 body[data-app="video-studio"] select{color-scheme:light;border-color:#e4deed;border-radius:8px;color:#584d68;background-color:#fff}
 @supports (appearance:base-select){
   body[data-app="video-studio"] select:not([multiple]):not([size]),
